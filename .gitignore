@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Backend runtime artifacts
+backend/cache/
+backend/static/cutouts/
+
+# Node
+node_modules/
+# NOTE: frontend/dist IS committed on purpose -- it lets the one-click
+# launchers (run.bat / run.sh) serve the app without Node installed.
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Env
+.env

@@ -1,0 +1,344 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import ControlPanel from './components/ControlPanel.jsx';
+import FrameViewer from './components/FrameViewer.jsx';
+import CombinedViewer from './components/CombinedViewer.jsx';
+import { decodeB64Float32, sortPixels } from './lib/render.js';
+import { DEFAULT_DISPLAY, buildHash, parseHash } from './lib/urlstate.js';
+
+export { DEFAULT_DISPLAY };
+
+function toFrame(base) {
+  const data = decodeB64Float32(base.data_b64);
+  const frame = { ...base, data, sorted: sortPixels(data) };
+  if (base.data2_b64) {
+    // W1+W2 color composite: second band travels as data2.  AstroToolBox
+    // computes the shared contrast limits from the W2 array (getRefValues
+    // prefers fits2), so keep its sorted pixels too.
+    frame.data2 = decodeB64Float32(base.data2_b64);
+    frame.sorted2 = sortPixels(frame.data2);
+  }
+  return frame;
+}
+
+// Opens the spectrum viewer in a new tab for a sky position.
+export function openSpectrumTab(ra, dec) {
+  const params = `ra=${ra.toFixed(6)}&dec=${dec.toFixed(6)}`;
+  window.open(`spectrum.html#${params}`, '_blank', 'noopener');
+}
+
+export default function App() {
+  // Query form + display settings restore from the URL hash (WiseView-style
+  // shareable links), and every later change is written back to it.
+  const initial = useMemo(() => parseHash(window.location.hash), []);
+  const [spherexFrames, setSpherexFrames] = useState([]);
+  const [wiseFrames, setWiseFrames] = useState([]);
+  const [coaddFrames, setCoaddFrames] = useState([]);
+  const [coaddStatus, setCoaddStatus] = useState(null);
+  const coaddKey = useRef(null); // query already coadded (avoid refetch)
+  const [status, setStatus] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState(initial.form);
+  const [view, setView] = useState(initial.view);
+  // Sky position under the cursor on either panel -> crosshair on the other.
+  const [hoverSky, setHoverSky] = useState(null);
+  // Target + field of the last search, for the combined WISE->SPHEREx movie.
+  const [queried, setQueried] = useState(null);
+
+  // Keep the address bar in sync so the current view is always shareable.
+  useEffect(() => {
+    window.history.replaceState(null, '', buildHash(form, view));
+  }, [form, view]);
+
+  // Latest view settings for async callbacks (search closes over stale view).
+  const viewRef = useRef(view);
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
+
+  // Turning the CO-ADD panel on after a search lazily fetches the stacks.
+  useEffect(() => {
+    if (view.showCoadd && queried && !loading) fetchCoadd(queried);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.showCoadd, queried, loading]);
+
+  // Per-detector CO-ADD stacks (mixed-lambda deep images).  Fetched AFTER
+  // the epoch stack so the exposure cutouts are already in the backend's
+  // disk cache (the coadd reuses the exact same cutout URLs).
+  const fetchCoadd = async (q) => {
+    const key = JSON.stringify(q);
+    if (coaddKey.current === key) return;
+    coaddKey.current = key;
+    setCoaddFrames([]);
+    setCoaddStatus('Building detector CO-ADDs\u2026 stacking every exposure per detector.');
+    const params = new URLSearchParams({
+      ra: q.ra,
+      dec: q.dec,
+      radius_arcsec: q.fov / 2,
+      survey: q.survey,
+      limit: q.limit,
+    });
+    if (q.band) params.set('band', q.band);
+    try {
+      const d = await fetch(`/api/coadd?${params}`).then((r) =>
+        r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.detail || r.statusText))),
+      );
+      setCoaddFrames(
+        d.coadds.map((c) => {
+          const m = c.metadata;
+          const lam = m.lambda_target_um;
+          const range = lam ? ` \u00b7 \u03bb ${lam.min_um.toFixed(2)}\u2013${lam.max_um.toFixed(2)} \u00b5m` : '';
+          const dates = m.datetime_min_utc
+            ? ` \u00b7 ${m.datetime_min_utc.slice(0, 10)} \u2192 ${m.datetime_max_utc.slice(0, 10)}`
+            : '';
+          return toFrame({
+            ...c,
+            label: `${m.band} CO-ADD (mixed \u03bb)`,
+            sublabel: `${m.n_exposures_used} exp${range}${dates}`,
+          });
+        }),
+      );
+      setCoaddStatus(
+        `CO-ADD: ${d.count} detectors from ${d.n_exposures_input - d.n_exposures_skipped} exposures` +
+          ` (zodi-subtracted, sky-noise weighted${d.n_exposures_skipped ? `; ${d.n_exposures_skipped} skipped` : ''})`,
+      );
+    } catch (err) {
+      coaddKey.current = null;
+      setCoaddStatus(`CO-ADD failed: ${err.message}`);
+    }
+  };
+
+  const search = async ({ ra, dec, fov, survey, band, limit, wiseBand }) => {
+    setLoading(true);
+    setError(null);
+    setStatus('Querying SPHEREx + WiseView\u2026 first fetch of a field can take a minute.');
+    setSpherexFrames([]);
+    setWiseFrames([]);
+    setCoaddFrames([]);
+    setCoaddStatus(null);
+    coaddKey.current = null;
+    setQueried({
+      ra: parseFloat(ra),
+      dec: parseFloat(dec),
+      fov: parseFloat(fov),
+      survey,
+      band: band || '',
+      limit,
+    });
+
+    const sxParams = new URLSearchParams({
+      ra,
+      dec,
+      radius_arcsec: fov / 2,
+      survey,
+      limit,
+    });
+    if (band) sxParams.set('band', band);
+    const wiseParams = new URLSearchParams({
+      ra,
+      dec,
+      size_arcsec: fov,
+      band: wiseBand,
+      gaia: 'true',
+    });
+
+    try {
+      const [sxRes, wiseRes] = await Promise.allSettled([
+        fetch(`/api/epoch-stack?${sxParams}`).then((r) =>
+          r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.detail || r.statusText))),
+        ),
+        fetch(`/api/wise-stack?${wiseParams}`).then((r) =>
+          r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.detail || r.statusText))),
+        ),
+      ]);
+
+      const messages = [];
+      if (sxRes.status === 'fulfilled') {
+        const d = sxRes.value;
+        setSpherexFrames(
+          d.cutouts.map((c) =>
+            toFrame({
+              ...c,
+              label: c.metadata.band || 'SPHEREx',
+              sublabel: c.metadata.datetime_utc
+                ? `${c.metadata.datetime_utc.slice(0, 10)} ${c.metadata.datetime_utc.slice(11, 16)} UT`
+                : '',
+            }),
+          ),
+        );
+        messages.push(
+          `SPHEREx: ${d.count} frames` +
+            (d.skipped_no_overlap ? ` (${d.skipped_no_overlap} skipped, no overlap)` : ''),
+        );
+      } else {
+        messages.push(`SPHEREx failed: ${sxRes.reason.message}`);
+      }
+
+      if (wiseRes.status === 'fulfilled') {
+        const d = wiseRes.value;
+        setWiseFrames(
+          d.frames.map((f) =>
+            toFrame({
+              ...f,
+              markers: f.gaia_markers,
+              label: `${f.band} epoch ${f.epoch}`,
+              sublabel: f.datetime_utc ? f.datetime_utc.slice(0, 10) : '',
+            }),
+          ),
+        );
+        messages.push(`WISE: ${d.count} epochs (${d.frames[0]?.datetime_utc?.slice(0, 4)}\u2013${d.frames.at(-1)?.datetime_utc?.slice(0, 4)})`);
+      } else {
+        messages.push(`WISE failed: ${wiseRes.reason.message}`);
+      }
+
+      setStatus(messages.join(' \u00b7 '));
+      if (sxRes.status === 'rejected' && wiseRes.status === 'rejected') {
+        setError('Both queries failed.');
+      } else if (viewRef.current.showCoadd) {
+        // Cutouts are now cached server-side; the coadd re-reads them.
+        fetchCoadd({ ra: parseFloat(ra), dec: parseFloat(dec), fov: parseFloat(fov), survey, band: band || '', limit });
+      }
+    } catch (err) {
+      setError(err.message);
+      setStatus(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // A URL that names a target (#ra=..&dec=..) fetches it on load.
+  const autoFetched = useRef(false);
+  useEffect(() => {
+    if (autoFetched.current || !initial.hasTarget) return;
+    autoFetched.current = true;
+    const [ra, dec] = initial.form.coords.split(/\s+/).map(parseFloat);
+    search({
+      ra,
+      dec,
+      fov: parseFloat(initial.form.fov),
+      survey: initial.form.survey,
+      band: initial.form.bands.join(','),
+      limit: parseInt(initial.form.limit, 10),
+      wiseBand: initial.form.wiseBand,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="app">
+      <header>
+        <h1>SPHERExView</h1>
+        <p className="subtitle">
+          Blink SPHEREx spectral cutouts next to time-resolved WISE epochs (via WiseView) with
+          Gaia DR3 overlays
+        </p>
+      </header>
+      <div className="layout">
+        <ControlPanel
+          onSearch={search}
+          loading={loading}
+          view={view}
+          setView={setView}
+          form={form}
+          setForm={setForm}
+        />
+        <main className="viewers">
+          {status && <p className="status">{status}</p>}
+          {error && <p className="status error">{error}</p>}
+          <div className="viewer-row">
+            {spherexFrames.length > 0 && (
+              <FrameViewer
+                title="SPHEREx"
+                frames={spherexFrames}
+                render={{
+                  mode: view.sxScaleMode,
+                  blackPct: view.sxBlackPct,
+                  whitePct: view.sxWhitePct,
+                  stretch: view.sxStretch,
+                  invert: view.sxInvert,
+                  smooth: view.sxSmooth,
+                }}
+                displaySize={view.displaySize}
+                speedMs={view.speedMs}
+                showMarkers={false}
+                hoverSky={hoverSky}
+                onHoverSky={setHoverSky}
+                showInfo
+                allowPin
+                onSpectrum={openSpectrumTab}
+                outerOnly={view.sxOuter}
+                outerControls
+              />
+            )}
+            {view.showWise && wiseFrames.length > 0 && (
+              <FrameViewer
+                title="WISE (WiseView epochs)"
+                frames={wiseFrames}
+                render={{
+                  mode: 'atb',
+                  brightness: view.wiseBrightness,
+                  contrast: view.wiseContrast,
+                  stretch: view.wiseStretch,
+                  invert: view.wiseInvert,
+                  smooth: view.wiseSmooth,
+                }}
+                displaySize={view.displaySize}
+                speedMs={view.speedMs}
+                showMarkers={view.showMarkers}
+                hoverSky={hoverSky}
+                onHoverSky={setHoverSky}
+              />
+            )}
+          </div>
+          {view.showCoadd && (coaddFrames.length > 0 || coaddStatus) && (
+            <div className="viewer-row">
+              {coaddFrames.length > 0 ? (
+                <FrameViewer
+                  title={'Detector CO-ADD (mixed \u03bb)'}
+                  frames={coaddFrames}
+                  render={{
+                    mode: view.sxScaleMode,
+                    blackPct: view.sxBlackPct,
+                    whitePct: view.sxWhitePct,
+                    stretch: view.sxStretch,
+                    invert: view.sxInvert,
+                    smooth: view.sxSmooth,
+                  }}
+                  displaySize={view.displaySize}
+                  speedMs={view.speedMs}
+                  showMarkers={false}
+                  hoverSky={hoverSky}
+                  onHoverSky={setHoverSky}
+                  showInfo
+                  allowPin
+                  onSpectrum={openSpectrumTab}
+                />
+              ) : (
+                <p className="status">{coaddStatus}</p>
+              )}
+            </div>
+          )}
+          {view.showCoadd && coaddFrames.length > 0 && coaddStatus && (
+            <p className="status coadd-note">{coaddStatus}</p>
+          )}
+          {view.showCombined &&
+            queried &&
+            spherexFrames.length > 0 &&
+            wiseFrames.length > 0 && (
+              <div className="viewer-row">
+                <CombinedViewer
+                  wiseFrames={wiseFrames}
+                  spherexFrames={spherexFrames}
+                  target={queried}
+                  fov={queried.fov}
+                  view={view}
+                  displaySize={view.displaySize}
+                  speedMs={view.speedMs}
+                />
+              </div>
+            )}
+        </main>
+      </div>
+    </div>
+  );
+}
