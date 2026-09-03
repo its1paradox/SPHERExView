@@ -212,6 +212,17 @@ export default function SpectrumPage() {
     return () => ro.disconnect();
   }, [table]);
 
+  // Log-scale tick label: "10^n" at integer decades, else "3.2e2"-style.
+  const SUP = { '-': '\u207b', 0: '\u2070', 1: '\u00b9', 2: '\u00b2', 3: '\u00b3', 4: '\u2074', 5: '\u2075', 6: '\u2076', 7: '\u2077', 8: '\u2078', 9: '\u2079' };
+  const fmtLogTick = (vv) => {
+    const near = Math.round(vv);
+    if (Math.abs(vv - near) < 0.02) {
+      return `10${String(near).split('').map((c) => SUP[c] || c).join('')}`;
+    }
+    const mant = 10 ** (vv - Math.floor(vv));
+    return `${mant.toFixed(1)}\u00d710${String(Math.floor(vv)).split('').map((c) => SUP[c] || c).join('')}`;
+  };
+
   // ---- plot geometry ----------------------------------------------------
   const H = 460;
   const M = { l: 74, r: 16, t: 14, b: 46 };
@@ -289,7 +300,7 @@ export default function SpectrumPage() {
       ctx.lineTo(plotW - M.r, py);
       ctx.stroke();
       ctx.textAlign = 'right';
-      const label = logFlux ? `1e${vv.toFixed(1)}` : vv.toPrecision(3);
+      const label = logFlux ? fmtLogTick(vv) : vv.toPrecision(3);
       ctx.fillText(label, M.l - 8, py + 4);
     }
 
@@ -304,17 +315,34 @@ export default function SpectrumPage() {
     ctx.fillText(`Flux density (${fluxUnit})${logFlux ? ' \u2014 log scale' : ''}`, 0, 0);
     ctx.restore();
 
-    // Error bars first so traces/markers draw on top.
+    // Error bars first so traces/markers draw on top.  Bars are clamped to
+    // the plot area (in log mode flux-err is often <= 0, which would
+    // otherwise shoot far below the axis) and get serif caps so even bars
+    // shorter than the marker stay visible.
     if (showErrors) {
+      const yTop = M.t;
+      const yBot = H - M.b;
+      const clampY = (v) => Math.min(yBot, Math.max(yTop, v));
       for (const p of shown) {
-        if (!p.err) continue;
+        if (p.err === null || p.err === undefined || !(p.err > 0)) continue;
         const color = BAND_COLORS[p.band] || '#666';
         const px = X(p.wl);
-        ctx.strokeStyle = color + '55';
-        ctx.lineWidth = 1.2;
+        const yLo = clampY(Y(p.flux - p.err));
+        const yHi = clampY(Y(p.flux + p.err));
+        ctx.strokeStyle = color + 'aa';
+        ctx.lineWidth = 1.4;
         ctx.beginPath();
-        ctx.moveTo(px, Y(p.flux - p.err));
-        ctx.lineTo(px, Y(p.flux + p.err));
+        ctx.moveTo(px, yLo);
+        ctx.lineTo(px, yHi);
+        // serif caps (skip a cap when its end was clamped to the plot edge)
+        if (Y(p.flux - p.err) <= yBot) {
+          ctx.moveTo(px - 2.5, yLo);
+          ctx.lineTo(px + 2.5, yLo);
+        }
+        if (Y(p.flux + p.err) >= yTop) {
+          ctx.moveTo(px - 2.5, yHi);
+          ctx.lineTo(px + 2.5, yHi);
+        }
         ctx.stroke();
       }
     }

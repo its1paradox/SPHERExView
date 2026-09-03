@@ -78,10 +78,41 @@ export default function CombinedViewer({
   view, // full display settings (both missions)
   displaySize,
   speedMs,
+  pin, // shared sky-anchored pin { ra, dec } (same one as the other panels)
+  onPin,
 }) {
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(true);
   const canvasRef = useRef(null);
+
+  // Sky <-> screen in the fixed shared frame: target at centre, north up,
+  // east left, displaySize/fov screen px per arcsec (small-angle, exact to
+  // well under a pixel at these fields).
+  const s = displaySize / fov;
+  const skyToScreen = (ra, dec) => {
+    const cosd = Math.cos((target.dec * Math.PI) / 180);
+    const dE = (ra - target.ra) * cosd * 3600;
+    const dN = (dec - target.dec) * 3600;
+    return [displaySize / 2 - s * dE, displaySize / 2 - s * dN];
+  };
+  const screenToSky = (x, y) => {
+    const cosd = Math.cos((target.dec * Math.PI) / 180);
+    const dE = (displaySize / 2 - x) / s;
+    const dN = (displaySize / 2 - y) / s;
+    return [target.ra + dE / 3600 / cosd, target.dec + dN / 3600];
+  };
+
+  // Click drops (or moves) the shared pin at the clicked sky position.
+  const onClick = (e) => {
+    if (!onPin) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+    const [ra, dec] = screenToSky(x, y);
+    onPin({ ra, dec });
+  };
 
   // Chronological merge. Each entry keeps its mission so the right
   // stretch/limits/invert settings apply per frame.
@@ -212,7 +243,28 @@ export default function CombinedViewer({
     ctx.textAlign = 'center';
     ctx.fillText('N', ox, oy - 22);
     ctx.fillText('E', ox - 25, oy + 4);
-  }, [frames, transforms, limits, index, displaySize, fov, view]);
+
+    // Shared pin: same sky anchor as the other panels (fixed screen position
+    // here, since the combined view is one rigid sky frame).
+    if (pin) {
+      const [px_, py_] = skyToScreen(pin.ra, pin.dec);
+      if (px_ >= 0 && py_ >= 0 && px_ < displaySize && py_ < displaySize) {
+        ctx.lineWidth = 1.8;
+        ctx.strokeStyle = invert ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.6)';
+        ctx.beginPath();
+        ctx.arc(px_, py_, 8.5, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(41, 121, 255, 0.95)';
+        ctx.beginPath();
+        ctx.arc(px_, py_, 7, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(41, 121, 255, 0.95)';
+        ctx.beginPath();
+        ctx.arc(px_, py_, 2.2, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+    }
+  }, [frames, transforms, limits, index, displaySize, fov, view, pin]);
 
   if (frames.length === 0) return null;
 
@@ -230,7 +282,7 @@ export default function CombinedViewer({
         <span className="band">{entry.f.label}</span>
         <span className="datetime">{fmtDate(entry.f)}</span>
       </div>
-      <canvas ref={canvasRef} />
+      <canvas ref={canvasRef} onClick={onClick} />
       <div className="coord-readout">
         {`Shared sky frame: ${fov}\u2033 field \u00b7 north up, east left \u00b7 fixed ${(
           fov / displaySize

@@ -122,7 +122,10 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
             Stacks every exposure per detector (zodi-subtracted,
             sky-noise weighted) into one deep image {'\u2014'} SNR grows
             {' \u221d \u221aN'}. Each detector’s LVF mixes wavelengths, so
-            coadds are broadband-like, not monochromatic.
+            coadds are broadband-like, not monochromatic. The last frame is
+            a COLOR composite (blue {'<'} 3.8 µm, orange {'>'} 3.8 µm,
+            WiseView W1+W2 style): sources that only exist in orange are
+            extremely red/cold {'\u2014'} Y-dwarf candidates.
           </p>
         </fieldset>
 

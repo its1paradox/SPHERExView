@@ -20,6 +20,69 @@ function toFrame(base) {
   return frame;
 }
 
+// WiseView-style two-channel colour frame from the per-detector coadds:
+// short-wavelength detectors (D1–D4, 0.75–3.82 µm) feed the blue channel,
+// long-wavelength ones (D5–D6, 3.82–5.0 µm) the orange channel — the same
+// blue/orange convention as WiseView's W1+W2 composite, where a W2-only
+// detection glows orange.  Each channel is the pixelwise mean of its
+// detector coadds, then robustly z-scored (median / 1.4826·MAD) so the two
+// channels share one display scale in sky-noise units: a source visible
+// ONLY beyond ~3.8 µm (an extremely cold/red object such as the Y dwarf
+// WISE 0855−0714) shows up as an orange dot among white/blue stars.
+function coaddColorFrame(coadds) {
+  const shortF = coadds.filter((f) => f.metadata.detector <= 4);
+  const longF = coadds.filter((f) => f.metadata.detector >= 5);
+  if (!shortF.length || !longF.length) return null;
+  const n = coadds[0].data.length;
+  const mean = (grp) => {
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i += 1) {
+      let s = 0;
+      for (const f of grp) s += f.data[i];
+      out[i] = s / grp.length;
+    }
+    return out;
+  };
+  const zscore = (arr) => {
+    const med = Float32Array.from(arr).sort()[n >> 1];
+    const sig = 1.4826 * Float32Array.from(arr, (v) => Math.abs(v - med)).sort()[n >> 1] || 1;
+    return Float32Array.from(arr, (v) => (v - med) / sig);
+  };
+  const blue = zscore(mean(shortF));
+  const orange = zscore(mean(longF));
+  const lamSpan = (grp) => {
+    const lams = grp.map((f) => f.metadata.lambda_target_um).filter(Boolean);
+    if (!lams.length) return '';
+    const lo = Math.min(...lams.map((l) => l.min_um));
+    const hi = Math.max(...lams.map((l) => l.max_um));
+    return `${lo.toFixed(2)}\u2013${hi.toFixed(2)} \u00b5m`;
+  };
+  const dets = (grp) => grp.map((f) => `D${f.metadata.detector}`).join('+');
+  const nExp = (grp) => grp.reduce((s, f) => s + (f.metadata.n_exposures_used || 0), 0);
+  const merged = new Float32Array(2 * n);
+  merged.set(blue, 0);
+  merged.set(orange, n);
+  return {
+    id: 'coadd-color',
+    width: coadds[0].width,
+    height: coadds[0].height,
+    wcs: coadds[0].wcs,
+    data: blue,
+    data2: orange,
+    sorted: merged.sort(),
+    label: 'COLOR CO-ADD',
+    sublabel: `blue ${dets(shortF)} (${lamSpan(shortF)}) \u00b7 orange ${dets(longF)} (${lamSpan(longF)})`,
+    metadata: {
+      composite: 'blue = short-\u03bb detector coadds, orange = long-\u03bb (WiseView W1+W2 convention)',
+      blue_channel: `${dets(shortF)} \u00b7 ${lamSpan(shortF)} \u00b7 ${nExp(shortF)} exposures`,
+      orange_channel: `${dets(longF)} \u00b7 ${lamSpan(longF)} \u00b7 ${nExp(longF)} exposures`,
+      method: 'per-channel mean of detector coadds, median/MAD z-scored (shared sky-noise scale)',
+      note: 'orange-only sources emit only beyond ~3.8 \u00b5m \u2014 extremely cold or dust-reddened objects (e.g. late-T/Y dwarfs like WISE 0855\u22120714)',
+      pixscale_arcsec: coadds[0].metadata.pixscale_arcsec,
+    },
+  };
+}
+
 // Opens the spectrum viewer in a new tab for a sky position.
 export function openSpectrumTab(ra, dec) {
   const params = `ra=${ra.toFixed(6)}&dec=${dec.toFixed(6)}`;
@@ -42,6 +105,9 @@ export default function App() {
   const [view, setView] = useState(initial.view);
   // Sky position under the cursor on either panel -> crosshair on the other.
   const [hoverSky, setHoverSky] = useState(null);
+  // ONE sky-anchored pin shared by every panel: drop it on any tile and it
+  // marks the same RA/Dec on all of them (each frame's own WCS).
+  const [pin, setPin] = useState(null);
   // Target + field of the last search, for the combined WISE->SPHEREx movie.
   const [queried, setQueried] = useState(null);
 
@@ -83,7 +149,7 @@ export default function App() {
       const d = await fetch(`/api/coadd?${params}`).then((r) =>
         r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.detail || r.statusText))),
       );
-      setCoaddFrames(
+      const mapped =
         d.coadds.map((c) => {
           const m = c.metadata;
           const lam = m.lambda_target_um;
@@ -96,8 +162,10 @@ export default function App() {
             label: `${m.band} CO-ADD (mixed \u03bb)`,
             sublabel: `${m.n_exposures_used} exp${range}${dates}`,
           });
-        }),
-      );
+        });
+      const color = coaddColorFrame(mapped);
+      if (color) mapped.push(color);
+      setCoaddFrames(mapped);
       setCoaddStatus(
         `CO-ADD: ${d.count} detectors from ${d.n_exposures_input - d.n_exposures_skipped} exposures` +
           ` (zodi-subtracted, sky-noise weighted${d.n_exposures_skipped ? `; ${d.n_exposures_skipped} skipped` : ''})`,
@@ -116,6 +184,7 @@ export default function App() {
     setWiseFrames([]);
     setCoaddFrames([]);
     setCoaddStatus(null);
+    setPin(null); // shared pin belongs to the previous field
     coaddKey.current = null;
     setQueried({
       ra: parseFloat(ra),
@@ -265,6 +334,8 @@ export default function App() {
                 onHoverSky={setHoverSky}
                 showInfo
                 allowPin
+                pin={pin}
+                onPin={setPin}
                 onSpectrum={openSpectrumTab}
                 outerOnly={view.sxOuter}
                 outerControls
@@ -287,6 +358,10 @@ export default function App() {
                 showMarkers={view.showMarkers}
                 hoverSky={hoverSky}
                 onHoverSky={setHoverSky}
+                allowPin
+                pin={pin}
+                onPin={setPin}
+                onSpectrum={openSpectrumTab}
               />
             )}
           </div>
@@ -311,6 +386,8 @@ export default function App() {
                   onHoverSky={setHoverSky}
                   showInfo
                   allowPin
+                  pin={pin}
+                  onPin={setPin}
                   onSpectrum={openSpectrumTab}
                 />
               ) : (
@@ -334,6 +411,8 @@ export default function App() {
                   view={view}
                   displaySize={view.displaySize}
                   speedMs={view.speedMs}
+                  pin={pin}
+                  onPin={setPin}
                 />
               </div>
             )}

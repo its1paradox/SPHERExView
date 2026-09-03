@@ -150,6 +150,18 @@ DR3 markers in image-pixel coordinates, proper-motion propagated from epoch
   per-pixel coverage and full provenance (`obs_id` list). Faint sources
   invisible in single 100s exposures pop out; note that coadding averages
   away variability and proper motion — use the epoch blink for those.
+  The stack's last frame is a **COLOR CO-ADD** in WiseView's W1+W2
+  blue/orange convention: short-λ detector coadds (D1–D4, 0.75–3.8 µm)
+  feed the blue channel and long-λ ones (D5–D6, 3.8–5.0 µm) the orange
+  channel, each channel median/MAD z-scored so both share one sky-noise
+  display scale. A source visible ONLY in orange emits only beyond
+  ~3.8 µm — the signature of an extremely cold object (late-T/Y dwarfs
+  such as WISE 0855−0714, which is bright at 4.5 µm yet invisible
+  bluewards), exactly like an orange W2-only mover in WiseView.
+- **Shared pin on every tile**: click any panel — SPHEREx epochs, WISE
+  epochs, detector coadds, or the combined movie — and one sky-anchored
+  pin marks that exact RA/Dec on ALL panels through each frame's own WCS
+  (copy coordinates or extract a spectrum from the pin bar).
 - **Combined WISE → SPHEREx movie**: a third panel plays every unWISE epoch
   (2010→present) followed by every SPHEREx exposure as ONE chronological
   sequence in a shared sky frame — exactly the query FoV, north up, east

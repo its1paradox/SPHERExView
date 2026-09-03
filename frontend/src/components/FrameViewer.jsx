@@ -57,12 +57,18 @@ export default function FrameViewer({
   onSpectrum,
   outerOnly,
   outerControls,
+  pin: pinProp,
+  onPin,
 }) {
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [hover, setHover] = useState(null);
   const [infoOpen, setInfoOpen] = useState(false);
-  const [pin, setPin] = useState(null); // { ra, dec } -- fixed sky position
+  // Pin ({ ra, dec }, sky-anchored): controlled by the parent when `onPin`
+  // is given (one shared pin across every panel), else local state.
+  const [pinLocal, setPinLocal] = useState(null);
+  const pin = onPin ? pinProp : pinLocal;
+  const setPin = onPin || setPinLocal;
   const [copied, setCopied] = useState(false);
   const canvasRef = useRef(null);
   const lastPos = useRef(null);
@@ -123,9 +129,10 @@ export default function FrameViewer({
   useEffect(() => {
     setIndex(0);
     setPlaying(true);
-    setPin(null);
+    if (!onPin) setPinLocal(null); // shared pin is cleared by the parent
     setCopied(false);
     setOuterSel({ first: null, last: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [framesAll]);
 
   // Toggling outer-epochs mode: restart the blink (auto-play, so the
