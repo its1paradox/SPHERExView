@@ -49,13 +49,15 @@ function parseCoords(text) {
   return { ra, dec };
 }
 
-function fmtVal(v) {
+function fmtVal(v, depth = 0) {
   if (v == null) return '—';
-  if (Array.isArray(v)) return v.join(', ');
-  if (typeof v === 'object')
-    return Object.entries(v)
-      .map(([k, x]) => `${k}=${Array.isArray(x) ? x.join(',') : x}`)
+  if (Array.isArray(v)) return v.map((x) => fmtVal(x, depth + 1)).join(', ');
+  if (typeof v === 'object') {
+    const body = Object.entries(v)
+      .map(([k, x]) => `${k}=${fmtVal(x, depth + 1)}`)
       .join(' · ');
+    return depth > 0 ? `(${body})` : body;
+  }
   if (typeof v === 'number' && !Number.isInteger(v)) return String(Math.round(v * 1e5) / 1e5);
   return String(v);
 }
