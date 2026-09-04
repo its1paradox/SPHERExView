@@ -84,7 +84,7 @@ FITS downloads are cached under `backend/cache/`, so a persistent disk
 | `GET /api/cutouts` | Cutouts around a position |
 | `GET /api/epoch-stack` | Time-ordered cutout stack for blinking |
 | `GET /api/coadd` | Per-detector CO-ADD stacks (deep, mixed-wavelength images; `background=zodi\|none`, `sigma`, `maxiters`) |
-| `GET /api/epoch-coadds` | Time-resolved COLOR epoch-coadd blink sequence: exposures binned into `bin_months`-wide windows (default 6 = one SPHEREx sky pass), each bin stacked into a blue (D1–D4) + orange (D5–D6) two-channel frame on ONE shared grid, per-bin robust z-scored. When more exposures exist than `limit`, they are subsampled evenly across time so the blink sequence spans the full archive baseline. `min_channel_exposures` optionally drops under-filled channels. Optional `band=SPHEREx-D1..D6` restricts every epoch coadd to ONE detector (a single wavelength slice — D6 is the natural WISE W2 successor) |
+| `GET /api/epoch-coadds` | Time-resolved COLOR epoch-coadd blink sequence: exposures are clustered into natural sky-pass VISITS (a new epoch starts where the gap between consecutive exposures exceeds `min(30 d, bin_months·30.4375/4)` — the unWISE gap rule of Meisner et al. 2018 scaled to SPHEREx), so a visit is never split by a calendar boundary; continuous polar coverage falls back to balanced `bin_months`-long windows. Each epoch is stacked into a D1–D4 (blue) + D5–D6 (orange) two-channel frame on ONE shared grid, per-epoch robust z-scored. When more exposures exist than `limit`, they are subsampled evenly across time. Optional `band=SPHEREx-D1..D6` FOCUSES the blink on one detector while keeping WiseView-style color: the focus detector against a reference channel (`ref=auto` → the W-analogue counterpart, D4↔D6; `ref=broad` → the full complementary side; `ref=none` → monochrome slice) |
 | `GET /api/wise-stack` | Time-resolved unWISE epoch stack via WiseView (byw.tools), one dated frame per ~6-month visit, optional Gaia DR3 markers |
 | `POST /api/spectra/submit` | Submit an IRSA SPHEREx spectrophotometry job (`ra`, `dec`, `bkg_region`) |
 | `GET /api/spectra/status/{job_id}` | UWS job phase (QUEUED / EXECUTING / COMPLETED / ERROR) |
@@ -118,11 +118,16 @@ DR3 markers in image-pixel coordinates, proper-motion propagated from epoch
   spectrum button): the SPHEREx analogue of what WiseView actually blinks.
   WiseView blinks unWISE *time-resolved coadds* — one W1/W2 stack per
   6-month WISE sky pass (Meisner et al. 2018) — not raw exposures. SPHEREx
-  likewise sweeps the whole sky every ~6 months, so this page bins all
-  exposures at a position into configurable time windows (1/2/3/6/12
-  months), stacks each bin into a two-channel color coadd (blue = D1–D4
-  < 3.82 µm, orange = D5–D6 > 3.82 µm) on one shared north-up grid, and
-  blinks the bins chronologically at coadd depth. Each bin is z-scored to
+  likewise revisits every position in short visits (days–weeks) roughly
+  every 6 months, so this page clusters all exposures at a position into
+  natural sky-pass visits — a new epoch starts where consecutive exposures
+  are more than ~30 days apart, exactly the unWISE gap rule scaled to
+  SPHEREx, so a visit is never fragmented by an arbitrary calendar
+  boundary (continuous deep-field coverage falls back to balanced
+  1/2/3/6/12-month windows). Each epoch is stacked into a two-channel
+  color coadd (blue = D1–D4 < 3.82 µm, orange = D5–D6 > 3.82 µm) on one
+  shared north-up grid, and blinks chronologically at coadd depth. Each
+  epoch is z-scored to
   its own sky noise and one display scale is shared by all epochs, so the
   blink is photometrically and astrometrically rigid: movers drift,
   variables pulse, artifacts vanish, static sky stays pinned. Validated
@@ -133,21 +138,27 @@ DR3 markers in image-pixel coordinates, proper-motion propagated from epoch
   RA/Dec, pins with one-click spectra, per-epoch provenance panel, and
   shareable URL hash.
 
-- **Single-band epoch blinks**: a *Detector band* select on the blink page
-  narrows every epoch coadd to one detector (D1…D6) instead of stacking
-  all six — one wavelength slice blinked through time. Single-channel
-  epochs keep their natural COLOR hue (blue for D1–D4, orange for D5–D6)
-  by rendering the missing channel as sky level, so a D6-only blink sequence looks
-  exactly like the orange layer of the full composite. Travels in the URL
-  hash as `band=SPHEREx-Dn`.
+- **Band-focused epoch blinks stay two-color**: a *Detector band* select on
+  the blink page focuses every epoch coadd on one detector (D1…D6) — but
+  keeps the WiseView W1/W2 color paradigm: the focus detector is rendered
+  against a *reference channel* so cold objects are distinguished by COLOR,
+  not just presence. D6 focus pairs with a D4 reference — the detector-level
+  W2/W1 analogue (D4 spans 2.42–3.82 µm and contains W1's 3.4 µm bandpass
+  on the 3.3 µm CH4 fundamental; D6 spans 4.42–5.00 µm, the 4.6–5 µm
+  opacity window where W1−W2 > 5 objects like WISE 0855−0714 emit) — so a
+  very cold source glows orange against white/blue field stars. A
+  *Reference channel* select offers the broad complementary side (D1–D4)
+  or a monochrome slice (`ref=none`). Travels in the URL hash as
+  `band=SPHEREx-Dn&ref=auto|broad|none`.
 
 - **WISE → D6 epoch coadds in the combined timeline**: the combined timeline
-  can play *D6-only 6-month epoch coadds* after the unWISE epochs instead
-  of raw SPHEREx exposures (“SPHEREx frames after WISE” select). D6
-  (4.42–5.00 µm) is the closest SPHEREx match to WISE W2 (4.6 µm), so the
-  sequence stays in one wavelength regime across the mission handoff —
-  W1/W2 epoch coadds 2010→2024, then W2-like SPHEREx epoch coadds at
-  coadd depth, all in the same rigid sky frame (`cmode=d6` in the hash).
+  can play *D6 + D4-reference epoch coadds* (one per sky-pass visit) after
+  the unWISE epochs instead of raw SPHEREx exposures (“SPHEREx frames after
+  WISE” select). D6 (4.42–5.00 µm) is the closest SPHEREx match to WISE W2
+  (4.6 µm) and D4 to W1, so the timeline keeps both the wavelength regime
+  AND the two-color contrast across the mission handoff — W1/W2 epoch
+  coadds 2010→2024, then W2/W1-analogue SPHEREx epoch coadds at coadd
+  depth, all in the same rigid sky frame (`cmode=d6` in the hash).
 
 - **Shareable URLs**: every query and display attribute — target, FoV,
   survey, bands, WISE band, zoom, blink speed, stretch, black/white points,

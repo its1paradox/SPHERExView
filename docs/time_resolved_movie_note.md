@@ -82,3 +82,40 @@ the all-band movie (source-level correlation with independent exposure sets),
 per-bin z-scores stay at median 0 / σ ≈ 0.99, invalid `band` values are
 rejected (422), and a 24-check end-to-end browser suite covers both features,
 including hash round-trips and color rendering on the canvas.
+
+## Addendum 2 (2026-09-04): visit-gap epochs + reference-channel color
+
+Two upgrades, both grounded in a dedicated literature review
+(`docs/epoch_grouping_color_research.md`):
+
+1. **Visit-gap epoch grouping.** Fixed calendar windows anchored at the
+   first exposure could split a natural SPHEREx sky-pass visit across a
+   boundary — at WISE 0855−0714 this produced fragment epochs of 3 + 35 + 5
+   exposures. `/api/epoch-coadds` now sorts exposures by MJD and starts a
+   new epoch where the gap between consecutive exposures exceeds
+   `min(30 d, bin_days/4)` — the construction rule of the time-resolved
+   unWISE coadds (Meisner, Lang & Schlegel 2018, who split at >90 d gaps
+   for WISE's 1-day visits), rescaled to SPHEREx's 1–2-week spectral
+   acquisition and ~6-month revisit cadence. Components longer than the
+   requested window (continuous polar coverage) are subdivided into
+   BALANCED equal-time windows, never an anchored grid with a tiny
+   terminal fragment. At WISE 0855−0714 the same field now yields three
+   clean visits (30/122/99 exposures); the NEP deep field still resolves
+   into 15 balanced monthly windows. Epoch metadata reports `grouping`
+   (visit|window), `span_days`, `max_internal_gap_days`, `mjd_mean`, and a
+   `shallow` flag (<5 exposures).
+
+2. **Band focus keeps WiseView's two-color contrast.** `band=SPHEREx-Dn`
+   no longer produces a monochrome slice by default: the focus detector is
+   composited against a REFERENCE channel (`ref=auto`), because color is
+   the temperature discriminant in the WiseView paradigm. D6 focus pairs
+   with D4 — the detector-level W2/W1 analogue: D4 (2.42–3.82 µm) contains
+   W1's 3.4 µm bandpass on the 3.3 µm CH4 fundamental, D6 (4.42–5.00 µm)
+   the relatively transparent 4.6–5 µm window, which is what drives
+   W1−W2 > 5 for ~250 K objects like WISE 0855−0714. `ref=broad` uses the
+   full complementary side (D1–D4); `ref=none` restores the monochrome
+   slice. The combined WISE→SPHEREx timeline inherits the same D6+D4
+   frames, so the color language stays constant across the mission handoff.
+
+UI language now uses detector terms (e.g. "126 exp (82 D1–D4 / 44 D5–D6)",
+"D6 + D4 ref") rather than color words for data provenance.

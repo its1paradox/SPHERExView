@@ -13,13 +13,19 @@ import {
  *
  * WiseView does not blink raw WISE exposures: it blinks unWISE
  * TIME-RESOLVED COADDS, i.e. one deep stack per 6-month sky pass.  This
- * page ports that exact paradigm to SPHEREx: exposures are binned into
- * configurable time windows (default 6 months = one SPHEREx all-sky pass),
- * each bin is stacked into a two-channel color coadd (blue = D1–D4
- * < 3.82 µm, orange = D5–D6 > 3.82 µm) on ONE shared north-up grid, and
- * the bins blink chronologically.  Movers drift, variables pulse, and
- * everything static stays pinned — at coadd depth instead of single-
- * exposure noise.
+ * page ports that exact paradigm to SPHEREx: exposures are clustered into
+ * natural sky-pass VISITS (a new epoch starts where the gap between
+ * consecutive exposures exceeds ~30 days — the unWISE rule scaled to
+ * SPHEREx; continuous polar coverage falls back to balanced time windows),
+ * each epoch is stacked into a two-channel color coadd (D1–D4 < 3.82 µm
+ * rendered blue, D5–D6 > 3.82 µm rendered orange) on ONE shared north-up
+ * grid, and the epochs blink chronologically.  Movers drift, variables
+ * pulse, and everything static stays pinned — at coadd depth instead of
+ * single-exposure noise.
+ *
+ * Focusing one detector keeps a WiseView-style color composite: the focus
+ * detector against a reference channel (D6 focus → D4 reference, the
+ * W2/W1 analogue pair), so cold objects still stand out by color.
  *
  * Display limits are computed from ALL frames together (channels are
  * z-scored per bin server-side), so the blink is photometrically and
@@ -33,13 +39,30 @@ const MONTH_OPTIONS = [1, 2, 3, 6, 12];
 // each epoch coadd to one wavelength slice.
 const BAND_OPTIONS = [
   { value: 'all', label: 'All 6 detectors (COLOR)' },
-  { value: 'SPHEREx-D1', label: 'D1 only (0.75\u20131.11 \u00b5m)' },
-  { value: 'SPHEREx-D2', label: 'D2 only (1.10\u20131.64 \u00b5m)' },
-  { value: 'SPHEREx-D3', label: 'D3 only (1.63\u20132.42 \u00b5m)' },
-  { value: 'SPHEREx-D4', label: 'D4 only (2.42\u20133.82 \u00b5m)' },
-  { value: 'SPHEREx-D5', label: 'D5 only (3.82\u20134.42 \u00b5m)' },
-  { value: 'SPHEREx-D6', label: 'D6 only (4.42\u20135.00 \u00b5m) \u2014 W2 successor' },
+  { value: 'SPHEREx-D1', label: 'D1 focus (0.75\u20131.11 \u00b5m)' },
+  { value: 'SPHEREx-D2', label: 'D2 focus (1.10\u20131.64 \u00b5m)' },
+  { value: 'SPHEREx-D3', label: 'D3 focus (1.63\u20132.42 \u00b5m)' },
+  { value: 'SPHEREx-D4', label: 'D4 focus (2.42\u20133.82 \u00b5m)' },
+  { value: 'SPHEREx-D5', label: 'D5 focus (3.82\u20134.42 \u00b5m)' },
+  { value: 'SPHEREx-D6', label: 'D6 focus (4.42\u20135.00 \u00b5m) \u2014 W2 successor' },
 ];
+
+// Reference channel for a focused blink: keeps the two-channel WiseView
+// color contrast (W1/W2 paradigm) even when isolating one detector.
+const REF_OPTIONS = [
+  { value: 'auto', label: 'W-analogue counterpart (D4 \u2194 D6)' },
+  { value: 'broad', label: 'Broad complementary side' },
+  { value: 'none', label: 'None \u2014 monochrome slice' },
+];
+
+const fmtDets = (dets) => {
+  if (!dets || !dets.length) return '';
+  const s = dets[0];
+  const e = dets[dets.length - 1];
+  return dets.length > 1 && e - s + 1 === dets.length
+    ? `D${s}\u2013D${e}`
+    : dets.map((d) => `D${d}`).join('+');
+};
 
 function parseBlinkHash() {
   const p = new URLSearchParams(window.location.hash.replace(/^#/, ''));
@@ -50,6 +73,7 @@ function parseBlinkHash() {
     months: p.get('months') || '6',
     maxframes: p.get('maxframes') || '500',
     band: p.get('band') || 'all',
+    ref: p.get('ref') || 'auto',
   };
 }
 
@@ -121,7 +145,10 @@ export default function BlinkPage() {
       bin_months: f.months,
       limit: f.maxframes,
     });
-    if (f.band && f.band !== 'all') params.set('band', f.band);
+    if (f.band && f.band !== 'all') {
+      params.set('band', f.band);
+      params.set('ref', f.ref || 'auto');
+    }
     try {
       const d = await fetch(`/api/epoch-coadds?${params}`).then((r) =>
         r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.detail || r.statusText))),
@@ -136,7 +163,8 @@ export default function BlinkPage() {
       setPlaying(true);
       setMeta(d);
       setStatus(
-        `${d.count} epoch coadds \u00b7 ${d.bin_months}-month bins \u00b7 ` +
+        `${d.count} epoch coadds \u00b7 visit-grouped (new epoch when the gap exceeds ` +
+          `${d.grouping ? d.grouping.gap_days : 30} d) \u00b7 ` +
           `${d.n_exposures_input - d.n_exposures_skipped} exposures stacked` +
           (d.n_exposures_skipped ? ` (${d.n_exposures_skipped} skipped)` : ''),
       );
@@ -147,7 +175,7 @@ export default function BlinkPage() {
         survey: f.survey,
         months: f.months,
         maxframes: f.maxframes,
-        ...(f.band && f.band !== 'all' ? { band: f.band } : {}),
+        ...(f.band && f.band !== 'all' ? { band: f.band, ref: f.ref || 'auto' } : {}),
       }).toString();
     } catch (err) {
       setStatus(null);
@@ -255,7 +283,9 @@ export default function BlinkPage() {
     : null;
   const kindLabel = m
     ? m.channels === 'color'
-      ? 'COLOR'
+      ? m.band_focus
+        ? `${m.band_focus.replace('SPHEREx-', '')} + ${m.reference} ref`
+        : 'COLOR'
       : soloDetectors && soloDetectors.length === 1
         ? `D${soloDetectors[0]} only`
         : m.channels === 'short-only'
@@ -264,8 +294,12 @@ export default function BlinkPage() {
     : '';
   const chanSummary = m
     ? [
-        m.short_channel ? `${m.short_channel.n_exposures} blue` : null,
-        m.long_channel ? `${m.long_channel.n_exposures} orange` : null,
+        m.short_channel
+          ? `${m.short_channel.n_exposures} ${fmtDets(m.short_channel.detectors)}`
+          : null,
+        m.long_channel
+          ? `${m.long_channel.n_exposures} ${fmtDets(m.long_channel.detectors)}`
+          : null,
       ]
         .filter(Boolean)
         .join(' / ')
@@ -277,8 +311,10 @@ export default function BlinkPage() {
         <h1>SPHERExView {'\u2014'} Epoch blink</h1>
         <p className="subtitle">
           {form.band && form.band !== 'all'
-            ? `One ${form.band.replace('SPHEREx-', '')}-only coadd per ${form.months}-month sky pass, blinked chronologically \u2014 a single wavelength slice of the SPHEREx archive`
-            : `One COLOR coadd per ${form.months}-month sky pass, blinked chronologically \u2014 the SPHEREx analogue of WiseView's unWISE time-resolved coadds (blue < 3.82 \u00b5m \u00b7 orange > 3.82 \u00b5m)`}
+            ? form.ref === 'none'
+              ? `One ${form.band.replace('SPHEREx-', '')}-only coadd per sky-pass visit, blinked chronologically \u2014 a monochrome wavelength slice of the SPHEREx archive`
+              : `${form.band.replace('SPHEREx-', '')}-focused color blink \u2014 one coadd per sky-pass visit, the focus detector against a reference channel (the WiseView W1/W2 color contrast at SPHEREx depth)`
+            : `One COLOR coadd per sky-pass visit, blinked chronologically \u2014 the SPHEREx analogue of WiseView's unWISE time-resolved coadds (D1\u2013D4 rendered blue \u00b7 D5\u2013D6 rendered orange)`}
         </p>
       </header>
       <div className="layout">
@@ -316,9 +352,22 @@ export default function BlinkPage() {
                 ))}
               </select>
             </label>
+            {form.band !== 'all' && (
+              <label>
+                Reference channel
+                <select value={form.ref} onChange={setF('ref')}>
+                  {REF_OPTIONS.map((r) => (
+                    <option key={r.value} value={r.value}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <p className="hint">
-              A single detector narrows every epoch coadd to one wavelength slice {'\u2014'} D6
-              (4.42{'\u2013'}5.00 {'\u00b5'}m) is the closest match to WISE W2 (4.6 {'\u00b5'}m).
+              {form.band !== 'all'
+                ? `Focused blinks stay TWO-color, like WiseView: the focus detector keeps its natural hue against a reference channel. D6 focus + D4 reference is the detector-level W2/W1 analogue \u2014 D4 contains the 3.3 \u00b5m CH4 absorption, D6 the 4.6\u20135 \u00b5m window, so very cold objects appear in D6 but not D4.`
+                : `A single detector focuses every epoch coadd on one wavelength slice \u2014 D6 (4.42\u20135.00 \u00b5m) is the closest match to WISE W2 (4.6 \u00b5m).`}
             </p>
           </fieldset>
 
@@ -347,9 +396,11 @@ export default function BlinkPage() {
               />
             </label>
             <p className="hint">
-              SPHEREx sweeps the whole sky every ~6 months, so 6-month bins give one coadd per
-              pass {'\u2014'} exactly how unWISE epoch coadds (the frames WiseView blinks) are
-              built. Shorter windows resolve the deep-field cadence near the ecliptic poles.
+              Epochs follow the natural SPHEREx visit structure: a new epoch starts where
+              consecutive exposures are more than ~30 days apart (the unWISE gap rule scaled
+              to SPHEREx), so a sky-pass visit is never split by an arbitrary calendar
+              boundary. The window above only caps the epoch span {'\u2014'} continuous
+              polar (deep-field) coverage is subdivided into balanced windows of this length.
             </p>
           </fieldset>
 
@@ -440,6 +491,8 @@ export default function BlinkPage() {
                   {m.datetime_min_utc.slice(0, 10)} {'\u2192'} {m.datetime_max_utc.slice(0, 10)}
                   {' \u00b7 '}
                   {m.n_exposures} exp{chanSummary ? ` (${chanSummary})` : ''}
+                  {m.grouping ? ` \u00b7 ${m.grouping === 'visit' ? 'sky-pass visit' : 'time window'}` : ''}
+                  {m.shallow ? ' \u00b7 shallow (<5 exp)' : ''}
                 </span>
               </div>
               <canvas
@@ -550,8 +603,9 @@ export default function BlinkPage() {
               {meta && (
                 <p className="hint blink-note">
                   {`Grid: ${f.width}\u00d7${f.height}px at ${m.pixscale_arcsec}\u2033/px, north up \u00b7 `}
-                  {'units: per-epoch sky-noise \u03c3 \u00b7 an orange-only source that MOVES between '}
-                  {'epochs is a cold, fast mover \u2014 the WISE 0855\u22120714 signature'}
+                  {'units: per-epoch sky-noise \u03c3 \u00b7 a source seen only in the long-\u03bb '}
+                  {'channel (D5\u2013D6, orange) that MOVES between epochs is a cold, fast mover '}
+                  {'\u2014 the WISE 0855\u22120714 signature'}
                 </p>
               )}
             </section>

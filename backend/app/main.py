@@ -469,39 +469,88 @@ def get_epoch_coadds(
     maxiters: int = Query(2, ge=0, le=10),
     min_channel_exposures: int = Query(1, ge=1),
     band: str | None = Query(None, pattern="^SPHEREx-D[1-6]$"),
+    ref: str = Query("auto", pattern="^(auto|broad|none)$"),
 ):
     """Time-resolved COLOR epoch-coadd blink sequence: unWISE-style epoch coadds for SPHEREx.
 
-    ``band`` restricts the stack to ONE detector (e.g. ``SPHEREx-D6``): each
-    bin then contains a single-channel coadd of just that band's exposures,
-    letting the blink sequence isolate a wavelength slice — D6 (4.42–5.0 µm) is the
-    natural W2 successor for WISE-continuity blinks.
+    EPOCH GROUPING (visit-gap clustering, the unWISE rule scaled to SPHEREx).
+    Time-resolved unWISE coadds are NOT calendar bins: Meisner, Lang &
+    Schlegel (2018, AJ 156, 69) sort the contributing frames by MJD and
+    insert an epoch boundary wherever the gap between consecutive exposures
+    exceeds a threshold (90 d for WISE), so each epoch is one physical sky
+    pass.  A fixed calendar window anchored at the first exposure can slice
+    a natural SPHEREx visit in two, producing shallow fragment coadds (e.g.
+    3 + 35 exposures) on either side of an arbitrary boundary.  Here:
 
-    Exposures are binned into ``bin_months``-wide time windows (default
-    6 months = one SPHEREx all-sky pass, the direct analogue of the
-    time-resolved unWISE coadds that WiseView blinks).  Each bin is stacked
-    into a TWO-CHANNEL frame on the exact shared north-up grid used by
-    /api/coadd:
+    - exposures are sorted by MJD and split where the gap between
+      consecutive exposures exceeds ``G = min(30 d, bin_months*30.4375/4)``
+      (SPHEREx builds a full spectrum over ~1-2 weeks and revisits ~every
+      6 months, so 30 d separates intra-visit from inter-visit timescales);
+    - a gap-defined component whose span fits within the requested window
+      is ONE epoch (``grouping = "visit"``);
+    - a component longer than the window (continuous coverage: the ecliptic
+      deep fields are visible every orbit) is subdivided into BALANCED
+      equal-time windows (``grouping = "window"``) instead of anchored
+      windows, so no tiny terminal fragment is created.
+
+    CHANNELS.  Each epoch is stacked into a TWO-CHANNEL frame on the exact
+    shared north-up grid used by /api/coadd:
 
     - blue channel  = short-wavelength detectors D1-D4 (< 3.82 um)
     - orange channel = long-wavelength detectors D5-D6 (3.82-5.0 um)
+
+    ``band`` focuses the blink on ONE detector while KEEPING a two-channel
+    color composite (the WiseView W1/W2 paradigm: color is the temperature
+    discriminant).  With ``band=SPHEREx-D6``, the orange channel is D6 only
+    (4.42-5.0 um, the W2 analogue) and the blue channel is a REFERENCE:
+
+    - ``ref=auto``  -> the W1-analogue counterpart (D4, 2.42-3.82 um, which
+      contains W1's 3.4 um bandpass and the 3.3 um CH4 fundamental) — the
+      closest detector-level match to the W1-W2 color that identifies cold
+      brown dwarfs (a >250 K object like WISE 0855-0714 has W1-W2 > 5);
+    - ``ref=broad`` -> the full complementary side (D1-D4), a broad
+      short-wave veto with more reference depth;
+    - ``ref=none``  -> monochrome slice of just that detector (no color).
+
+    Focusing a SHORT detector (D1-D4) mirrors this: that detector alone in
+    blue against D6 (auto) or D5-D6 (broad) in orange.
 
     Each channel is a sky-noise (scalar inverse median variance) weighted
     mean of its zodi-subtracted, FLAGS-masked exposures, then robustly
     z-scored (median / 1.4826*MAD over finite pixels).  Z-scoring matters
     here more than in the static coadd: the zodiacal background level and
-    its photon noise CHANGE between 6-month epochs at a fixed sky position,
-    so frames are put in per-epoch sky-noise units to blink smoothly.
-    Bins where only one channel has coverage are still returned (grayscale)
-    and flagged in ``metadata.channels``.
+    its photon noise CHANGE between epochs at a fixed sky position, so
+    frames are put in per-epoch sky-noise units to blink smoothly.  Epochs
+    where only one channel has coverage are still returned and flagged in
+    ``metadata.channels``.
     """
     import numpy as np
+
+    # Detector sets for the two channels (band focus keeps a color
+    # reference channel unless ref=none — see docstring).
+    focus_det = int(band[-1]) if band else None
+    if focus_det is None:
+        short_dets, long_dets = {1, 2, 3, 4}, {5, 6}
+    elif ref == "none":
+        short_dets = {focus_det} if focus_det <= 4 else set()
+        long_dets = {focus_det} if focus_det >= 5 else set()
+    elif focus_det >= 5:
+        long_dets = {focus_det}
+        short_dets = {4} if ref == "auto" else {1, 2, 3, 4}
+    else:
+        short_dets = {focus_det}
+        long_dets = {6} if ref == "auto" else {5, 6}
+    wanted_bands = {f"SPHEREx-D{d}" for d in short_dets | long_dets}
 
     # No truncation at query time: when more exposures exist than ``limit``,
     # subsample EVENLY ACROSS TIME so the blink sequence still spans every epoch
     # (plain head-truncation would keep only the earliest days and collapse
     # the sequence to one bin — deep fields have thousands of exposures).
-    images = _query_sorted_images(ra, dec, radius_arcsec, survey, band, 10 ** 9)
+    query_band = band if (band and ref == "none") else None
+    images = _query_sorted_images(ra, dec, radius_arcsec, survey, query_band, 10 ** 9)
+    images = [im for im in images if str(im.band) in wanted_bands]
+    if not images:
+        raise HTTPException(404, "No SPHEREx exposures in the requested bands cover this position")
     if len(images) > limit:
         idx = np.unique(np.linspace(0, len(images) - 1, limit).round().astype(int))
         images = [images[i] for i in idx]
@@ -515,18 +564,40 @@ def get_epoch_coadds(
     n_px, wcs_out = cx.output_grid(ra, dec, size_arcsec)
     wcs_dict = imaging.wcs_to_dict(wcs_out, n_px)
 
-    bin_days = bin_months * 30.4375  # mean month length
-    mjd0 = min(e.mjd for e in exposures)
-    bins: dict = {}
-    for e in exposures:
-        bins.setdefault(int((e.mjd - mjd0) // bin_days), []).append(e)
+    # --- Visit-gap epoch clustering (see docstring) ---------------------
+    bin_days = bin_months * 30.4375  # requested nominal/maximum epoch span
+    gap_days = min(30.0, 0.25 * bin_days)
+    exposures.sort(key=lambda e: e.mjd)
+    components: list[list] = [[exposures[0]]]
+    for prev, cur in zip(exposures, exposures[1:]):
+        if cur.mjd - prev.mjd > gap_days:
+            components.append([])
+        components[-1].append(cur)
+
+    epochs: list[tuple[list, str]] = []
+    for comp in components:
+        span = comp[-1].mjd - comp[0].mjd
+        if span <= bin_days:
+            epochs.append((comp, "visit"))  # one natural sky-pass visit
+        else:
+            # Continuous coverage (deep fields): balanced equal-time
+            # windows across the component, never an anchored grid that
+            # leaves a tiny terminal fragment.
+            n_win = max(1, round(span / bin_days))
+            if span / n_win > 1.25 * bin_days:
+                n_win += 1
+            edges = np.linspace(comp[0].mjd, comp[-1].mjd, n_win + 1)
+            subs: list[list] = [[] for _ in range(n_win)]
+            for e in comp:
+                i = min(n_win - 1, int(np.searchsorted(edges, e.mjd, side="right")) - 1)
+                subs[i].append(e)
+            epochs.extend((s, "window") for s in subs if s)
 
     frames = []
-    for k in sorted(bins):
-        grp = bins[k]
+    for k, (grp, grouping) in enumerate(epochs):
         groups = {
-            "short": [e for e in grp if e.detector <= 4],
-            "long": [e for e in grp if e.detector >= 5],
+            "short": [e for e in grp if e.detector in short_dets],
+            "long": [e for e in grp if e.detector in long_dets],
         }
         channels = {}
         for name, sub in groups.items():
@@ -562,15 +633,19 @@ def get_epoch_coadds(
             }
         if not channels:
             continue
-        mjds = [e.mjd for e in grp]
+        mjds = sorted(e.mjd for e in grp)
+        max_gap = max((b - a for a, b in zip(mjds, mjds[1:])), default=0.0)
         kind = "color" if len(channels) == 2 else f"{next(iter(channels))}-only"
         meta = {
-            "bin_index": k,
+            "epoch_index": k,
+            "grouping": grouping,  # "visit" (natural sky pass) | "window" (continuous-coverage fallback)
             "channels": kind,
-            "bin_start_mjd": round(mjd0 + k * bin_days, 5),
-            "bin_end_mjd": round(mjd0 + (k + 1) * bin_days, 5),
             "mjd_min": min(mjds),
             "mjd_max": max(mjds),
+            "mjd_mean": round(float(np.mean(mjds)), 5),
+            "span_days": round(max(mjds) - min(mjds), 3),
+            "max_internal_gap_days": round(max_gap, 3),
+            "shallow": len(grp) < 5,
             "datetime_min_utc": Time(min(mjds), format="mjd").isot,
             "datetime_max_utc": Time(max(mjds), format="mjd").isot,
             "n_exposures": len(grp),
@@ -581,6 +656,14 @@ def get_epoch_coadds(
             "bunit": "sky-noise sigma (per-bin robust z-score)",
             "pixscale_arcsec": cx.COADD_PIXSCALE_ARCSEC,
         }
+        if band:
+            meta["band_focus"] = band
+            if ref != "none":
+                ref_dets = sorted(short_dets if focus_det >= 5 else long_dets)
+                meta["reference"] = (
+                    f"D{ref_dets[0]}" if len(ref_dets) == 1
+                    else f"D{ref_dets[0]}-D{ref_dets[-1]}"
+                )
         for name in ("short", "long"):
             ch = channels.get(name)
             if ch:
@@ -592,7 +675,7 @@ def get_epoch_coadds(
                     "sky_sigma_mjy_sr": ch["sky_sigma_mjy_sr"],
                 }
         frame = {
-            "id": f"epoch-bin{k}",
+            "id": f"epoch{k}",
             "width": n_px,
             "height": n_px,
             "wcs": wcs_dict,
@@ -612,9 +695,16 @@ def get_epoch_coadds(
         "radius_arcsec": radius_arcsec,
         "survey": survey,
         "band": band,
+        "ref": ref if band else None,
         "background": background,
         "bin_months": bin_months,
         "bin_days": round(bin_days, 3),
+        "grouping": {
+            "mode": "visit_gap",
+            "gap_days": round(gap_days, 3),
+            "target_epoch_days": round(bin_days, 3),
+            "fallback": "balanced_time_windows",
+        },
         "n_exposures_input": len(images),
         "n_exposures_skipped": skipped,
         "count": len(frames),

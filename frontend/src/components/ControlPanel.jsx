@@ -207,8 +207,9 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
           at the target coordinates from all SPHEREx images via IRSA (takes a
           few minutes). Drop a pin on the SPHEREx image to get a spectrum at
           an exact source position instead. Blink sequence: one COLOR coadd per
-          6-month sky pass (configurable) {'\u2014'} unWISE-style epoch
-          coadds, the WiseView paradigm at SPHEREx depth.
+          sky-pass visit (gap-clustered like unWISE epoch coadds, never split
+          by a calendar boundary) {'\u2014'} the WiseView paradigm at SPHEREx
+          depth.
         </p>
       </form>
 

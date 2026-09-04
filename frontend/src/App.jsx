@@ -20,22 +20,37 @@ function toFrame(base) {
   return frame;
 }
 
-// D6-only epoch coadd (from /api/epoch-coadds?band=SPHEREx-D6) as a frame the
-// combined WISE→SPHEREx timeline can play after the unWISE epochs.  D6
-// (4.42–5.00 µm) is the natural W2 (4.6 µm) successor, so the timeline stays
-// in one wavelength regime across the mission handoff.  The image rides in
-// the ORANGE channel (data2) with an all-zero blue channel: frames are
-// per-bin z-scored server-side, so 0 = sky level and D6 sources keep the
-// same orange hue W2-only detections have in the WiseView-style composite.
+// D6-focused epoch coadd (from /api/epoch-coadds?band=SPHEREx-D6) as a frame
+// the combined WISE→SPHEREx timeline can play after the unWISE epochs.  D6
+// (4.42–5.00 µm) is the natural W2 (4.6 µm) successor, and the backend now
+// pairs it with a D4 reference channel (2.42–3.82 µm, which contains W1's
+// 3.4 µm bandpass) — the detector-level W2/W1 analogue — so these frames
+// keep the exact WiseView color contrast of the W1+W2 epochs before them:
+// D4 feeds blue (data), D6 feeds orange (data2), and a cold source visible
+// only in D6 stays orange across the mission handoff.  If a reference
+// channel is missing (D4 shallow at this epoch), an all-zero blue channel
+// is used: frames are per-epoch z-scored server-side, so 0 = sky level.
 function toCombinedCoaddFrame(c) {
-  const img = decodeB64Float32(c.data2_b64 || c.data_b64);
   const md = c.metadata;
+  const long = decodeB64Float32(c.data2_b64 || c.data_b64);
+  const short =
+    c.data2_b64 && md.channels === 'color'
+      ? decodeB64Float32(c.data_b64)
+      : new Float32Array(long.length);
+  const both = new Float32Array(short.length + long.length);
+  both.set(short, 0);
+  both.set(long, short.length);
+  const nLong = md.long_channel ? md.long_channel.n_exposures : md.n_exposures;
   return {
     ...c,
-    data: new Float32Array(img.length),
-    data2: img,
-    sorted: sortPixels(img),
-    label: `D6 CO-ADD \u00b7 ${md.n_exposures} exp`,
+    data: short,
+    data2: long,
+    sorted: sortPixels(both),
+    label:
+      `D6 CO-ADD \u00b7 ${nLong} exp` +
+      (md.channels === 'color' && md.short_channel
+        ? ` (+${md.short_channel.n_exposures} D4 ref)`
+        : ''),
     sublabel: `${md.datetime_min_utc.slice(0, 10)} \u2192 ${md.datetime_max_utc.slice(0, 10)}`,
     metadata: { ...md, mjd_mid: (md.mjd_min + md.mjd_max) / 2, target_covered: true },
   };
@@ -168,8 +183,9 @@ export default function App() {
   }, [view.showCoadd, queried, loading]);
 
   // Selecting "D6 epoch coadds" for the combined timeline lazily builds them
-  // (6-month bins, one per sky pass — the exact frames the blink page makes
-  // for band=SPHEREx-D6).  Cached per field so flipping the select is free.
+  // (visit-grouped epochs, one per sky pass, D6 + D4 reference color — the
+  // exact frames the blink page makes for band=SPHEREx-D6).  Cached per
+  // field so flipping the select is free.
   useEffect(() => {
     if (!queried || loading || !view.showCombined || view.combinedMode !== 'd6') return;
     const key = `${queried.ra},${queried.dec},${queried.fov},${queried.survey}`;
@@ -177,7 +193,7 @@ export default function App() {
     combinedCoaddKey.current = key;
     setCombinedCoadds([]);
     setCombinedCoaddStatus(
-      'Stacking D6 epoch coadds for the combined timeline\u2026 one coadd per 6-month sky pass.',
+      'Stacking D6 epoch coadds for the combined timeline\u2026 one D6 + D4-reference coadd per sky-pass visit.',
     );
     const params = new URLSearchParams({
       ra: queried.ra,
