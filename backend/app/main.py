@@ -136,19 +136,21 @@ def _build_stack(
             "metadata": meta,
         }
 
-    # Download cutouts in parallel batches until we have `limit` frames.
+    # Download cutouts in parallel batches until we have `limit` frames
+    # (limit <= 0 means NO LIMIT: every matching exposure is fetched).
     # Serial downloads are the bottleneck (IRSA cutouts take seconds each).
+    cap = limit if limit > 0 else len(images)
     cutouts = []
     skipped = 0
     idx = 0
     with ThreadPoolExecutor(max_workers=8) as pool:
-        while len(cutouts) < limit and idx < len(images):
-            batch = images[idx : idx + max(8, limit - len(cutouts))]
+        while len(cutouts) < cap and idx < len(images):
+            batch = images[idx : idx + max(8, cap - len(cutouts))]
             idx += len(batch)
             for res in pool.map(fetch_one, batch):
                 if res is None:
                     skipped += 1
-                elif len(cutouts) < limit:
+                elif len(cutouts) < cap:
                     cutouts.append(res)
 
     return {
@@ -169,7 +171,7 @@ def get_cutouts(
     radius_arcsec: float = Query(60.0, gt=0, le=3600),
     survey: str = "wide",
     band: Optional[str] = None,
-    limit: int = Query(20, gt=0),
+    limit: int = Query(0, ge=0),  # 0 = no limit
 ):
     return _build_stack(ra, dec, radius_arcsec, survey, band, limit)
 
@@ -298,7 +300,7 @@ def get_epoch_stack(
     radius_arcsec: float = Query(60.0, gt=0, le=3600),
     survey: str = "wide",
     band: Optional[str] = None,
-    limit: int = Query(50, gt=0),
+    limit: int = Query(0, ge=0),  # 0 = no limit
 ):
     """Time-ordered stack of cutouts for Wiseview-style blinking.
 
@@ -320,7 +322,8 @@ def _query_sorted_images(ra, dec, radius_arcsec, survey, band, limit):
         log.exception("SIA2 query failed")
         raise HTTPException(502, f"SIA2 query failed: {exc}") from exc
     images.sort(key=lambda im: (im.mjd_mid is None, im.mjd_mid or 0.0))
-    return images[:limit]
+    # limit <= 0 means NO LIMIT: return every matching exposure.
+    return images[:limit] if limit > 0 else images
 
 
 def _fetch_aligned(images, ra, dec, size_arcsec, background):
@@ -367,7 +370,7 @@ def get_coadd(
     radius_arcsec: float = Query(60.0, gt=0, le=3600),
     survey: str = "wide",
     band: Optional[str] = None,
-    limit: int = Query(200, gt=0),
+    limit: int = Query(0, ge=0),  # 0 = no limit
     background: str = Query("zodi", pattern="^(zodi|none)$"),
     sigma: float = Query(5.0, ge=0),
     maxiters: int = Query(2, ge=0, le=10),
@@ -462,7 +465,7 @@ def get_epoch_coadds(
     dec: float,
     radius_arcsec: float = Query(120.0, gt=0, le=3600),
     survey: str = "wide",
-    limit: int = Query(500, gt=0),
+    limit: int = Query(0, ge=0),  # 0 = no limit
     bin_months: float = Query(6.0, ge=0.25, le=25),
     background: str = Query("zodi", pattern="^(zodi|none)$"),
     sigma: float = Query(5.0, ge=0),
@@ -565,7 +568,7 @@ def get_epoch_coadds(
     images = [im for im in images if str(im.band) in wanted_bands]
     if not images:
         raise HTTPException(404, "No SPHEREx exposures in the requested bands cover this position")
-    if len(images) > limit:
+    if limit > 0 and len(images) > limit:
         idx = np.unique(np.linspace(0, len(images) - 1, limit).round().astype(int))
         images = [images[i] for i in idx]
     size_arcsec = 2 * radius_arcsec

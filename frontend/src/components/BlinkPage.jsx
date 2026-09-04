@@ -77,7 +77,7 @@ function parseBlinkHash() {
     size: p.get('size') || '240',
     survey: p.get('survey') || 'wide',
     months: p.get('months') || '6',
-    maxframes: p.get('maxframes') || '500',
+    maxframes: p.get('maxframes') || '0',
     band: p.get('band') || 'all',
     ref: p.get('ref') || 'auto',
   };
@@ -450,13 +450,12 @@ export default function BlinkPage() {
               </select>
             </label>
             <label>
-              Max exposures
+              Max exposures (0 = no limit)
               <input
                 type="number"
                 value={form.maxframes}
                 onChange={setF('maxframes')}
-                min="1"
-                max="2000"
+                min="0"
                 step="1"
               />
             </label>
@@ -666,9 +665,7 @@ export default function BlinkPage() {
               {meta && (
                 <p className="hint blink-note">
                   {`Grid: ${f.width}\u00d7${f.height}px at ${m.pixscale_arcsec}\u2033/px, north up \u00b7 `}
-                  {'color = calibrated long/short flux ratio (Lupton asinh, chroma gated 2\u20135\u03c3) \u00b7 '}
-                  {'an ORANGE source (bright long-\u03bb, faint short-\u03bb) that MOVES between '}
-                  {'epochs is a cold, fast mover \u2014 the WISE 0855\u22120714 signature'}
+                  {'color = calibrated long/short flux ratio (Lupton asinh, chroma gated 2\u20135\u03c3)'}
                 </p>
               )}
             </section>

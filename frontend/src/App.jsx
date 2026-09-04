@@ -259,7 +259,7 @@ export default function App() {
       survey: queried.survey,
       bin_months: 6,
       band: 'SPHEREx-D6',
-      limit: 500,
+      limit: 0, // 0 = no limit: use every matching exposure
     });
     fetch(`/api/epoch-coadds?${params}`)
       .then((r) =>
@@ -501,7 +501,7 @@ export default function App() {
                 title="WISE (WiseView epochs)"
                 frames={wiseFrames}
                 render={{
-                  mode: 'atb',
+                  mode: view.wiseDiffuse ? 'diffuse' : 'atb',
                   brightness: view.wiseBrightness,
                   contrast: view.wiseContrast,
                   stretch: view.wiseStretch,

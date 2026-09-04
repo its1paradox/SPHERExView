@@ -104,8 +104,8 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
             ))}
           </div>
           <label>
-            Max frames
-            <input type="number" min="1" value={form.limit} onChange={set('limit')} />
+            Max frames (0 = no limit)
+            <input type="number" min="0" value={form.limit} onChange={set('limit')} />
           </label>
           <p className="hint">
             SPHEREx frames are reprojected north-up to match the WISE panel.
@@ -246,6 +246,7 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
           <select value={view.sxScaleMode} onChange={setV('sxScaleMode', String)}>
             <option value="percentile">Manual black/white point (default)</option>
             <option value="zscale">ZScale (auto)</option>
+            <option value="diffuse">Diffuse emission (rings &amp; nebulae)</option>
           </select>
         </label>
         <label className={view.sxScaleMode !== 'percentile' ? 'disabled' : ''}>
@@ -297,6 +298,15 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
           />
           Smooth pixels (bilinear)
         </label>
+        {view.sxScaleMode === 'diffuse' && (
+          <p className="hint">
+            Diffuse mode suppresses point sources (star-clip to the local
+            median), smooths, and stretches a narrow linear window just above
+            sky {'\u2014'} faint extended structure (rings, shells) stands
+            out; stars are intentionally erased. Best on the detector
+            CO-ADDs.
+          </p>
+        )}
         <label className="check">
           <input
             type="checkbox"
@@ -360,6 +370,22 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
           />
           Smooth pixels (bilinear)
         </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={view.wiseDiffuse}
+            onChange={setV('wiseDiffuse', 'bool')}
+          />
+          Diffuse emission mode (rings &amp; nebulae)
+        </label>
+        {view.wiseDiffuse && (
+          <p className="hint">
+            Point sources are clipped to the local median, the image is
+            smoothed, and a narrow linear window just above sky is shown
+            {'\u2014'} faint extended structure stands out; stars are
+            intentionally erased.
+          </p>
+        )}
         <p className="hint">
           Contrast limits come from the first epoch and are shared by all
           frames for a steady blink.
