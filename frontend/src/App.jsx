@@ -27,33 +27,73 @@ function toFrame(base) {
 // 3.4 µm bandpass) — the detector-level W2/W1 analogue — so these frames
 // keep the exact WiseView color contrast of the W1+W2 epochs before them:
 // D4 feeds blue (data), D6 feeds orange (data2), and a cold source visible
-// only in D6 stays orange across the mission handoff.  If a reference
-// channel is missing (D4 shallow at this epoch), an all-zero blue channel
-// is used: frames are per-epoch z-scored server-side, so 0 = sky level.
+// only in D6 stays orange across the mission handoff.  Rendering uses the
+// hue-preserving Lupton composite (per-channel sky sigmas restore the
+// calibrated flux ratio; chroma is gated by joint S/N).  If the reference
+// channel is missing at an epoch, the frame is an explicitly labeled
+// GRAYSCALE slice \u2014 a lone band carries no color information.
 function toCombinedCoaddFrame(c) {
   const md = c.metadata;
+  const isColor = Boolean(c.data2_b64 && md.channels === 'color');
   const long = decodeB64Float32(c.data2_b64 || c.data_b64);
-  const short =
-    c.data2_b64 && md.channels === 'color'
-      ? decodeB64Float32(c.data_b64)
-      : new Float32Array(long.length);
+  const nLong = md.long_channel ? md.long_channel.n_exposures : md.n_exposures;
+  if (!isColor) {
+    return {
+      ...c,
+      data: long,
+      data2: null,
+      sorted: sortPixels(long),
+      label: `D6 CO-ADD \u00b7 ${nLong} exp \u00b7 grayscale`,
+      sublabel: `${md.datetime_min_utc.slice(0, 10)} \u2192 ${md.datetime_max_utc.slice(0, 10)}`,
+      metadata: { ...md, mjd_mid: (md.mjd_min + md.mjd_max) / 2, target_covered: true },
+    };
+  }
+  const short = decodeB64Float32(c.data_b64);
   const both = new Float32Array(short.length + long.length);
   both.set(short, 0);
   both.set(long, short.length);
-  const nLong = md.long_channel ? md.long_channel.n_exposures : md.n_exposures;
   return {
     ...c,
     data: short,
     data2: long,
+    sigmaS: md.short_channel?.sky_sigma_mjy_sr || null,
+    sigmaL: md.long_channel?.sky_sigma_mjy_sr || null,
     sorted: sortPixels(both),
     label:
       `D6 CO-ADD \u00b7 ${nLong} exp` +
-      (md.channels === 'color' && md.short_channel
-        ? ` (+${md.short_channel.n_exposures} D4 ref)`
-        : ''),
+      (md.short_channel ? ` (+${md.short_channel.n_exposures} D4 ref)` : ''),
     sublabel: `${md.datetime_min_utc.slice(0, 10)} \u2192 ${md.datetime_max_utc.slice(0, 10)}`,
     metadata: { ...md, mjd_mid: (md.mjd_min + md.mjd_max) / 2, target_covered: true },
   };
+}
+
+// Attach one FROZEN Lupton color scale to a set of two-channel frames:
+// W = white-point percentile of the pooled positive calibrated intensity,
+// floored at 25 sigma_I (never re-estimated frame by frame, so hue and
+// brightness stay comparable through the whole sequence).
+function attachLuptonScale(frames, { sat = 1.25, whitePct = 99.5 } = {}) {
+  const cf = frames.filter((f) => f.data2 && f.sigmaS && f.sigmaL);
+  if (!cf.length) return frames;
+  const sigIs = cf.map((f) => 0.5 * Math.hypot(f.sigmaS, f.sigmaL)).sort((a, b) => a - b);
+  const sigI = sigIs[sigIs.length >> 1];
+  const pos = [];
+  for (const f of cf) {
+    for (let i = 0; i < f.data.length; i += 1) {
+      const I = 0.5 * (Math.max(0, f.data[i]) * f.sigmaS + Math.max(0, f.data2[i]) * f.sigmaL);
+      if (I > 0) pos.push(I);
+    }
+  }
+  if (!pos.length) return frames;
+  const sorted = Float64Array.from(pos).sort();
+  const W = Math.max(
+    sorted[Math.min(sorted.length - 1, Math.round((whitePct / 100) * (sorted.length - 1)))],
+    25 * sigI,
+  );
+  return frames.map((f) =>
+    f.data2 && f.sigmaS && f.sigmaL
+      ? { ...f, colorScale: { sigmaS: f.sigmaS, sigmaL: f.sigmaL, W, sat, mode: 'color' } }
+      : f,
+  );
 }
 
 // WiseView-style two-channel colour frame from the per-detector coadds:
@@ -82,10 +122,10 @@ function coaddColorFrame(coadds) {
   const zscore = (arr) => {
     const med = Float32Array.from(arr).sort()[n >> 1];
     const sig = 1.4826 * Float32Array.from(arr, (v) => Math.abs(v - med)).sort()[n >> 1] || 1;
-    return Float32Array.from(arr, (v) => (v - med) / sig);
+    return { z: Float32Array.from(arr, (v) => (v - med) / sig), sig };
   };
-  const blue = zscore(mean(shortF));
-  const orange = zscore(mean(longF));
+  const { z: blue, sig: sigS } = zscore(mean(shortF));
+  const { z: orange, sig: sigL } = zscore(mean(longF));
   const lamSpan = (grp) => {
     const lams = grp.map((f) => f.metadata.lambda_target_um).filter(Boolean);
     if (!lams.length) return '';
@@ -98,6 +138,17 @@ function coaddColorFrame(coadds) {
   const merged = new Float32Array(2 * n);
   merged.set(blue, 0);
   merged.set(orange, n);
+  // Frozen Lupton scale for this composite (hue-preserving, chroma gated).
+  const pos = [];
+  for (let i = 0; i < n; i += 1) {
+    const I = 0.5 * (Math.max(0, blue[i]) * sigS + Math.max(0, orange[i]) * sigL);
+    if (I > 0) pos.push(I);
+  }
+  const sigI = 0.5 * Math.hypot(sigS, sigL);
+  const posSorted = Float64Array.from(pos).sort();
+  const W = pos.length
+    ? Math.max(posSorted[Math.round(0.995 * (posSorted.length - 1))], 25 * sigI)
+    : 25 * sigI;
   return {
     id: 'coadd-color',
     width: coadds[0].width,
@@ -105,6 +156,7 @@ function coaddColorFrame(coadds) {
     wcs: coadds[0].wcs,
     data: blue,
     data2: orange,
+    colorScale: { sigmaS: sigS, sigmaL: sigL, W, sat: 1.15, mode: 'color' },
     sorted: merged.sort(),
     label: 'COLOR CO-ADD',
     sublabel: `blue ${dets(shortF)} (${lamSpan(shortF)}) \u00b7 orange ${dets(longF)} (${lamSpan(longF)})`,
@@ -112,7 +164,8 @@ function coaddColorFrame(coadds) {
       composite: 'blue = short-\u03bb detector coadds, orange = long-\u03bb (WiseView W1+W2 convention)',
       blue_channel: `${dets(shortF)} \u00b7 ${lamSpan(shortF)} \u00b7 ${nExp(shortF)} exposures`,
       orange_channel: `${dets(longF)} \u00b7 ${lamSpan(longF)} \u00b7 ${nExp(longF)} exposures`,
-      method: 'per-channel mean of detector coadds, median/MAD z-scored (shared sky-noise scale)',
+      method:
+        'per-channel mean of detector coadds \u00b7 hue-preserving Lupton asinh composite (one stretch on the calibrated intensity, chroma gated by joint S/N 2\u21925\u03c3)',
       note: 'orange-only sources emit only beyond ~3.8 \u00b5m \u2014 extremely cold or dust-reddened objects (e.g. late-T/Y dwarfs like WISE 0855\u22120714)',
       pixscale_arcsec: coadds[0].metadata.pixscale_arcsec,
     },
@@ -209,7 +262,7 @@ export default function App() {
         r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.detail || r.statusText))),
       )
       .then((d) => {
-        setCombinedCoadds(d.frames.map(toCombinedCoaddFrame));
+        setCombinedCoadds(attachLuptonScale(d.frames.map(toCombinedCoaddFrame), { sat: 1.25 }));
         setCombinedCoaddStatus(
           d.count
             ? null

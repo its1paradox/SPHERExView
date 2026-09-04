@@ -171,9 +171,120 @@ function applyStretch(v, stretch) {
   return v; // linear
 }
 
+// --- Lupton-style hue-preserving color rendering ------------------------
+//
+// For SPHEREx two-channel epoch coadds the frame carries `colorScale`:
+//   { sigmaS, sigmaL,  // per-channel sky sigma (MJy/sr) of THIS epoch
+//     W,               // frozen white point (MJy/sr), one per blink sequence
+//     sat,             // high-S/N saturation boost (1.15 overview, 1.25 finder)
+//     mode,            // 'color' | 'excess'
+//     focusLong }      // excess mode: focus channel is the long-lambda one
+//
+// The backend sends each channel z-scored to its own sky noise; multiplying
+// back by sigma restores calibrated, background-subtracted surface
+// brightness, so color comes from the physical flux ratio with fixed unit
+// gains (AB-flat neutrality) instead of noise-equalized display gains.
+// One nonlinear transform is applied to the INTENSITY and all channels are
+// scaled by the same multiplier (Lupton et al. 2004, PASP 116, 133), so hue
+// never depends on brightness; chroma is gated by joint S/N (neutral gray
+// below 2 sigma, full color by 5 sigma) so blank sky cannot mottle.
+const LUPTON_Q = 10;
+const LUPTON_ASINH_NORM = Math.asinh(LUPTON_Q);
+
+function intensityTransform(x, W, stretch) {
+  // x >= 0 in calibrated units; returns 0..1.  All stretch choices operate
+  // on the shared intensity so every one of them is hue-preserving.
+  const u = x / W;
+  let v;
+  if (stretch === 'linear') v = u;
+  else if (stretch === 'sqrt') v = u > 0 ? Math.sqrt(u) : 0;
+  else if (stretch === 'log') v = Math.log(1 + LOG_A * Math.max(u, 0)) / LOG_NORM;
+  else v = Math.asinh(LUPTON_Q * Math.max(u, 0)) / LUPTON_ASINH_NORM; // asinh
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+function smoothstep01(t) {
+  const c = t < 0 ? 0 : t > 1 ? 1 : t;
+  return c * c * (3 - 2 * c);
+}
+
+// Two-channel scientific color composite: short -> blue, long -> red,
+// green = mean (the WiseView / unWISE W1-blue W2-red language, in which a
+// long-only source is exactly (1, 0.5, 0) = orange).  Always rendered on a
+// dark background: complement-inverting an RGB composite would flip orange
+// to blue and destroy the wavelength-anchored color semantics.
+function renderLupton(frame, { stretch }, px) {
+  const { data, data2, colorScale } = frame;
+  const { sigmaS, sigmaL, W, sat = 1.25, mode = 'color', focusLong = true } = colorScale;
+  const n = data.length;
+
+  if (mode === 'excess') {
+    // Grayscale reference field + single-hue overlay where the focus
+    // channel is in significant EXCESS over the reference (the strongest
+    // finder mode: reference-channel noise can never paint color).
+    const sigmaE = Math.hypot(sigmaS, sigmaL);
+    const WL = 40 * (focusLong ? sigmaS : sigmaL); // reference luminance scale
+    const WE = 20 * sigmaE; // excess stretch scale
+    const hue = focusLong ? [1, 0.5, 0] : [0, 0.5, 1];
+    for (let i = 0; i < n; i += 1) {
+      const XS = data[i] * sigmaS;
+      const XL = data2[i] * sigmaL;
+      const refFlux = focusLong ? XS : XL;
+      const E = focusLong ? XL - XS : XS - XL; // unit gains, AB-flat neutral
+      const zE = E / sigmaE;
+      const a = smoothstep01((zE - 2.5) / 2.5); // onset 2.5 sigma, full 5 sigma
+      const L = intensityTransform(Math.max(refFlux, 0), WL, stretch);
+      const O = intensityTransform(Math.max(E, 0), WE, stretch);
+      const o = i * 4;
+      for (let c = 0; c < 3; c += 1) {
+        let v = (1 - a) * L + a * O * hue[c];
+        v = v < 0 ? 0 : v > 1 ? 1 : v;
+        px[o + c] = Math.round(v * 255);
+      }
+      px[o + 3] = 255;
+    }
+    return;
+  }
+
+  for (let i = 0; i < n; i += 1) {
+    const zS = data[i];
+    const zL = data2[i];
+    const XS = Math.max(0, zS) * sigmaS;
+    const XL = Math.max(0, zL) * sigmaL;
+    const I = (XS + XL) / 2; // = (r+g+b)/3 with g=(r+b)/2
+    let R = 0;
+    let G = 0;
+    let B = 0;
+    if (I > 0) {
+      const k = intensityTransform(I, W, stretch) / I;
+      R = k * XL;
+      B = k * XS;
+      G = 0.5 * (R + B);
+      const mx = R > B ? R : B; // G is their mean, never the max
+      if (mx > 1) {
+        R /= mx;
+        G /= mx;
+        B /= mx;
+      }
+    }
+    // Chroma gate: joint positive-source S/N (z units ARE flux/sigma).
+    const S = Math.hypot(Math.max(0, zS), Math.max(0, zL));
+    const s = sat * smoothstep01((S - 2) / 3);
+    const V = R > G ? (R > B ? R : B) : G > B ? G : B;
+    R = Math.max(0, V - s * (V - R));
+    G = Math.max(0, V - s * (V - G));
+    B = Math.max(0, V - s * (V - B));
+    const o = i * 4;
+    px[o] = Math.round(R * 255);
+    px[o + 1] = Math.round(G * 255);
+    px[o + 2] = Math.round(B * 255);
+    px[o + 3] = 255;
+  }
+}
+
 // Draw one frame onto `canvas`.
 // frame: { data: Float32Array, data2?: Float32Array, width, height,
-//          vmin, vmax, markers? }
+//          vmin, vmax, colorScale?, markers? }
 // opts:  { scale, canvasW, canvasH, stretch, invert, smooth, showMarkers }
 //
 // When `data2` is present the frame is an AstroToolBox-style W1+W2 color
@@ -192,6 +303,11 @@ export function renderOffscreen(frame, { stretch, invert }, off = null) {
   const octx = target.getContext('2d');
   const img = octx.createImageData(w, h);
   const px = img.data;
+  if (data2 && frame.colorScale) {
+    renderLupton(frame, { stretch }, px);
+    octx.putImageData(img, 0, 0);
+    return target;
+  }
   const range = vmax - vmin;
   const proc = (raw) => {
     let v = (raw - vmin) / range;

@@ -84,7 +84,7 @@ FITS downloads are cached under `backend/cache/`, so a persistent disk
 | `GET /api/cutouts` | Cutouts around a position |
 | `GET /api/epoch-stack` | Time-ordered cutout stack for blinking |
 | `GET /api/coadd` | Per-detector CO-ADD stacks (deep, mixed-wavelength images; `background=zodi\|none`, `sigma`, `maxiters`) |
-| `GET /api/epoch-coadds` | Time-resolved COLOR epoch-coadd blink sequence: exposures are clustered into natural sky-pass VISITS (a new epoch starts where the gap between consecutive exposures exceeds `min(30 d, bin_months·30.4375/4)` — the unWISE gap rule of Meisner et al. 2018 scaled to SPHEREx), so a visit is never split by a calendar boundary; continuous polar coverage falls back to balanced `bin_months`-long windows. Each epoch is stacked into a D1–D4 (blue) + D5–D6 (orange) two-channel frame on ONE shared grid, per-epoch robust z-scored. When more exposures exist than `limit`, they are subsampled evenly across time. Optional `band=SPHEREx-D1..D6` FOCUSES the blink on one detector while keeping WiseView-style color: the focus detector against a reference channel (`ref=auto` → the W-analogue counterpart, D4↔D6; `ref=broad` → the full complementary side; `ref=none` → monochrome slice) |
+| `GET /api/epoch-coadds` | Time-resolved COLOR epoch-coadd blink sequence: exposures are clustered into natural sky-pass VISITS (a new epoch starts where the gap between consecutive exposures exceeds `min(30 d, bin_months·30.4375/4)` — the unWISE gap rule of Meisner et al. 2018 scaled to SPHEREx), so a visit is never split by a calendar boundary; continuous polar coverage falls back to balanced `bin_months`-long windows. Each epoch is stacked into a D1–D4 (blue) + D5–D6 (orange) two-channel frame on ONE shared grid, per-epoch robust z-scored. When more exposures exist than `limit`, they are subsampled evenly across time. Optional `band=SPHEREx-D1..D6` FOCUSES the blink on one detector while keeping WiseView-style color: the focus detector against a reference channel (`ref=auto` → the W-analogue counterpart, D4↔D6; `ref=excess` → same pairing, rendered client-side as a grayscale field + focus-band excess overlay; `ref=broad` → the full complementary side; `ref=none` → explicit grayscale slice) |
 | `GET /api/wise-stack` | Time-resolved unWISE epoch stack via WiseView (byw.tools), one dated frame per ~6-month visit, optional Gaia DR3 markers |
 | `POST /api/spectra/submit` | Submit an IRSA SPHEREx spectrophotometry job (`ra`, `dec`, `bkg_region`) |
 | `GET /api/spectra/status/{job_id}` | UWS job phase (QUEUED / EXECUTING / COMPLETED / ERROR) |
@@ -126,11 +126,10 @@ DR3 markers in image-pixel coordinates, proper-motion propagated from epoch
   boundary (continuous deep-field coverage falls back to balanced
   1/2/3/6/12-month windows). Each epoch is stacked into a two-channel
   color coadd (blue = D1–D4 < 3.82 µm, orange = D5–D6 > 3.82 µm) on one
-  shared north-up grid, and blinks chronologically at coadd depth. Each
-  epoch is z-scored to
-  its own sky noise and one display scale is shared by all epochs, so the
-  blink is photometrically and astrometrically rigid: movers drift,
-  variables pulse, artifacts vanish, static sky stays pinned. Validated
+  shared north-up grid, and blinks chronologically at coadd depth with one
+  frozen display scale shared by all epochs, so the blink is
+  photometrically and astrometrically rigid: movers drift, variables
+  pulse, artifacts vanish, static sky stays pinned. Validated
   end-to-end: Barnard's star's saturation-masked core moves −0.99 px north
   between the two archived passes vs −0.97 px predicted by the Gaia DR3
   ephemeris; the NEP deep field resolves into 15 consecutive monthly color
@@ -147,9 +146,33 @@ DR3 markers in image-pixel coordinates, proper-motion propagated from epoch
   on the 3.3 µm CH4 fundamental; D6 spans 4.42–5.00 µm, the 4.6–5 µm
   opacity window where W1−W2 > 5 objects like WISE 0855−0714 emit) — so a
   very cold source glows orange against white/blue field stars. A
-  *Reference channel* select offers the broad complementary side (D1–D4)
-  or a monochrome slice (`ref=none`). Travels in the URL hash as
-  `band=SPHEREx-Dn&ref=auto|broad|none`.
+  *Reference channel* select offers the broad complementary side (D1–D4),
+  an **excess finder** (`ref=excess`: grayscale reference field, with a
+  single-hue overlay only where the focus band is in ≥2.5σ excess over the
+  reference — reference-channel noise can never paint color), or an honest
+  grayscale slice (`ref=none`). Travels in the URL hash as
+  `band=SPHEREx-Dn&ref=auto|excess|broad|none`.
+
+- **Scientifically correct color rendering (hue-preserving Lupton
+  composite)**: two-channel frames are rendered with the Lupton, Blanton &
+  Hogg (2004) algorithm — ONE asinh stretch is computed on the calibrated
+  total intensity and both channels are scaled by the same factor, so hue
+  encodes only the physical long/short flux ratio and never the display
+  stretch ([Lupton et al. 2004](https://arxiv.org/abs/astro-ph/0312483),
+  the algorithm behind SDSS and Legacy Survey color images). Channel gains
+  are AB-flat (each channel in calibrated MJy/sr, restored from the
+  per-epoch z-scores via the archived sky sigmas), the color language is
+  wavelength-anchored everywhere in the app — the shorter band is ALWAYS
+  blue, the longer ALWAYS orange (`(1, 0.5, 0)` for a long-only source and
+  `(0, 0.5, 1)` for a short-only one, exactly WiseView's W1/W2 hues) — and
+  a **chroma gate** desaturates pixels below 2σ joint significance toward
+  neutral gray (full color from 5σ), so blank sky can never mottle into
+  false pastel colors the way independently noise-normalized channels do.
+  The white point is frozen once per blink sequence (pooled positive-
+  intensity percentile, floored at 25σ) and a lone band is shown as an
+  explicitly labeled grayscale slice, never silently tinted — so the same
+  color always means the same physics in every stack, including the
+  WISE→SPHEREx handoff.
 
 - **WISE → D6 epoch coadds in the combined timeline**: the combined timeline
   can play *D6 + D4-reference epoch coadds* (one per sky-pass visit) after

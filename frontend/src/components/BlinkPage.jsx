@@ -50,10 +50,16 @@ const BAND_OPTIONS = [
 // Reference channel for a focused blink: keeps the two-channel WiseView
 // color contrast (W1/W2 paradigm) even when isolating one detector.
 const REF_OPTIONS = [
-  { value: 'auto', label: 'W-analogue counterpart (D4 \u2194 D6)' },
-  { value: 'broad', label: 'Broad complementary side' },
-  { value: 'none', label: 'None \u2014 monochrome slice' },
+  { value: 'auto', label: 'W-analogue counterpart (D4 \u2194 D6) \u2014 two-color' },
+  { value: 'excess', label: 'Excess finder \u2014 gray field + focus-band excess' },
+  { value: 'broad', label: 'Broad complementary side \u2014 two-color' },
+  { value: 'none', label: 'None \u2014 grayscale slice' },
 ];
+
+const median = (arr) => {
+  const s = Float64Array.from(arr).sort();
+  return s.length ? s[s.length >> 1] : 0;
+};
 
 const fmtDets = (dets) => {
   if (!dets || !dets.length) return '';
@@ -112,8 +118,8 @@ export default function BlinkPage() {
   const [playing, setPlaying] = useState(true);
   const [speedMs, setSpeedMs] = useState(500);
   const [displaySize, setDisplaySize] = useState(520);
-  const [stretch, setStretch] = useState('sqrt');
-  const [invert, setInvert] = useState(true);
+  const [stretch, setStretch] = useState('asinh');
+  const [invert, setInvert] = useState(false);
   const [blackPct, setBlackPct] = useState(0.5);
   const [whitePct, setWhitePct] = useState(99.5);
   const [hover, setHover] = useState(null);
@@ -157,6 +163,11 @@ export default function BlinkPage() {
         ...c,
         data: decodeB64Float32(c.data_b64),
         data2: c.data2_b64 ? decodeB64Float32(c.data2_b64) : null,
+        // Per-channel sky sigma (MJy/sr): multiplying the z-scored pixels
+        // back restores calibrated surface brightness, so color comes from
+        // the physical flux ratio, not per-channel display gains.
+        sigmaS: c.metadata?.short_channel?.sky_sigma_mjy_sr || null,
+        sigmaL: c.metadata?.long_channel?.sky_sigma_mjy_sr || null,
       }));
       setFrames(fr);
       setIndex(0);
@@ -215,6 +226,30 @@ export default function BlinkPage() {
     [sharedSorted, blackPct, whitePct],
   );
 
+  // Frozen Lupton color scale, ONE per blink sequence (never re-estimated
+  // frame by frame): white point W = the white-point percentile of the
+  // pooled positive calibrated intensity I = (X_S + X_L)/2, floored at
+  // 25 sigma_I so a starless field cannot over-stretch the sky.
+  const luptonScale = useMemo(() => {
+    const cf = frames.filter((f) => f.data2 && f.sigmaS && f.sigmaL);
+    if (!cf.length) return null;
+    const sigI = median(cf.map((f) => 0.5 * Math.hypot(f.sigmaS, f.sigmaL)));
+    const pos = [];
+    for (const f of cf) {
+      for (let i = 0; i < f.data.length; i += 1) {
+        const I = 0.5 * (Math.max(0, f.data[i]) * f.sigmaS + Math.max(0, f.data2[i]) * f.sigmaL);
+        if (I > 0) pos.push(I);
+      }
+    }
+    if (!pos.length) return null;
+    const sorted = Float64Array.from(pos).sort();
+    const W = Math.max(
+      sorted[Math.min(sorted.length - 1, Math.round((whitePct / 100) * (sorted.length - 1)))],
+      25 * sigI,
+    );
+    return { W, sigI };
+  }, [frames, whitePct]);
+
   // Blink timer.
   useEffect(() => {
     if (!playing || frames.length < 2) return undefined;
@@ -222,25 +257,28 @@ export default function BlinkPage() {
     return () => clearInterval(t);
   }, [playing, frames, speedMs]);
 
-  // Empty (all-zero) channel used to render single-channel epochs in their
-  // natural COLOR: the frames are per-bin z-scored, so 0 = sky level, and a
-  // zero counterpart channel shows neutral sky while the real channel's
-  // sources come out blue (short-\u03bb) or orange (long-\u03bb) — the same
-  // hue they would have inside a full two-channel COLOR frame.
-  const zeroChannel = useMemo(
-    () => (frames.length ? new Float32Array(frames[0].width * frames[0].height) : null),
-    [frames],
-  );
-
-  // Draw the current epoch.
+  // Draw the current epoch.  Single-channel epochs (ref=none) are rendered
+  // as an explicitly labeled GRAYSCALE slice \u2014 a lone band carries no color
+  // information, so painting it orange or blue would fake a color claim
+  // (wavelength-anchored semantics: hue is only ever computed from a real
+  // short/long flux ratio).
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || frames.length === 0) return;
     let f = frames[Math.min(index, frames.length - 1)];
-    if (!f.data2 && zeroChannel) {
-      f = f.metadata?.channels === 'long-only'
-        ? { ...f, data: zeroChannel, data2: f.data }
-        : { ...f, data2: zeroChannel };
+    if (f.data2 && f.sigmaS && f.sigmaL && luptonScale) {
+      const focus = f.metadata?.band_focus || null; // what was actually built
+      f = {
+        ...f,
+        colorScale: {
+          sigmaS: f.sigmaS,
+          sigmaL: f.sigmaL,
+          W: luptonScale.W,
+          sat: focus ? 1.25 : 1.15,
+          mode: focus && meta && meta.ref === 'excess' ? 'excess' : 'color',
+          focusLong: focus ? parseInt(focus.replace('SPHEREx-D', ''), 10) >= 5 : true,
+        },
+      };
     }
     const scale = displaySize / Math.max(f.width, f.height);
     let pinPx = null;
@@ -260,7 +298,7 @@ export default function BlinkPage() {
       showMarkers: false,
       pin: pinPx,
     });
-  }, [frames, index, vmin, vmax, displaySize, stretch, invert, pin, zeroChannel]);
+  }, [frames, index, vmin, vmax, displaySize, stretch, invert, pin, luptonScale, meta]);
 
   const setF = (key) => (e) => setForm({ ...form, [key]: e.target.value });
   const f = frames.length ? frames[Math.min(index, frames.length - 1)] : null;
@@ -284,13 +322,15 @@ export default function BlinkPage() {
   const kindLabel = m
     ? m.channels === 'color'
       ? m.band_focus
-        ? `${m.band_focus.replace('SPHEREx-', '')} + ${m.reference} ref`
+        ? meta && meta.ref === 'excess'
+          ? `${m.band_focus.replace('SPHEREx-', '')} excess (vs ${m.reference})`
+          : `${m.band_focus.replace('SPHEREx-', '')} + ${m.reference} ref`
         : 'COLOR'
       : soloDetectors && soloDetectors.length === 1
-        ? `D${soloDetectors[0]} only`
+        ? `D${soloDetectors[0]} \u00b7 grayscale`
         : m.channels === 'short-only'
-          ? 'short-\u03bb only'
-          : 'long-\u03bb only'
+          ? 'short-\u03bb \u00b7 grayscale'
+          : 'long-\u03bb \u00b7 grayscale'
     : '';
   const chanSummary = m
     ? [
@@ -312,9 +352,11 @@ export default function BlinkPage() {
         <p className="subtitle">
           {form.band && form.band !== 'all'
             ? form.ref === 'none'
-              ? `One ${form.band.replace('SPHEREx-', '')}-only coadd per sky-pass visit, blinked chronologically \u2014 a monochrome wavelength slice of the SPHEREx archive`
-              : `${form.band.replace('SPHEREx-', '')}-focused color blink \u2014 one coadd per sky-pass visit, the focus detector against a reference channel (the WiseView W1/W2 color contrast at SPHEREx depth)`
-            : `One COLOR coadd per sky-pass visit, blinked chronologically \u2014 the SPHEREx analogue of WiseView's unWISE time-resolved coadds (D1\u2013D4 rendered blue \u00b7 D5\u2013D6 rendered orange)`}
+              ? `One ${form.band.replace('SPHEREx-', '')}-only coadd per sky-pass visit, blinked chronologically \u2014 an explicitly grayscale wavelength slice (a lone band carries no color information)`
+              : form.ref === 'excess'
+                ? `${form.band.replace('SPHEREx-', '')} excess finder \u2014 grayscale field, with color ONLY where ${form.band.replace('SPHEREx-', '')} is in \u22652.5\u03c3 excess over the reference band (reference noise can never paint color)`
+                : `${form.band.replace('SPHEREx-', '')}-focused color blink \u2014 one coadd per sky-pass visit, the focus detector against a reference channel in the exact WiseView color language (short \u2192 blue \u00b7 long \u2192 orange \u00b7 equal \u2192 white)`
+            : `One COLOR coadd per sky-pass visit, blinked chronologically \u2014 the SPHEREx analogue of WiseView's unWISE time-resolved coadds (D1\u2013D4 \u2192 blue \u00b7 D5\u2013D6 \u2192 orange \u00b7 equal \u2192 white \u00b7 sky \u2192 neutral gray)`}
         </p>
       </header>
       <div className="layout">
@@ -366,7 +408,7 @@ export default function BlinkPage() {
             )}
             <p className="hint">
               {form.band !== 'all'
-                ? `Focused blinks stay TWO-color, like WiseView: the focus detector keeps its natural hue against a reference channel. D6 focus + D4 reference is the detector-level W2/W1 analogue \u2014 D4 contains the 3.3 \u00b5m CH4 absorption, D6 the 4.6\u20135 \u00b5m window, so very cold objects appear in D6 but not D4.`
+                ? `Hues are anchored to wavelength exactly as in WiseView: the SHORTER band is always blue, the LONGER always orange, everywhere in the app \u2014 a source can never change color because a band was omitted. D6 focus + D4 reference is the detector-level W2/W1 analogue (D4 contains the 3.3 \u00b5m CH4 absorption, D6 the 4.6\u20135 \u00b5m window), so very cold objects glow orange while ordinary stars stay white or bluish.`
                 : `A single detector focuses every epoch coadd on one wavelength slice \u2014 D6 (4.42\u20135.00 \u00b5m) is the closest match to WISE W2 (4.6 \u00b5m).`}
             </p>
           </fieldset>
@@ -472,9 +514,7 @@ export default function BlinkPage() {
               Invert (light background)
             </label>
             <p className="hint">
-              One display scale is shared by ALL epochs (each epoch is z-scored to its own
-              sky noise server-side), so brightness changes you see while blinking are real
-              relative changes, not stretch artifacts.
+              {`Color frames use a hue-preserving Lupton composite: ONE stretch is applied to the calibrated intensity and both bands share it, so hue never depends on brightness; pixels below 2\u03c3 joint significance stay neutral gray (full color from 5\u03c3), so blank sky cannot mottle into false colors. One frozen display scale is shared by ALL epochs \u2014 blinking changes are real. Black point is fixed at sky (0) for color frames; the percentiles drive grayscale slices.`}
             </p>
           </fieldset>
         </form>
@@ -603,9 +643,9 @@ export default function BlinkPage() {
               {meta && (
                 <p className="hint blink-note">
                   {`Grid: ${f.width}\u00d7${f.height}px at ${m.pixscale_arcsec}\u2033/px, north up \u00b7 `}
-                  {'units: per-epoch sky-noise \u03c3 \u00b7 a source seen only in the long-\u03bb '}
-                  {'channel (D5\u2013D6, orange) that MOVES between epochs is a cold, fast mover '}
-                  {'\u2014 the WISE 0855\u22120714 signature'}
+                  {'color = calibrated long/short flux ratio (Lupton asinh, chroma gated 2\u20135\u03c3) \u00b7 '}
+                  {'an ORANGE source (bright long-\u03bb, faint short-\u03bb) that MOVES between '}
+                  {'epochs is a cold, fast mover \u2014 the WISE 0855\u22120714 signature'}
                 </p>
               )}
             </section>

@@ -119,3 +119,38 @@ Two upgrades, both grounded in a dedicated literature review
 
 UI language now uses detector terms (e.g. "126 exp (82 D1–D4 / 44 D5–D6)",
 "D6 + D4 ref") rather than color words for data provenance.
+
+## Addendum 3 — scientifically correct color (hue-preserving Lupton rendering)
+
+The first color implementation z-scored each channel independently to its own
+sky noise for display. That equalizes NOISE, not signal: blank sky then has
+unit variance in both channels, so order-unity chroma noise mottles the
+background pastel blue/orange, and a genuinely cold source's D6 signal has to
+compete with amplified reference-channel noise. This is a display-statistics
+failure, not a data problem.
+
+v19 replaces it with the algorithm used for SDSS and Legacy Survey color
+images (Lupton, Blanton & Hogg 2004, https://arxiv.org/abs/astro-ph/0312483):
+
+1. **AB-flat gains** — each channel is restored to calibrated MJy/sr
+   (z-score × archived per-epoch sky sigma); no per-channel display scaling.
+2. **One stretch on the total intensity** — f(I) = asinh(Q·I/W)/asinh(Q) with
+   Q = 10 is computed once on I = (X_short + X_long)/2 and both channels are
+   multiplied by f(I)/I, so hue encodes ONLY the physical long/short flux
+   ratio (gamut overflow handled by dividing by the max, per Lupton).
+3. **Frozen white point** — W is the white-point percentile of the pooled
+   positive intensity over ALL epochs of a sequence, floored at 25σ_I, so
+   blinking never re-stretches the field.
+4. **Chroma gate** — saturation ramps smoothly from 0 at 2σ joint positive
+   S/N to full at 5σ: sky stays neutral gray, real sources keep full color.
+5. **Wavelength-anchored semantics** — shorter band ALWAYS blue, longer
+   ALWAYS orange (long-only = (1, 0.5, 0), short-only = (0, 0.5, 1) — the
+   WiseView W1/W2 hues); a lone band renders as an explicitly labeled
+   GRAYSCALE slice, never a fake tint; color composites always render on a
+   dark background (complement inversion would flip orange↔blue).
+6. **Excess finder (`ref=excess`)** — grayscale reference field plus a
+   single-hue overlay only where the focus band exceeds the reference by
+   ≥2.5σ of the difference noise (full opacity at 5σ): the strongest
+   cold-mover mode, since reference noise can never paint color.
+
+Full literature review with derivations: `docs/color_scheme_research.md`.

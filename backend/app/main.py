@@ -469,7 +469,7 @@ def get_epoch_coadds(
     maxiters: int = Query(2, ge=0, le=10),
     min_channel_exposures: int = Query(1, ge=1),
     band: str | None = Query(None, pattern="^SPHEREx-D[1-6]$"),
-    ref: str = Query("auto", pattern="^(auto|broad|none)$"),
+    ref: str = Query("auto", pattern="^(auto|excess|broad|none)$"),
 ):
     """Time-resolved COLOR epoch-coadd blink sequence: unWISE-style epoch coadds for SPHEREx.
 
@@ -510,7 +510,11 @@ def get_epoch_coadds(
       brown dwarfs (a >250 K object like WISE 0855-0714 has W1-W2 > 5);
     - ``ref=broad`` -> the full complementary side (D1-D4), a broad
       short-wave veto with more reference depth;
-    - ``ref=none``  -> monochrome slice of just that detector (no color).
+    - ``ref=excess`` -> same channel pairing as ``auto``; the client renders
+      a grayscale reference field with a single-hue overlay only where the
+      focus band is in significant excess over the reference (finder mode);
+    - ``ref=none``  -> grayscale slice of just that detector (a lone band
+      carries no color information, so it is never artificially tinted).
 
     Focusing a SHORT detector (D1-D4) mirrors this: that detector alone in
     blue against D6 (auto) or D5-D6 (broad) in orange.
@@ -536,10 +540,10 @@ def get_epoch_coadds(
         long_dets = {focus_det} if focus_det >= 5 else set()
     elif focus_det >= 5:
         long_dets = {focus_det}
-        short_dets = {4} if ref == "auto" else {1, 2, 3, 4}
+        short_dets = {4} if ref in ("auto", "excess") else {1, 2, 3, 4}
     else:
         short_dets = {focus_det}
-        long_dets = {6} if ref == "auto" else {5, 6}
+        long_dets = {6} if ref in ("auto", "excess") else {5, 6}
     wanted_bands = {f"SPHEREx-D{d}" for d in short_dets | long_dets}
 
     # No truncation at query time: when more exposures exist than ``limit``,
