@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 // Three pages: the main viewer (index.html), the spectrum viewer
-// (spectrum.html) and the time-resolved coadd movie (movie.html), both
+// (spectrum.html) and the time-resolved epoch blink (blink.html), both
 // opened in new tabs.  API + static cutout requests proxy to the FastAPI
 // backend in dev.
 export default defineConfig({
@@ -13,7 +13,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         spectrum: resolve(__dirname, 'spectrum.html'),
-        movie: resolve(__dirname, 'movie.html'),
+        blink: resolve(__dirname, 'blink.html'),
       },
     },
   },

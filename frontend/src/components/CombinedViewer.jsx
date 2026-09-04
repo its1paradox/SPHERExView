@@ -7,7 +7,7 @@ import {
   zscaleLimits,
 } from '../lib/render.js';
 
-// Combined WISE -> SPHEREx chronological movie.
+// Combined WISE -> SPHEREx chronological timeline.
 //
 // All frames (unWISE epochs and SPHEREx exposures) play as ONE time-ordered
 // sequence in a shared sky frame: the canvas shows exactly `fov` arcseconds

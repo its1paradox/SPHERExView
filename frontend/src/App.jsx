@@ -20,9 +20,9 @@ function toFrame(base) {
   return frame;
 }
 
-// D6-only epoch coadd (from /api/coadd-movie?band=SPHEREx-D6) as a frame the
-// combined WISE→SPHEREx movie can play after the unWISE epochs.  D6
-// (4.42–5.00 µm) is the natural W2 (4.6 µm) successor, so the movie stays
+// D6-only epoch coadd (from /api/epoch-coadds?band=SPHEREx-D6) as a frame the
+// combined WISE→SPHEREx timeline can play after the unWISE epochs.  D6
+// (4.42–5.00 µm) is the natural W2 (4.6 µm) successor, so the timeline stays
 // in one wavelength regime across the mission handoff.  The image rides in
 // the ORANGE channel (data2) with an all-zero blue channel: frames are
 // per-bin z-scored server-side, so 0 = sky level and D6 sources keep the
@@ -110,9 +110,9 @@ export function openSpectrumTab(ra, dec) {
   window.open(`spectrum.html#${params}`, '_blank', 'noopener');
 }
 
-// Opens the time-resolved COLOR coadd movie (unWISE-style epoch coadds) in
+// Opens the time-resolved COLOR epoch blink (unWISE-style epoch coadds) in
 // a new tab for the current target/field.
-export function openMovieTab(ra, dec, fov, survey, limit) {
+export function openBlinkTab(ra, dec, fov, survey, limit) {
   const params = new URLSearchParams({
     ra: ra.toFixed(6),
     dec: dec.toFixed(6),
@@ -121,7 +121,7 @@ export function openMovieTab(ra, dec, fov, survey, limit) {
     months: 6,
     maxframes: limit,
   });
-  window.open(`movie.html#${params}`, '_blank', 'noopener');
+  window.open(`blink.html#${params}`, '_blank', 'noopener');
 }
 
 export default function App() {
@@ -133,7 +133,7 @@ export default function App() {
   const [coaddFrames, setCoaddFrames] = useState([]);
   const [coaddStatus, setCoaddStatus] = useState(null);
   const coaddKey = useRef(null); // query already coadded (avoid refetch)
-  // D6-only epoch coadds for the combined movie (lazy, cached per field).
+  // D6-only epoch coadds for the combined timeline (lazy, cached per field).
   const [combinedCoadds, setCombinedCoadds] = useState([]);
   const [combinedCoaddStatus, setCombinedCoaddStatus] = useState(null);
   const combinedCoaddKey = useRef(null);
@@ -147,7 +147,7 @@ export default function App() {
   // ONE sky-anchored pin shared by every panel: drop it on any tile and it
   // marks the same RA/Dec on all of them (each frame's own WCS).
   const [pin, setPin] = useState(null);
-  // Target + field of the last search, for the combined WISE->SPHEREx movie.
+  // Target + field of the last search, for the combined WISE->SPHEREx timeline.
   const [queried, setQueried] = useState(null);
 
   // Keep the address bar in sync so the current view is always shareable.
@@ -167,8 +167,8 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view.showCoadd, queried, loading]);
 
-  // Selecting "D6 epoch coadds" for the combined movie lazily builds them
-  // (6-month bins, one per sky pass — the exact frames the movie page makes
+  // Selecting "D6 epoch coadds" for the combined timeline lazily builds them
+  // (6-month bins, one per sky pass — the exact frames the blink page makes
   // for band=SPHEREx-D6).  Cached per field so flipping the select is free.
   useEffect(() => {
     if (!queried || loading || !view.showCombined || view.combinedMode !== 'd6') return;
@@ -177,7 +177,7 @@ export default function App() {
     combinedCoaddKey.current = key;
     setCombinedCoadds([]);
     setCombinedCoaddStatus(
-      'Stacking D6 epoch coadds for the combined movie\u2026 one coadd per 6-month sky pass.',
+      'Stacking D6 epoch coadds for the combined timeline\u2026 one coadd per 6-month sky pass.',
     );
     const params = new URLSearchParams({
       ra: queried.ra,
@@ -188,7 +188,7 @@ export default function App() {
       band: 'SPHEREx-D6',
       limit: 500,
     });
-    fetch(`/api/coadd-movie?${params}`)
+    fetch(`/api/epoch-coadds?${params}`)
       .then((r) =>
         r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.detail || r.statusText))),
       )

@@ -10,7 +10,7 @@ SPHEREx has the same natural cadence: one complete all-sky spectral survey every
 
 ## 2. What was implemented
 
-### Backend: `GET /api/coadd-movie`
+### Backend: `GET /api/epoch-coadds`
 
 - Queries all QR2 exposures at the target (SIA2), sorts by MJD, and — when more exist than `limit` — subsamples **evenly across time** rather than truncating, so the movie always spans the full archive baseline.
 - Bins exposures into `bin_months`-wide windows (default 6.0, range 0.25–25, `bin_days = bin_months × 30.4375`) anchored at the first exposure.
@@ -20,7 +20,7 @@ SPHEREx has the same natural cadence: one complete all-sky spectral survey every
 - A bin with only one channel is still returned, flagged `short-only` / `long-only`; a configurable `min_channel_exposures` floor (≥3 recommended for robust clipping, default 1 for the still-sparse QR2 archive) can drop under-filled channels.
 - Full provenance per frame: bin window (MJD + UTC), per-channel exposure counts, detectors, mean target wavelength, center coverage, sky sigma in MJy/sr, estimator description.
 
-### Frontend: `movie.html`
+### Frontend: `blink.html`
 
 A dedicated page (button **"Time-resolved movie"** next to the spectrum button) with its own control panel: coordinates/FoV/survey, coadd window (1, 2, 3, 6, 12 months), max exposures, zoom, blink speed, stretch, black/white percentiles, invert. One set of display limits is computed from **all frames of both channels together**, keeping the blink photometrically rigid. The viewer has play/pause/step/slider, hover RA/Dec readout, sky-anchored pins with copy + one-click spectrum extraction, and a per-epoch metadata panel. The view is URL-hash-driven and shareable, and every frame shares one WCS so nothing "swims" between epochs.
 
@@ -56,7 +56,7 @@ A full literature review with derivations and the audit trail of every number qu
 
 Two extensions narrow the movie down to a chosen wavelength slice:
 
-**Single-detector movies.** `/api/coadd-movie` accepts `band=SPHEREx-D1..D6`,
+**Single-detector movies.** `/api/epoch-coadds` accepts `band=SPHEREx-D1..D6`,
 restricting every epoch coadd to one detector; the movie page exposes this as
 a *Detector band* select. Scientifically this trades depth for spectral
 purity: each SPHEREx detector is an LVF spanning a finite wavelength range,

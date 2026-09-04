@@ -9,7 +9,7 @@ import {
 } from '../lib/render.js';
 
 /**
- * Time-resolved COLOR coadd movie — the SPHEREx analogue of WiseView.
+ * Time-resolved COLOR epoch blink — the SPHEREx analogue of WiseView.
  *
  * WiseView does not blink raw WISE exposures: it blinks unWISE
  * TIME-RESOLVED COADDS, i.e. one deep stack per 6-month sky pass.  This
@@ -28,7 +28,7 @@ import {
 
 const MONTH_OPTIONS = [1, 2, 3, 6, 12];
 
-// Detector choices for single-band movies. 'all' keeps the two-channel
+// Detector choices for single-band blink sequences. 'all' keeps the two-channel
 // COLOR stack (blue = D1–D4, orange = D5–D6); a single detector narrows
 // each epoch coadd to one wavelength slice.
 const BAND_OPTIONS = [
@@ -41,7 +41,7 @@ const BAND_OPTIONS = [
   { value: 'SPHEREx-D6', label: 'D6 only (4.42\u20135.00 \u00b5m) \u2014 W2 successor' },
 ];
 
-function parseMovieHash() {
+function parseBlinkHash() {
   const p = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   return {
     coords: p.get('ra') && p.get('dec') ? `${p.get('ra')} ${p.get('dec')}` : '',
@@ -76,8 +76,8 @@ function fmtVal(v, depth = 0) {
   return String(v);
 }
 
-export default function MoviePage() {
-  const [form, setForm] = useState(parseMovieHash);
+export default function BlinkPage() {
+  const [form, setForm] = useState(parseBlinkHash);
   const [frames, setFrames] = useState([]);
   const [status, setStatus] = useState(null);
   const [error, setError] = useState(null);
@@ -123,7 +123,7 @@ export default function MoviePage() {
     });
     if (f.band && f.band !== 'all') params.set('band', f.band);
     try {
-      const d = await fetch(`/api/coadd-movie?${params}`).then((r) =>
+      const d = await fetch(`/api/epoch-coadds?${params}`).then((r) =>
         r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.detail || r.statusText))),
       );
       const fr = d.frames.map((c) => ({
@@ -151,7 +151,7 @@ export default function MoviePage() {
       }).toString();
     } catch (err) {
       setStatus(null);
-      setError(`Movie build failed: ${err.message}`);
+      setError(`Blink build failed: ${err.message}`);
     }
     setLoading(false);
   };
@@ -272,9 +272,9 @@ export default function MoviePage() {
     : '';
 
   return (
-    <div className="app movie-app">
+    <div className="app blink-app">
       <header>
-        <h1>SPHERExView {'\u2014'} Time-resolved movie</h1>
+        <h1>SPHERExView {'\u2014'} Epoch blink</h1>
         <p className="subtitle">
           {form.band && form.band !== 'all'
             ? `One ${form.band.replace('SPHEREx-', '')}-only coadd per ${form.months}-month sky pass, blinked chronologically \u2014 a single wavelength slice of the SPHEREx archive`
@@ -354,7 +354,7 @@ export default function MoviePage() {
           </fieldset>
 
           <button type="submit" className="fetch-btn" disabled={loading}>
-            {loading ? 'Stacking\u2026' : 'Build movie'}
+            {loading ? 'Stacking\u2026' : 'Build blink sequence'}
           </button>
 
           <fieldset>
@@ -432,8 +432,8 @@ export default function MoviePage() {
           {status && <p className="status">{status}</p>}
           {error && <p className="status error">{error}</p>}
           {f && (
-            <section className="panel viewer movie-viewer">
-              <h2>Epoch CO-ADD movie</h2>
+            <section className="panel viewer blink-viewer">
+              <h2>Epoch CO-ADD blink</h2>
               <div className="frame-label">
                 <span className="band">{kindLabel}</span>
                 <span className="datetime">
@@ -548,7 +548,7 @@ export default function MoviePage() {
                 </div>
               )}
               {meta && (
-                <p className="hint movie-note">
+                <p className="hint blink-note">
                   {`Grid: ${f.width}\u00d7${f.height}px at ${m.pixscale_arcsec}\u2033/px, north up \u00b7 `}
                   {'units: per-epoch sky-noise \u03c3 \u00b7 an orange-only source that MOVES between '}
                   {'epochs is a cold, fast mover \u2014 the WISE 0855\u22120714 signature'}

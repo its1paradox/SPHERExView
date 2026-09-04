@@ -456,8 +456,8 @@ def get_coadd(
     }
 
 
-@app.get("/api/coadd-movie")
-def get_coadd_movie(
+@app.get("/api/epoch-coadds")
+def get_epoch_coadds(
     ra: float,
     dec: float,
     radius_arcsec: float = Query(120.0, gt=0, le=3600),
@@ -470,11 +470,11 @@ def get_coadd_movie(
     min_channel_exposures: int = Query(1, ge=1),
     band: str | None = Query(None, pattern="^SPHEREx-D[1-6]$"),
 ):
-    """Time-resolved COLOR coadd movie: unWISE-style epoch coadds for SPHEREx.
+    """Time-resolved COLOR epoch-coadd blink sequence: unWISE-style epoch coadds for SPHEREx.
 
     ``band`` restricts the stack to ONE detector (e.g. ``SPHEREx-D6``): each
     bin then contains a single-channel coadd of just that band's exposures,
-    letting the movie isolate a wavelength slice — D6 (4.42–5.0 µm) is the
+    letting the blink sequence isolate a wavelength slice — D6 (4.42–5.0 µm) is the
     natural W2 successor for WISE-continuity blinks.
 
     Exposures are binned into ``bin_months``-wide time windows (default
@@ -498,9 +498,9 @@ def get_coadd_movie(
     import numpy as np
 
     # No truncation at query time: when more exposures exist than ``limit``,
-    # subsample EVENLY ACROSS TIME so the movie still spans every epoch
+    # subsample EVENLY ACROSS TIME so the blink sequence still spans every epoch
     # (plain head-truncation would keep only the earliest days and collapse
-    # the movie to one bin — deep fields have thousands of exposures).
+    # the sequence to one bin — deep fields have thousands of exposures).
     images = _query_sorted_images(ra, dec, radius_arcsec, survey, band, 10 ** 9)
     if len(images) > limit:
         idx = np.unique(np.linspace(0, len(images) - 1, limit).round().astype(int))
@@ -539,7 +539,7 @@ def get_coadd_movie(
                     sub, sigma=clip_sigma, maxiters=maxiters
                 )
             except Exception as exc:
-                log.warning("Movie bin %d channel %s failed: %s", k, name, exc)
+                log.warning("Epoch-coadd bin %d channel %s failed: %s", k, name, exc)
                 continue
             finite = img[np.isfinite(img)]
             if finite.size == 0:
@@ -592,7 +592,7 @@ def get_coadd_movie(
                     "sky_sigma_mjy_sr": ch["sky_sigma_mjy_sr"],
                 }
         frame = {
-            "id": f"movie-bin{k}",
+            "id": f"epoch-bin{k}",
             "width": n_px,
             "height": n_px,
             "wcs": wcs_dict,

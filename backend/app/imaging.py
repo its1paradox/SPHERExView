@@ -176,7 +176,7 @@ def fits_to_array(fits_path: str, north_up_center=None, out_size_arcsec=None):
             # exposure actually contain data at the target position (the
             # output grid center)?  Cone-matched SPHEREx footprints can
             # clip only the edge of the field; the combined WISE->SPHEREx
-            # movie drops frames whose target pixel is empty.
+            # blink sequence drops frames whose target pixel is empty.
             finite_mask = np.isfinite(data)
             meta["valid_frac"] = round(float(finite_mask.mean()), 4)
             c = n // 2

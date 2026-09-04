@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { openMovieTab, openSpectrumTab } from '../App.jsx';
+import { openBlinkTab, openSpectrumTab } from '../App.jsx';
 import { DEFAULT_DISPLAY } from '../lib/urlstate.js';
 
 const SPHEREX_BANDS = [
@@ -149,7 +149,7 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
               checked={view.showCombined}
               onChange={setV('showCombined', 'bool')}
             />
-            Combined WISE {'\u2192'} SPHEREx movie
+            Combined WISE {'\u2192'} SPHEREx timeline
           </label>
           {view.showCombined && (
             <label>
@@ -197,16 +197,16 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
               setCoordsError('Enter RA and Dec in decimal degrees, e.g. 11.889632 28.089606');
               return;
             }
-            openMovieTab(coords.ra, coords.dec, form.fov, form.survey, form.limit);
+            openBlinkTab(coords.ra, coords.dec, form.fov, form.survey, form.limit);
           }}
         >
-          Time-resolved movie
+          Epoch blink sequence
         </button>
         <p className="hint">
           Spectrum: opens a new tab and extracts a forced-photometry spectrum
           at the target coordinates from all SPHEREx images via IRSA (takes a
           few minutes). Drop a pin on the SPHEREx image to get a spectrum at
-          an exact source position instead. Movie: blinks one COLOR coadd per
+          an exact source position instead. Blink sequence: one COLOR coadd per
           6-month sky pass (configurable) {'\u2014'} unWISE-style epoch
           coadds, the WiseView paradigm at SPHEREx depth.
         </p>
