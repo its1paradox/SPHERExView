@@ -168,11 +168,21 @@ DR3 markers in image-pixel coordinates, proper-motion propagated from epoch
   a **chroma gate** desaturates pixels below 2σ joint significance toward
   neutral gray (full color from 5σ), so blank sky can never mottle into
   false pastel colors the way independently noise-normalized channels do.
-  The white point is frozen once per blink sequence (pooled positive-
-  intensity percentile, floored at 25σ) and a lone band is shown as an
-  explicitly labeled grayscale slice, never silently tinted — so the same
-  color always means the same physics in every stack, including the
-  WISE→SPHEREx handoff.
+  The intensity distribution is pooled once per blink sequence and shared
+  by every epoch (so blinking changes are real), while the **black/white
+  point sliders and stretch apply to color frames live** — the white point
+  is the chosen percentile of the pooled positive intensity (floored at
+  25σ) and the black point subtracts an intensity pedestal before the
+  stretch, both recomputed instantly on every draw. **Invert is
+  hue-preserving**: inverted pixels are complemented *and* the R/B channels
+  swapped, so the sky turns white while an orange (long-λ-only) source
+  stays orange and a blue one stays blue — a plain RGB complement would
+  flip orange to blue and destroy the wavelength-anchored color language.
+  A lone band is shown as an explicitly labeled grayscale slice, never
+  silently tinted — so the same color always means the same physics in
+  every stack, including the WISE→SPHEREx handoff. Switching the reference
+  channel between the paired modes re-renders instantly from the already
+  fetched data; switching to/from broadband or none rebuilds automatically.
 
 - **WISE → D6 epoch coadds in the combined timeline**: the combined timeline
   can play *D6 + D4-reference epoch coadds* (one per sky-pass visit) after

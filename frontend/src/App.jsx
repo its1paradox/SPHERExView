@@ -22,7 +22,7 @@ function toFrame(base) {
 
 // D6-focused epoch coadd (from /api/epoch-coadds?band=SPHEREx-D6) as a frame
 // the combined WISE→SPHEREx timeline can play after the unWISE epochs.  D6
-// (4.42–5.00 µm) is the natural W2 (4.6 µm) successor, and the backend now
+// (4.42–5.00 µm) covers the WISE W2 (4.6 µm) bandpass, and the backend now
 // pairs it with a D4 reference channel (2.42–3.82 µm, which contains W1's
 // 3.4 µm bandpass) — the detector-level W2/W1 analogue — so these frames
 // keep the exact WiseView color contrast of the W1+W2 epochs before them:
@@ -67,11 +67,13 @@ function toCombinedCoaddFrame(c) {
   };
 }
 
-// Attach one FROZEN Lupton color scale to a set of two-channel frames:
-// W = white-point percentile of the pooled positive calibrated intensity,
-// floored at 25 sigma_I (never re-estimated frame by frame, so hue and
-// brightness stay comparable through the whole sequence).
-function attachLuptonScale(frames, { sat = 1.25, whitePct = 99.5 } = {}) {
+// Attach one shared Lupton color scale to a set of two-channel frames: the
+// pooled positive calibrated-intensity distribution (posSorted) + median
+// sky sigma_I.  The renderer derives white/black points from it LIVE using
+// the current display percentiles, so the controls respond instantly while
+// all frames still share one scale (hue and brightness stay comparable
+// through the whole sequence).
+function attachLuptonScale(frames, { sat = 1.25 } = {}) {
   const cf = frames.filter((f) => f.data2 && f.sigmaS && f.sigmaL);
   if (!cf.length) return frames;
   const sigIs = cf.map((f) => 0.5 * Math.hypot(f.sigmaS, f.sigmaL)).sort((a, b) => a - b);
@@ -84,14 +86,13 @@ function attachLuptonScale(frames, { sat = 1.25, whitePct = 99.5 } = {}) {
     }
   }
   if (!pos.length) return frames;
-  const sorted = Float64Array.from(pos).sort();
-  const W = Math.max(
-    sorted[Math.min(sorted.length - 1, Math.round((whitePct / 100) * (sorted.length - 1)))],
-    25 * sigI,
-  );
+  const posSorted = Float64Array.from(pos).sort();
   return frames.map((f) =>
     f.data2 && f.sigmaS && f.sigmaL
-      ? { ...f, colorScale: { sigmaS: f.sigmaS, sigmaL: f.sigmaL, W, sat, mode: 'color' } }
+      ? {
+          ...f,
+          colorScale: { sigmaS: f.sigmaS, sigmaL: f.sigmaL, posSorted, sigI, sat, mode: 'color' },
+        }
       : f,
   );
 }
@@ -146,9 +147,6 @@ function coaddColorFrame(coadds) {
   }
   const sigI = 0.5 * Math.hypot(sigS, sigL);
   const posSorted = Float64Array.from(pos).sort();
-  const W = pos.length
-    ? Math.max(posSorted[Math.round(0.995 * (posSorted.length - 1))], 25 * sigI)
-    : 25 * sigI;
   return {
     id: 'coadd-color',
     width: coadds[0].width,
@@ -156,7 +154,7 @@ function coaddColorFrame(coadds) {
     wcs: coadds[0].wcs,
     data: blue,
     data2: orange,
-    colorScale: { sigmaS: sigS, sigmaL: sigL, W, sat: 1.15, mode: 'color' },
+    colorScale: { sigmaS: sigS, sigmaL: sigL, posSorted, sigI, sat: 1.15, mode: 'color' },
     sorted: merged.sort(),
     label: 'COLOR CO-ADD',
     sublabel: `blue ${dets(shortF)} (${lamSpan(shortF)}) \u00b7 orange ${dets(longF)} (${lamSpan(longF)})`,

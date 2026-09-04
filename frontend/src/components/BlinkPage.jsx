@@ -44,7 +44,7 @@ const BAND_OPTIONS = [
   { value: 'SPHEREx-D3', label: 'D3 focus (1.63\u20132.42 \u00b5m)' },
   { value: 'SPHEREx-D4', label: 'D4 focus (2.42\u20133.82 \u00b5m)' },
   { value: 'SPHEREx-D5', label: 'D5 focus (3.82\u20134.42 \u00b5m)' },
-  { value: 'SPHEREx-D6', label: 'D6 focus (4.42\u20135.00 \u00b5m) \u2014 W2 successor' },
+  { value: 'SPHEREx-D6', label: 'D6 focus (4.42\u20135.00 \u00b5m) \u2014 W2 bandpass' },
 ];
 
 // Reference channel for a focused blink: keeps the two-channel WiseView
@@ -226,10 +226,12 @@ export default function BlinkPage() {
     [sharedSorted, blackPct, whitePct],
   );
 
-  // Frozen Lupton color scale, ONE per blink sequence (never re-estimated
-  // frame by frame): white point W = the white-point percentile of the
-  // pooled positive calibrated intensity I = (X_S + X_L)/2, floored at
-  // 25 sigma_I so a starless field cannot over-stretch the sky.
+  // Lupton color scale, ONE per blink sequence: the pooled positive
+  // calibrated intensity distribution I = (X_S + X_L)/2 over ALL epochs
+  // (plus the median sky sigma_I).  The renderer derives the white point
+  // and black pedestal from it LIVE using the current display percentiles,
+  // so the controls respond instantly -- but the distribution itself is
+  // pooled across the sequence, so all epochs always share one scale.
   const luptonScale = useMemo(() => {
     const cf = frames.filter((f) => f.data2 && f.sigmaS && f.sigmaL);
     if (!cf.length) return null;
@@ -242,13 +244,27 @@ export default function BlinkPage() {
       }
     }
     if (!pos.length) return null;
-    const sorted = Float64Array.from(pos).sort();
-    const W = Math.max(
-      sorted[Math.min(sorted.length - 1, Math.round((whitePct / 100) * (sorted.length - 1)))],
-      25 * sigI,
-    );
-    return { W, sigI };
-  }, [frames, whitePct]);
+    return { posSorted: Float64Array.from(pos).sort(), sigI };
+  }, [frames]);
+
+  // Reference-channel changes apply WITHOUT pressing Build: auto <-> excess
+  // use the identical fetched data (only the rendering differs), so they
+  // re-render instantly; switching to/from broad or none changes the
+  // detector set and triggers an automatic rebuild.
+  const lastRefMode = useRef(form.ref);
+  useEffect(() => {
+    const prev = lastRefMode.current;
+    if (form.ref === prev) return;
+    lastRefMode.current = form.ref;
+    if (!frames.length || !meta || !form.band || form.band === 'all') return;
+    const soft = (r) => r === 'auto' || r === 'excess';
+    if (soft(prev) && soft(form.ref)) {
+      setMeta((mPrev) => (mPrev ? { ...mPrev, ref: form.ref } : mPrev));
+    } else {
+      build(form);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.ref]);
 
   // Blink timer.
   useEffect(() => {
@@ -273,7 +289,8 @@ export default function BlinkPage() {
         colorScale: {
           sigmaS: f.sigmaS,
           sigmaL: f.sigmaL,
-          W: luptonScale.W,
+          posSorted: luptonScale.posSorted,
+          sigI: luptonScale.sigI,
           sat: focus ? 1.25 : 1.15,
           mode: focus && meta && meta.ref === 'excess' ? 'excess' : 'color',
           focusLong: focus ? parseInt(focus.replace('SPHEREx-D', ''), 10) >= 5 : true,
@@ -294,11 +311,13 @@ export default function BlinkPage() {
       canvasH: Math.round(f.height * scale),
       stretch,
       invert,
+      whitePct,
+      blackPct,
       smooth: false,
       showMarkers: false,
       pin: pinPx,
     });
-  }, [frames, index, vmin, vmax, displaySize, stretch, invert, pin, luptonScale, meta]);
+  }, [frames, index, vmin, vmax, displaySize, stretch, invert, pin, luptonScale, meta, whitePct, blackPct]);
 
   const setF = (key) => (e) => setForm({ ...form, [key]: e.target.value });
   const f = frames.length ? frames[Math.min(index, frames.length - 1)] : null;
@@ -484,23 +503,23 @@ export default function BlinkPage() {
               </select>
             </label>
             <label>
-              Black point (percentile)
+              {`Black point (${blackPct}%)`}
               <input
-                type="number"
+                type="range"
                 value={blackPct}
                 onChange={(e) => setBlackPct(Number(e.target.value))}
                 min="0"
-                max="50"
-                step="0.5"
+                max="20"
+                step="0.1"
               />
             </label>
             <label>
-              White point (percentile)
+              {`White point (${whitePct}%)`}
               <input
-                type="number"
+                type="range"
                 value={whitePct}
                 onChange={(e) => setWhitePct(Number(e.target.value))}
-                min="50"
+                min="80"
                 max="100"
                 step="0.1"
               />
@@ -514,7 +533,7 @@ export default function BlinkPage() {
               Invert (light background)
             </label>
             <p className="hint">
-              {`Color frames use a hue-preserving Lupton composite: ONE stretch is applied to the calibrated intensity and both bands share it, so hue never depends on brightness; pixels below 2\u03c3 joint significance stay neutral gray (full color from 5\u03c3), so blank sky cannot mottle into false colors. One frozen display scale is shared by ALL epochs \u2014 blinking changes are real. Black point is fixed at sky (0) for color frames; the percentiles drive grayscale slices.`}
+              {`Color frames use a hue-preserving Lupton composite: ONE stretch is applied to the calibrated intensity and both bands share it, so hue never depends on brightness; pixels below 2\u03c3 joint significance stay neutral gray (full color from 5\u03c3), so blank sky cannot mottle into false colors. All display controls apply instantly \u2014 black/white points set the intensity pedestal and stretch ceiling on ONE scale pooled across ALL epochs (blinking changes are real), and Invert gives a hue-preserving light background: sky turns white while orange stays orange and blue stays blue.`}
             </p>
           </fieldset>
         </form>

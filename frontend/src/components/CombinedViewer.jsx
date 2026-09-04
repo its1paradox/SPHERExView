@@ -207,7 +207,15 @@ export default function CombinedViewer({
     ctx.fillRect(0, 0, displaySize, displaySize);
     if (!tf) return;
 
-    const off = renderOffscreen({ ...entry.f, vmin, vmax }, { stretch, invert });
+    const off = renderOffscreen(
+      { ...entry.f, vmin, vmax },
+      {
+        stretch,
+        invert,
+        whitePct: !isWise && view.sxScaleMode === 'percentile' ? view.sxWhitePct : undefined,
+        blackPct: !isWise && view.sxScaleMode === 'percentile' ? view.sxBlackPct : undefined,
+      },
+    );
     ctx.save();
     ctx.imageSmoothingEnabled = Boolean(smooth);
     if (smooth) ctx.imageSmoothingQuality = 'high';

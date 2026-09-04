@@ -156,7 +156,7 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
               SPHEREx frames after WISE
               <select value={view.combinedMode} onChange={setV('combinedMode', String)}>
                 <option value="exposures">Raw exposures (all bands)</option>
-                <option value="d6">D6 epoch coadds {'\u2014'} W2 successor</option>
+                <option value="d6">D6 epoch coadds {'\u2014'} W2 bandpass (4.42{'\u2013'}5.00 {'\u00b5'}m)</option>
               </select>
             </label>
           )}

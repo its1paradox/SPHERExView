@@ -208,23 +208,70 @@ function smoothstep01(t) {
   return c * c * (3 - 2 * c);
 }
 
+// Percentile of an ascending-sorted numeric array (pct in 0..100).
+function sortedPct(sorted, pct) {
+  if (!sorted || !sorted.length) return 0;
+  const i = Math.round((pct / 100) * (sorted.length - 1));
+  return sorted[Math.min(sorted.length - 1, Math.max(0, i))];
+}
+
 // Two-channel scientific color composite: short -> blue, long -> red,
 // green = mean (the WiseView / unWISE W1-blue W2-red language, in which a
-// long-only source is exactly (1, 0.5, 0) = orange).  Always rendered on a
-// dark background: complement-inverting an RGB composite would flip orange
-// to blue and destroy the wavelength-anchored color semantics.
-function renderLupton(frame, { stretch }, px) {
+// long-only source is exactly (1, 0.5, 0) = orange).
+//
+// Inversion (light background) is HUE-PRESERVING: plain complement would
+// flip orange to blue, so inverted pixels are complemented AND the R/B
+// channels swapped (the AstroToolBox trick) -- sky becomes white, an
+// orange source stays orange, a blue source stays blue.
+//
+// White/black points respond live to the display controls: when the
+// colorScale carries the pooled positive-intensity distribution
+// (posSorted + sigI), W and the black pedestal B are recomputed from the
+// current whitePct/blackPct on every draw (W floored at 25 sigma_I so a
+// starless field cannot over-stretch the sky).
+function renderLupton(frame, { stretch, invert, whitePct, blackPct }, px) {
   const { data, data2, colorScale } = frame;
-  const { sigmaS, sigmaL, W, sat = 1.25, mode = 'color', focusLong = true } = colorScale;
+  const { sigmaS, sigmaL, sat = 1.25, mode = 'color', focusLong = true } = colorScale;
   const n = data.length;
+  let W = colorScale.W;
+  let B = 0;
+  if (colorScale.posSorted && colorScale.posSorted.length) {
+    W = Math.max(
+      sortedPct(colorScale.posSorted, whitePct == null ? 99.5 : whitePct),
+      25 * (colorScale.sigI || 0),
+    );
+    B = sortedPct(colorScale.posSorted, blackPct == null ? 0.5 : blackPct);
+  }
+  // Black pedestal in transformed units: t = (T(I)-T(B)) / (1-T(B)).
+  const applyBlack = (t, TB) => {
+    const v = (t - TB) / (1 - TB || 1);
+    return v < 0 ? 0 : v > 1 ? 1 : v;
+  };
+  const putRGB = (o, R, G, B8) => {
+    if (invert) {
+      // complement + R/B swap: hue-preserving light background
+      px[o] = 255 - Math.round(B8 * 255);
+      px[o + 1] = 255 - Math.round(G * 255);
+      px[o + 2] = 255 - Math.round(R * 255);
+    } else {
+      px[o] = Math.round(R * 255);
+      px[o + 1] = Math.round(G * 255);
+      px[o + 2] = Math.round(B8 * 255);
+    }
+    px[o + 3] = 255;
+  };
 
   if (mode === 'excess') {
     // Grayscale reference field + single-hue overlay where the focus
     // channel is in significant EXCESS over the reference (the strongest
     // finder mode: reference-channel noise can never paint color).
     const sigmaE = Math.hypot(sigmaS, sigmaL);
-    const WL = 40 * (focusLong ? sigmaS : sigmaL); // reference luminance scale
+    // Reference luminance scale follows the live white point when the
+    // pooled intensity distribution is available (so the White point
+    // control works in excess mode too); 40 sigma_ref otherwise.
+    const WL = colorScale.posSorted ? W : 40 * (focusLong ? sigmaS : sigmaL);
     const WE = 20 * sigmaE; // excess stretch scale
+    const TBL = intensityTransform(B, WL, stretch);
     const hue = focusLong ? [1, 0.5, 0] : [0, 0.5, 1];
     for (let i = 0; i < n; i += 1) {
       const XS = data[i] * sigmaS;
@@ -233,19 +280,17 @@ function renderLupton(frame, { stretch }, px) {
       const E = focusLong ? XL - XS : XS - XL; // unit gains, AB-flat neutral
       const zE = E / sigmaE;
       const a = smoothstep01((zE - 2.5) / 2.5); // onset 2.5 sigma, full 5 sigma
-      const L = intensityTransform(Math.max(refFlux, 0), WL, stretch);
+      const L = applyBlack(intensityTransform(Math.max(refFlux, 0), WL, stretch), TBL);
       const O = intensityTransform(Math.max(E, 0), WE, stretch);
-      const o = i * 4;
-      for (let c = 0; c < 3; c += 1) {
-        let v = (1 - a) * L + a * O * hue[c];
-        v = v < 0 ? 0 : v > 1 ? 1 : v;
-        px[o + c] = Math.round(v * 255);
-      }
-      px[o + 3] = 255;
+      const vR = Math.min(1, (1 - a) * L + a * O * hue[0]);
+      const vG = Math.min(1, (1 - a) * L + a * O * hue[1]);
+      const vB = Math.min(1, (1 - a) * L + a * O * hue[2]);
+      putRGB(i * 4, vR, vG, vB);
     }
     return;
   }
 
+  const TB = intensityTransform(B, W, stretch);
   for (let i = 0; i < n; i += 1) {
     const zS = data[i];
     const zL = data2[i];
@@ -254,31 +299,27 @@ function renderLupton(frame, { stretch }, px) {
     const I = (XS + XL) / 2; // = (r+g+b)/3 with g=(r+b)/2
     let R = 0;
     let G = 0;
-    let B = 0;
+    let Bc = 0;
     if (I > 0) {
-      const k = intensityTransform(I, W, stretch) / I;
+      const k = applyBlack(intensityTransform(I, W, stretch), TB) / I;
       R = k * XL;
-      B = k * XS;
-      G = 0.5 * (R + B);
-      const mx = R > B ? R : B; // G is their mean, never the max
+      Bc = k * XS;
+      G = 0.5 * (R + Bc);
+      const mx = R > Bc ? R : Bc; // G is their mean, never the max
       if (mx > 1) {
         R /= mx;
         G /= mx;
-        B /= mx;
+        Bc /= mx;
       }
     }
     // Chroma gate: joint positive-source S/N (z units ARE flux/sigma).
     const S = Math.hypot(Math.max(0, zS), Math.max(0, zL));
     const s = sat * smoothstep01((S - 2) / 3);
-    const V = R > G ? (R > B ? R : B) : G > B ? G : B;
+    const V = R > G ? (R > Bc ? R : Bc) : G > Bc ? G : Bc;
     R = Math.max(0, V - s * (V - R));
     G = Math.max(0, V - s * (V - G));
-    B = Math.max(0, V - s * (V - B));
-    const o = i * 4;
-    px[o] = Math.round(R * 255);
-    px[o + 1] = Math.round(G * 255);
-    px[o + 2] = Math.round(B * 255);
-    px[o + 3] = 255;
+    Bc = Math.max(0, V - s * (V - Bc));
+    putRGB(i * 4, R, G, Bc);
   }
 }
 
@@ -295,7 +336,7 @@ function renderLupton(frame, { stretch }, px) {
 // Render a frame's float32 data to an offscreen canvas at native resolution
 // (stretch + contrast limits + optional grayscale inversion applied).
 // Shared by the per-mission viewers and the combined WISE→SPHEREx timeline.
-export function renderOffscreen(frame, { stretch, invert }, off = null) {
+export function renderOffscreen(frame, { stretch, invert, whitePct, blackPct }, off = null) {
   const { data, data2, width: w, height: h, vmin, vmax } = frame;
   const target = off || document.createElement('canvas');
   target.width = w;
@@ -304,7 +345,7 @@ export function renderOffscreen(frame, { stretch, invert }, off = null) {
   const img = octx.createImageData(w, h);
   const px = img.data;
   if (data2 && frame.colorScale) {
-    renderLupton(frame, { stretch }, px);
+    renderLupton(frame, { stretch, invert, whitePct, blackPct }, px);
     octx.putImageData(img, 0, 0);
     return target;
   }
@@ -339,14 +380,15 @@ export function renderOffscreen(frame, { stretch, invert }, off = null) {
 
 export function drawFrame(canvas, frame, opts) {
   const { width: w, height: h } = frame;
-  const { scale, canvasW, canvasH, stretch, invert, smooth, showMarkers } = opts;
+  const { scale, canvasW, canvasH, stretch, invert, smooth, showMarkers, whitePct, blackPct } =
+    opts;
 
   if (canvas.width !== canvasW) canvas.width = canvasW;
   if (canvas.height !== canvasH) canvas.height = canvasH;
 
   // Render at native resolution on an offscreen canvas.
   if (!drawFrame._off) drawFrame._off = document.createElement('canvas');
-  const off = renderOffscreen(frame, { stretch, invert }, drawFrame._off);
+  const off = renderOffscreen(frame, { stretch, invert, whitePct, blackPct }, drawFrame._off);
 
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = invert ? '#fff' : '#000';
