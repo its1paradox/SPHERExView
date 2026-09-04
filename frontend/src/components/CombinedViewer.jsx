@@ -152,6 +152,13 @@ export default function CombinedViewer({
       : [0, 1];
     return frames.map((e) => {
       if (e.mission === 'WISE') return wiseRef;
+      if (e.f.wiseStyle) {
+        return astroToolboxLimits(
+          e.f.sorted2 || e.f.sorted,
+          view.wiseBrightness,
+          view.wiseContrast,
+        );
+      }
       if (view.sxScaleMode === 'percentile') {
         return percentileLimits(e.f.sorted, view.sxBlackPct, view.sxWhitePct);
       }
@@ -196,9 +203,10 @@ export default function CombinedViewer({
     const tf = transforms[i];
     const [vmin, vmax] = limits[i];
     const isWise = entry.mission === 'WISE';
-    const invert = isWise ? view.wiseInvert : view.sxInvert;
-    const stretch = isWise ? view.wiseStretch : view.sxStretch;
-    const smooth = isWise ? view.wiseSmooth : view.sxSmooth;
+    const useWiseDisplay = isWise || entry.f.wiseStyle;
+    const invert = useWiseDisplay ? view.wiseInvert : view.sxInvert;
+    const stretch = useWiseDisplay ? view.wiseStretch : view.sxStretch;
+    const smooth = useWiseDisplay ? view.wiseSmooth : view.sxSmooth;
 
     canvas.width = displaySize;
     canvas.height = displaySize;
@@ -212,8 +220,10 @@ export default function CombinedViewer({
       {
         stretch,
         invert,
-        whitePct: !isWise && view.sxScaleMode === 'percentile' ? view.sxWhitePct : undefined,
-        blackPct: !isWise && view.sxScaleMode === 'percentile' ? view.sxBlackPct : undefined,
+        whitePct:
+          !useWiseDisplay && view.sxScaleMode === 'percentile' ? view.sxWhitePct : undefined,
+        blackPct:
+          !useWiseDisplay && view.sxScaleMode === 'percentile' ? view.sxBlackPct : undefined,
       },
     );
     ctx.save();

@@ -83,8 +83,8 @@ FITS downloads are cached under `backend/cache/`, so a persistent disk
 | `GET /api/health` | Liveness check |
 | `GET /api/cutouts` | Cutouts around a position |
 | `GET /api/epoch-stack` | Time-ordered cutout stack for blinking |
-| `GET /api/coadd` | Per-detector CO-ADD stacks (deep, mixed-wavelength images; `background=zodi\|none`, `sigma`, `maxiters`) |
-| `GET /api/epoch-coadds` | Time-resolved COLOR epoch-coadd blink sequence: exposures are clustered into natural sky-pass VISITS (a new epoch starts where the gap between consecutive exposures exceeds `min(30 d, bin_months·30.4375/4)` — the unWISE gap rule of Meisner et al. 2018 scaled to SPHEREx), so a visit is never split by a calendar boundary; continuous polar coverage falls back to balanced `bin_months`-long windows. Each epoch is stacked into a D1–D4 (blue) + D5–D6 (orange) two-channel frame on ONE shared grid, per-epoch robust z-scored. When more exposures exist than `limit`, they are subsampled evenly across time. Optional `band=SPHEREx-D1..D6` FOCUSES the blink on one detector while keeping WiseView-style color: the focus detector against a reference channel (`ref=auto` → the W-analogue counterpart, D4↔D6; `ref=excess` → same pairing, rendered client-side as a grayscale field + focus-band excess overlay; `ref=broad` → the full complementary side; `ref=none` → explicit grayscale slice) |
+| `GET /api/coadd` | Per-detector CO-ADD stacks (deep, mixed-wavelength images; configurable `background=zodi\|none`, `sigma`, `maxiters`, `pixscale_arcsec`, and `resampling=nearest\|bilinear`) |
+| `GET /api/epoch-coadds` | Time-resolved COLOR epoch-coadd blink sequence: exposures are clustered into natural sky-pass VISITS (a new epoch starts where the gap between consecutive exposures exceeds `min(30 d, bin_months·30.4375/4)` — the unWISE gap rule of Meisner et al. 2018 scaled to SPHEREx), so a visit is never split by a calendar boundary; continuous polar coverage falls back to balanced `bin_months`-long windows. Each epoch is stacked into two configurable channels on ONE shared grid, per-epoch robust z-scored. Defaults are D1–D4 (blue) + D5–D6 (orange); `short_detectors` and `long_detectors` accept any non-empty, disjoint detector groups. `pixscale_arcsec` and `resampling=nearest\|bilinear` control output sampling. When more exposures exist than `limit`, they are subsampled evenly across time. Optional `band=SPHEREx-D1..D6` focuses the blink on one detector while keeping WiseView-style color: the focus detector against a reference channel (`ref=auto` → the W-analogue counterpart, D4↔D6; `ref=excess` → same pairing, rendered client-side as a grayscale field + focus-band excess overlay; `ref=broad` → the full complementary side; `ref=none` → explicit grayscale slice) |
 | `GET /api/wise-stack` | Time-resolved unWISE epoch stack via WiseView (byw.tools), one dated frame per ~6-month visit, optional Gaia DR3 markers |
 | `POST /api/spectra/submit` | Submit an IRSA SPHEREx spectrophotometry job (`ra`, `dec`, `bkg_region`) |
 | `GET /api/spectra/status/{job_id}` | UWS job phase (QUEUED / EXECUTING / COMPLETED / ERROR) |
@@ -199,14 +199,22 @@ DR3 markers in image-pixel coordinates, proper-motion propagated from epoch
   The epoch information always lives in the focus channel; the reference
   is a static comparison field, so color stays continuous across the blink.
 
-- **WISE → D6 epoch coadds in the combined timeline**: the combined timeline
-  can play *D6 + D4-reference epoch coadds* (one per sky-pass visit) after
-  the unWISE epochs instead of raw SPHEREx exposures (“SPHEREx frames after
-  WISE” select). D6 (4.42–5.00 µm) is the closest SPHEREx match to WISE W2
-  (4.6 µm) and D4 to W1, so the timeline keeps both the wavelength regime
-  AND the two-color contrast across the mission handoff — W1/W2 epoch
-  coadds 2010→2024, then W2/W1-analogue SPHEREx epoch coadds at coadd
-  depth, all in the same rigid sky frame (`cmode=d6` in the hash).
+- **Four SPHEREx timeline products**: “SPHEREx frames after WISE” offers raw
+  exposures, a true D6-only grayscale slice, a **D4 + D6 W1+W2-matched**
+  coadd, and a fully configurable maximum-depth color coadd. The matched
+  option uses the exact same blue/orange channel placement and
+  brightness/contrast controls as the preceding WiseView W1+W2 frames:
+  D6 (4.42–5.00 µm) is the closest SPHEREx W2 analogue and D4
+  (2.42–3.82 µm) contains the W1 wavelength. The SPHEREx spectral responses
+  are not identical to the WISE filters, so labels retain D4/D6 rather than
+  implying photometric equivalence. The configurable product defaults to
+  the deeper D1–D4 blue + D5–D6 orange grouping, and lets the observer set
+  either channel's detectors, epoch span, exposure cap, minimum channel
+  depth, background treatment, clipping, output pixel scale, and
+  interpolation. A 3.1″ output grid with bilinear interpolation reduces
+  visible blockiness for inspection without claiming new angular
+  resolution; 6.2″ nearest-neighbour remains available as the conservative
+  native-sampling recipe. Every setting is encoded in the shareable URL.
 
 - **Shareable URLs**: every query and display attribute — target, FoV,
   survey, bands, WISE band, zoom, blink speed, stretch, black/white points,

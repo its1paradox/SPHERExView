@@ -20,37 +20,47 @@ function toFrame(base) {
   return frame;
 }
 
-// D6-focused epoch coadd (from /api/epoch-coadds?band=SPHEREx-D6) as a frame
-// the combined WISE→SPHEREx timeline can play after the unWISE epochs.  D6
-// (4.42–5.00 µm) covers the WISE W2 (4.6 µm) bandpass, and the backend now
-// pairs it with a D4 reference channel (2.42–3.82 µm, which contains W1's
-// 3.4 µm bandpass) — the detector-level W2/W1 analogue — so these frames
-// keep the exact WiseView color contrast of the W1+W2 epochs before them:
-// D4 feeds blue (data), D6 feeds orange (data2), and a cold source visible
-// only in D6 stays orange across the mission handoff.  Rendering uses the
-// hue-preserving Lupton composite (per-channel sky sigmas restore the
-// calibrated flux ratio; chroma is gated by joint S/N).  Visits that lack
-// the reference detector arrive with a FULL-DEPTH reference substituted by
-// the backend (ref_scope="full-depth", labeled here) so the color language
-// stays continuous; a frame is grayscale only if no reference exposures
-// exist anywhere in the queried span.
-function toCombinedCoaddFrame(c) {
+// Convert an epoch-coadd API result into a combined-timeline frame. Recipes
+// may be single-channel, WiseView-matched D4+D6, or any custom two-channel
+// detector grouping. WiseView-matched frames deliberately skip colorScale:
+// that routes them through the exact same W1+W2 channel mapping and display
+// controls as the preceding WISE epochs.
+function toCombinedCoaddFrame(c, recipe) {
   const md = c.metadata;
   const isColor = Boolean(c.data2_b64 && md.channels === 'color');
-  const long = decodeB64Float32(c.data2_b64 || c.data_b64);
-  const nLong = md.long_channel ? md.long_channel.n_exposures : md.n_exposures;
+  let long = decodeB64Float32(c.data2_b64 || c.data_b64);
+  const channelName = (ch) =>
+    ch?.detectors?.length ? ch.detectors.map((d) => `D${d}`).join('+') : 'channel';
+  const shortName = channelName(md.short_channel);
+  const longName = channelName(md.long_channel);
+  const fullDepthReference = [md.short_channel, md.long_channel]
+    .find((channel) => channel?.ref_scope === 'full-depth');
+  const referenceNote = fullDepthReference
+    ? ` \u00b7 ${channelName(fullDepthReference)} full-depth reference`
+    : '';
   if (!isColor) {
     return {
       ...c,
       data: long,
       data2: null,
       sorted: sortPixels(long),
-      label: `D6 CO-ADD \u00b7 ${nLong} exp \u00b7 grayscale`,
+      label: `${recipe.label} \u00b7 ${md.n_exposures} exp \u00b7 grayscale`,
       sublabel: `${md.datetime_min_utc.slice(0, 10)} \u2192 ${md.datetime_max_utc.slice(0, 10)}`,
       metadata: { ...md, mjd_mid: (md.mjd_min + md.mjd_max) / 2, target_covered: true },
     };
   }
-  const short = decodeB64Float32(c.data_b64);
+  let short = decodeB64Float32(c.data_b64);
+  // The API transmits each channel in robust sky-noise units. Restore the
+  // calibrated MJy/sr deviations before using WiseView's ordinary W1+W2
+  // renderer, otherwise unequal D4/D6 noise would create false colors.
+  if (recipe.wiseStyle) {
+    const shortSigma = md.short_channel?.sky_sigma_mjy_sr;
+    const longSigma = md.long_channel?.sky_sigma_mjy_sr;
+    if (shortSigma && longSigma) {
+      short = Float32Array.from(short, (value) => value * shortSigma);
+      long = Float32Array.from(long, (value) => value * longSigma);
+    }
+  }
   const both = new Float32Array(short.length + long.length);
   both.set(short, 0);
   both.set(long, short.length);
@@ -60,15 +70,15 @@ function toCombinedCoaddFrame(c) {
     data2: long,
     sigmaS: md.short_channel?.sky_sigma_mjy_sr || null,
     sigmaL: md.long_channel?.sky_sigma_mjy_sr || null,
+    wiseStyle: recipe.wiseStyle,
+    sorted2: sortPixels(long),
     sorted: sortPixels(both),
     label:
-      `D6 CO-ADD \u00b7 ${nLong} exp` +
-      (md.short_channel
-        ? md.short_channel.ref_scope === 'full-depth'
-          ? ` (+${md.short_channel.n_exposures}-exp full-depth D4 ref)`
-          : ` (+${md.short_channel.n_exposures} D4 ref)`
-        : ''),
-    sublabel: `${md.datetime_min_utc.slice(0, 10)} \u2192 ${md.datetime_max_utc.slice(0, 10)}`,
+      `${recipe.label} \u00b7 ${shortName} ${md.short_channel.n_exposures} exp` +
+      ` + ${longName} ${md.long_channel.n_exposures} exp`,
+    sublabel:
+      `${md.datetime_min_utc.slice(0, 10)} \u2192 ${md.datetime_max_utc.slice(0, 10)}` +
+      referenceNote,
     metadata: { ...md, mjd_mid: (md.mjd_min + md.mjd_max) / 2, target_covered: true },
   };
 }
@@ -205,10 +215,12 @@ export default function App() {
   const [coaddFrames, setCoaddFrames] = useState([]);
   const [coaddStatus, setCoaddStatus] = useState(null);
   const coaddKey = useRef(null); // query already coadded (avoid refetch)
-  // D6-only epoch coadds for the combined timeline (lazy, cached per field).
+  // Epoch coadds for the combined timeline (lazy, cached per recipe).
   const [combinedCoadds, setCombinedCoadds] = useState([]);
   const [combinedCoaddStatus, setCombinedCoaddStatus] = useState(null);
   const combinedCoaddKey = useRef(null);
+  const combinedCoaddAbort = useRef(null);
+  const wiseMatchAbort = useRef(null);
   const [status, setStatus] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -239,45 +251,147 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view.showCoadd, queried, loading]);
 
-  // Selecting "D6 epoch coadds" for the combined timeline lazily builds them
-  // (visit-grouped epochs, one per sky pass, D6 + D4 reference color — the
-  // exact frames the blink page makes for band=SPHEREx-D6).  Cached per
-  // field so flipping the select is free.
+  // Coadd modes are fetched lazily and cached by the full scientific recipe.
   useEffect(() => {
-    if (!queried || loading || !view.showCombined || view.combinedMode !== 'd6') return;
-    const key = `${queried.ra},${queried.dec},${queried.fov},${queried.survey}`;
+    if (!queried || loading || !view.showCombined || view.combinedMode === 'exposures') return;
+    const recipe =
+      view.combinedMode === 'd6'
+        ? { label: 'D6 CO-ADD', band: 'SPHEREx-D6', ref: 'none', wiseStyle: false }
+        : view.combinedMode === 'wise'
+          ? {
+              label: 'W1+W2-MATCHED CO-ADD',
+              band: 'SPHEREx-D6',
+              ref: 'auto',
+              wiseStyle: true,
+            }
+          : {
+              label: 'CUSTOM COLOR CO-ADD',
+              short: view.combinedShortDetectors,
+              long: view.combinedLongDetectors,
+              wiseStyle: false,
+            };
+    const key = JSON.stringify({ queried, recipe, view: {
+      months: view.combinedMonths,
+      limit: view.combinedLimit,
+      background: view.combinedBackground,
+      sigma: view.combinedSigma,
+      maxiters: view.combinedMaxiters,
+      minChannel: view.combinedMinChannelExposures,
+      pixscale: view.combinedPixscale,
+      resampling: view.combinedResampling,
+    } });
     if (combinedCoaddKey.current === key) return;
     combinedCoaddKey.current = key;
+    const controller = new AbortController();
+    combinedCoaddAbort.current = controller;
     setCombinedCoadds([]);
     setCombinedCoaddStatus(
-      'Stacking D6 epoch coadds for the combined timeline\u2026 one D6 + D4-reference coadd per sky-pass visit.',
+      `Building ${recipe.label.toLowerCase()}\u2026 one stack per sky-pass visit.`,
     );
     const params = new URLSearchParams({
       ra: queried.ra,
       dec: queried.dec,
       radius_arcsec: queried.fov / 2,
       survey: queried.survey,
-      bin_months: 6,
-      band: 'SPHEREx-D6',
-      limit: 500,
+      bin_months: view.combinedMonths,
+      limit: view.combinedLimit,
+      background: view.combinedBackground,
+      sigma: view.combinedSigma,
+      maxiters: view.combinedMaxiters,
+      min_channel_exposures: view.combinedMinChannelExposures,
+      pixscale_arcsec: view.combinedPixscale,
+      resampling: view.combinedResampling,
     });
-    fetch(`/api/epoch-coadds?${params}`)
+    if (recipe.band) {
+      params.set('band', recipe.band);
+      params.set('ref', recipe.ref);
+    } else {
+      params.set('short_detectors', recipe.short.join(','));
+      params.set('long_detectors', recipe.long.join(','));
+    }
+    const timer = window.setTimeout(() => {
+      fetch(`/api/epoch-coadds?${params}`, { signal: controller.signal })
+        .then((r) =>
+          r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.detail || r.statusText))),
+        )
+        .then((d) => {
+          if (combinedCoaddKey.current !== key) return;
+          const mapped = d.frames.map((frame) => toCombinedCoaddFrame(frame, recipe));
+          setCombinedCoadds(
+            recipe.wiseStyle ? mapped : attachLuptonScale(mapped, { sat: 1.25 }),
+          );
+          setCombinedCoaddStatus(
+            d.count
+              ? null
+              : `No ${recipe.label.toLowerCase()} frames are available for this field.`,
+          );
+        })
+        .catch((err) => {
+          if (err.name === 'AbortError' || combinedCoaddKey.current !== key) return;
+          combinedCoaddKey.current = null;
+          setCombinedCoaddStatus(`${recipe.label} failed: ${err.message}`);
+        });
+    }, 300);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+      if (combinedCoaddAbort.current === controller) {
+        combinedCoaddAbort.current = null;
+        combinedCoaddKey.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    queried,
+    loading,
+    view.showCombined,
+    view.combinedMode,
+    view.combinedMonths,
+    view.combinedLimit,
+    view.combinedBackground,
+    view.combinedSigma,
+    view.combinedMaxiters,
+    view.combinedMinChannelExposures,
+    view.combinedPixscale,
+    view.combinedResampling,
+    view.combinedShortDetectors,
+    view.combinedLongDetectors,
+  ]);
+
+  // The matched product is a full color handoff, not W2 grayscale followed
+  // by D4+D6 color. Fetch W1+W2 epochs automatically when this mode is used.
+  useEffect(() => {
+    if (!queried || loading || !view.showCombined || view.combinedMode !== 'wise') return;
+    const controller = new AbortController();
+    wiseMatchAbort.current = controller;
+    const params = new URLSearchParams({
+      ra: queried.ra,
+      dec: queried.dec,
+      size_arcsec: queried.fov,
+      band: 'w1w2',
+      gaia: 'true',
+    });
+    fetch(`/api/wise-stack?${params}`, { signal: controller.signal })
       .then((r) =>
         r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.detail || r.statusText))),
       )
       .then((d) => {
-        setCombinedCoadds(attachLuptonScale(d.frames.map(toCombinedCoaddFrame), { sat: 1.25 }));
-        setCombinedCoaddStatus(
-          d.count
-            ? null
-            : 'No D6 epoch coadds available for this field \u2014 showing nothing after WISE.',
+        if (controller.signal.aborted) return;
+        setWiseFrames(
+          d.frames.map((f) =>
+            toFrame({
+              ...f,
+              markers: f.gaia_markers,
+              label: `${f.band} epoch ${f.epoch}`,
+              sublabel: f.datetime_utc ? f.datetime_utc.slice(0, 10) : '',
+            }),
+          ),
         );
       })
       .catch((err) => {
-        combinedCoaddKey.current = null;
-        setCombinedCoaddStatus(`D6 epoch coadds failed: ${err.message}`);
+        if (err.name !== 'AbortError') setCombinedCoaddStatus(`WISE W1+W2 fetch failed: ${err.message}`);
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => controller.abort();
   }, [queried, loading, view.showCombined, view.combinedMode]);
 
   // Per-detector CO-ADD stacks (mixed-lambda deep images).  Fetched AFTER
@@ -339,6 +453,8 @@ export default function App() {
     setCombinedCoadds([]);
     setCombinedCoaddStatus(null);
     combinedCoaddKey.current = null;
+    combinedCoaddAbort.current?.abort();
+    wiseMatchAbort.current?.abort();
     setPin(null); // shared pin belongs to the previous field
     coaddKey.current = null;
     setQueried({
@@ -553,17 +669,17 @@ export default function App() {
           {view.showCoadd && coaddFrames.length > 0 && coaddStatus && (
             <p className="status coadd-note">{coaddStatus}</p>
           )}
-          {view.showCombined && view.combinedMode === 'd6' && combinedCoaddStatus && (
+          {view.showCombined && view.combinedMode !== 'exposures' && combinedCoaddStatus && (
             <p className="status coadd-note">{combinedCoaddStatus}</p>
           )}
           {view.showCombined &&
             queried &&
-            (view.combinedMode === 'd6' ? combinedCoadds : spherexFrames).length > 0 &&
+            (view.combinedMode === 'exposures' ? spherexFrames : combinedCoadds).length > 0 &&
             wiseFrames.length > 0 && (
               <div className="viewer-row">
                 <CombinedViewer
                   wiseFrames={wiseFrames}
-                  spherexFrames={view.combinedMode === 'd6' ? combinedCoadds : spherexFrames}
+                  spherexFrames={view.combinedMode === 'exposures' ? spherexFrames : combinedCoadds}
                   target={queried}
                   fov={queried.fov}
                   view={view}

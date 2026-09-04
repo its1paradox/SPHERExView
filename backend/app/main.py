@@ -323,7 +323,15 @@ def _query_sorted_images(ra, dec, radius_arcsec, survey, band, limit):
     return images[:limit]
 
 
-def _fetch_aligned(images, ra, dec, size_arcsec, background):
+def _fetch_aligned(
+    images,
+    ra,
+    dec,
+    size_arcsec,
+    background,
+    pixscale_arcsec=cx.COADD_PIXSCALE_ARCSEC,
+    resampling="nearest",
+):
     """Download + align exposures onto the shared coadd grid (parallel).
 
     Per-image failures (no overlap, missing extensions, ...) are skipped,
@@ -335,7 +343,13 @@ def _fetch_aligned(images, ra, dec, size_arcsec, background):
         try:
             fits_path = sx.download_cutout(cutout_url)
             exp = cx.load_aligned_exposure(
-                fits_path, ra, dec, size_arcsec, background=background
+                fits_path,
+                ra,
+                dec,
+                size_arcsec,
+                background=background,
+                pixscale_arcsec=pixscale_arcsec,
+                resampling=resampling,
             )
         except sx.CutoutNoOverlapError:
             return None
@@ -360,6 +374,21 @@ def _fetch_aligned(images, ra, dec, size_arcsec, background):
     return exposures, len(results) - len(exposures)
 
 
+MAX_COADD_SIDE = 1024
+MAX_ALIGNED_CELLS = 30_000_000
+
+
+def _validate_coadd_workload(n_px: int, n_images: int):
+    """Reject recipes that would exhaust memory while retaining aligned inputs."""
+    cells = n_px * n_px * max(1, n_images)
+    if n_px > MAX_COADD_SIDE or cells > MAX_ALIGNED_CELLS:
+        raise HTTPException(
+            413,
+            "Requested coadd is too large; reduce the field of view, increase "
+            "the output pixel scale, or lower the exposure limit",
+        )
+
+
 @app.get("/api/coadd")
 def get_coadd(
     ra: float,
@@ -371,6 +400,8 @@ def get_coadd(
     background: str = Query("zodi", pattern="^(zodi|none)$"),
     sigma: float = Query(5.0, ge=0),
     maxiters: int = Query(2, ge=0, le=10),
+    pixscale_arcsec: float = Query(cx.COADD_PIXSCALE_ARCSEC, ge=1.5, le=12.0),
+    resampling: str = Query("nearest", pattern="^(nearest|bilinear)$"),
 ):
     """Per-detector CO-ADD of every matching SPHEREx exposure.
 
@@ -385,10 +416,19 @@ def get_coadd(
     """
     images = _query_sorted_images(ra, dec, radius_arcsec, survey, band, limit)
     size_arcsec = 2 * radius_arcsec
+    n_px, wcs_out = cx.output_grid(ra, dec, size_arcsec, pixscale_arcsec)
+    _validate_coadd_workload(n_px, len(images))
     clip_sigma = sigma if sigma > 0 else None
-    exposures, skipped = _fetch_aligned(images, ra, dec, size_arcsec, background)
+    exposures, skipped = _fetch_aligned(
+        images,
+        ra,
+        dec,
+        size_arcsec,
+        background,
+        pixscale_arcsec,
+        resampling,
+    )
 
-    n_px, wcs_out = cx.output_grid(ra, dec, size_arcsec)
     wcs_dict = imaging.wcs_to_dict(wcs_out, n_px)
 
     import numpy as np
@@ -424,7 +464,8 @@ def get_coadd(
             "background": background,
             "method": "sky_ivar_weighted_mean"
                       + (f"_sigmaclip{clip_sigma:g}" if clip_sigma and len(group) >= 5 else ""),
-            "pixscale_arcsec": cx.COADD_PIXSCALE_ARCSEC,
+            "pixscale_arcsec": pixscale_arcsec,
+            "resampling": resampling,
             "bunit": "MJy / sr (zodi-subtracted)" if background == "zodi" else "MJy / sr",
             "median_coadd_sigma": float(np.nanmedian(np.sqrt(var))),
             "obs_ids": [e.obs_id for e in group],
@@ -449,6 +490,8 @@ def get_coadd(
         "radius_arcsec": radius_arcsec,
         "survey": survey,
         "background": background,
+        "pixscale_arcsec": pixscale_arcsec,
+        "resampling": resampling,
         "n_exposures_input": len(images),
         "n_exposures_skipped": skipped,
         "count": len(coadds),
@@ -470,6 +513,10 @@ def get_epoch_coadds(
     min_channel_exposures: int = Query(1, ge=1),
     band: str | None = Query(None, pattern="^SPHEREx-D[1-6]$"),
     ref: str = Query("auto", pattern="^(auto|excess|broad|none)$"),
+    short_detectors: str | None = Query(None, pattern=r"^[1-6](,[1-6])*$"),
+    long_detectors: str | None = Query(None, pattern=r"^[1-6](,[1-6])*$"),
+    pixscale_arcsec: float = Query(cx.COADD_PIXSCALE_ARCSEC, ge=1.5, le=12.0),
+    resampling: str = Query("nearest", pattern="^(nearest|bilinear)$"),
 ):
     """Time-resolved COLOR epoch-coadd blink sequence: unWISE-style epoch coadds for SPHEREx.
 
@@ -494,10 +541,20 @@ def get_epoch_coadds(
       windows, so no tiny terminal fragment is created.
 
     CHANNELS.  Each epoch is stacked into a TWO-CHANNEL frame on the exact
-    shared north-up grid used by /api/coadd:
+    shared north-up grid used by /api/coadd.  The default grouping is:
 
     - blue channel  = short-wavelength detectors D1-D4 (< 3.82 um)
     - orange channel = long-wavelength detectors D5-D6 (3.82-5.0 um)
+
+    ``short_detectors`` and ``long_detectors`` override those defaults with
+    any two non-empty, disjoint detector groups.  This exposes the recipe
+    rather than baking one scientific interpretation into the tool.
+
+    ``pixscale_arcsec`` controls output sampling (6.2 arcsec is the native,
+    conservative default; 3.1 arcsec is a useful display-oriented
+    oversampling), while ``resampling`` selects nearest-neighbour or
+    bilinear interpolation.  Finer sampling can reduce visible blockiness
+    but cannot recover spatial information absent from the source images.
 
     ``band`` focuses the blink on ONE detector while KEEPING a two-channel
     color composite (the WiseView W1/W2 paradigm: color is the temperature
@@ -540,10 +597,27 @@ def get_epoch_coadds(
     """
     import numpy as np
 
-    # Detector sets for the two channels (band focus keeps a color
-    # reference channel unless ref=none — see docstring).
+    # Detector sets for the two channels. Explicit channel lists power the
+    # configurable scientific recipe; otherwise preserve the focused-band
+    # presets and their full-depth reference behavior.
+    custom_channels = short_detectors is not None or long_detectors is not None
+    if custom_channels:
+        if band is not None:
+            raise HTTPException(400, "band cannot be combined with custom detector channels")
+        short_dets = {int(x) for x in short_detectors.split(",")} if short_detectors else set()
+        long_dets = {int(x) for x in long_detectors.split(",")} if long_detectors else set()
+        if not short_dets or not long_dets:
+            raise HTTPException(400, "custom color coadds require at least one detector per channel")
+        overlap = short_dets & long_dets
+        if overlap:
+            names = ", ".join(f"D{d}" for d in sorted(overlap))
+            raise HTTPException(400, f"detectors cannot appear in both color channels: {names}")
+
+    # Focused-band presets keep a color reference unless ref=none.
     focus_det = int(band[-1]) if band else None
-    if focus_det is None:
+    if custom_channels:
+        pass
+    elif focus_det is None:
         short_dets, long_dets = {1, 2, 3, 4}, {5, 6}
     elif ref == "none":
         short_dets = {focus_det} if focus_det <= 4 else set()
@@ -569,13 +643,22 @@ def get_epoch_coadds(
         idx = np.unique(np.linspace(0, len(images) - 1, limit).round().astype(int))
         images = [images[i] for i in idx]
     size_arcsec = 2 * radius_arcsec
+    n_px, wcs_out = cx.output_grid(ra, dec, size_arcsec, pixscale_arcsec)
+    _validate_coadd_workload(n_px, len(images))
     clip_sigma = sigma if sigma > 0 else None
-    exposures, skipped = _fetch_aligned(images, ra, dec, size_arcsec, background)
+    exposures, skipped = _fetch_aligned(
+        images,
+        ra,
+        dec,
+        size_arcsec,
+        background,
+        pixscale_arcsec,
+        resampling,
+    )
     exposures = [e for e in exposures if e.mjd is not None and e.detector]
     if not exposures:
         raise HTTPException(404, "No usable SPHEREx exposures cover this position")
 
-    n_px, wcs_out = cx.output_grid(ra, dec, size_arcsec)
     wcs_dict = imaging.wcs_to_dict(wcs_out, n_px)
 
     # --- Visit-gap epoch clustering (see docstring) ---------------------
@@ -716,7 +799,13 @@ def get_epoch_coadds(
                       + (f"_sigmaclip{clip_sigma:g}" if clip_sigma else "")
                       + ", median/MAD z-scored per bin",
             "bunit": "sky-noise sigma (per-bin robust z-score)",
-            "pixscale_arcsec": cx.COADD_PIXSCALE_ARCSEC,
+            "pixscale_arcsec": pixscale_arcsec,
+            "resampling": resampling,
+            "channel_recipe": {
+                "short_detectors": sorted(short_dets),
+                "long_detectors": sorted(long_dets),
+                "custom": custom_channels,
+            },
         }
         if band:
             meta["band_focus"] = band
@@ -764,7 +853,14 @@ def get_epoch_coadds(
         "survey": survey,
         "band": band,
         "ref": ref if band else None,
+        "channel_recipe": {
+            "short_detectors": sorted(short_dets),
+            "long_detectors": sorted(long_dets),
+            "custom": custom_channels,
+        },
         "background": background,
+        "pixscale_arcsec": pixscale_arcsec,
+        "resampling": resampling,
         "bin_months": bin_months,
         "bin_days": round(bin_days, 3),
         "grouping": {
