@@ -338,12 +338,16 @@ export default function BlinkPage() {
   const soloDetectors = m && m.channels !== 'color'
     ? (m.channels === 'short-only' ? m.short_channel : m.long_channel)?.detectors
     : null;
+  const refChan = m && m.band_focus
+    ? (parseInt(m.band_focus.replace('SPHEREx-D', ''), 10) >= 5 ? m.short_channel : m.long_channel)
+    : null;
+  const refTag = refChan && refChan.ref_scope === 'full-depth' ? ' (full-depth)' : '';
   const kindLabel = m
     ? m.channels === 'color'
       ? m.band_focus
         ? meta && meta.ref === 'excess'
-          ? `${m.band_focus.replace('SPHEREx-', '')} excess (vs ${m.reference})`
-          : `${m.band_focus.replace('SPHEREx-', '')} + ${m.reference} ref`
+          ? `${m.band_focus.replace('SPHEREx-', '')} excess (vs ${m.reference}${refTag})`
+          : `${m.band_focus.replace('SPHEREx-', '')} + ${m.reference} ref${refTag}`
         : 'COLOR'
       : soloDetectors && soloDetectors.length === 1
         ? `D${soloDetectors[0]} \u00b7 grayscale`

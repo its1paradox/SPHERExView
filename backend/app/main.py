@@ -524,8 +524,18 @@ def get_epoch_coadds(
     z-scored (median / 1.4826*MAD over finite pixels).  Z-scoring matters
     here more than in the static coadd: the zodiacal background level and
     its photon noise CHANGE between epochs at a fixed sky position, so
-    frames are put in per-epoch sky-noise units to blink smoothly.  Epochs
-    where only one channel has coverage are still returned and flagged in
+    frames are put in per-epoch sky-noise units to blink smoothly.
+
+    SINGLE-CHANNEL EPOCHS.  SPHEREx's six detectors are separate strips of
+    the focal plane, so a sky-pass visit can cover a position with only
+    some detectors.  In a FOCUSED movie (``band`` set, ``ref != none``):
+    an epoch with no focus-band exposures is dropped (it says nothing
+    about the focus band at that time), and an epoch missing only the
+    reference channel gets a FULL-DEPTH reference (one deep stack of all
+    reference exposures in the queried span, flagged
+    ``ref_scope="full-depth"`` in the channel metadata) so the color
+    language stays continuous across the blink.  In the unfocused all-band
+    movie, single-channel epochs are still returned and flagged in
     ``metadata.channels``.
     """
     import numpy as np
@@ -597,7 +607,72 @@ def get_epoch_coadds(
                 subs[i].append(e)
             epochs.extend((s, "window") for s in subs if s)
 
+    def _stack_channel(sub):
+        # One channel of one epoch: sky-noise weighted mean of the
+        # zodi-subtracted exposures, then robustly z-scored (median /
+        # 1.4826*MAD) into per-stack sky-noise units.  Channels below the
+        # exposure floor are dropped (3+ recommended for robust outlier
+        # rejection; default 1 keeps sparse QR2 bins).
+        if len(sub) < min_channel_exposures:
+            return None
+        try:
+            img, var, coverage, n_rej, lam = cx.combine(
+                sub, sigma=clip_sigma, maxiters=maxiters
+            )
+        except Exception as exc:
+            log.warning("Epoch-coadd channel stack failed: %s", exc)
+            return None
+        finite = img[np.isfinite(img)]
+        if finite.size == 0:
+            return None
+        # Robust z-score: per-stack sky-noise units (zodi varies
+        # seasonally, so raw MJy/sr levels differ bin to bin).
+        med = float(np.median(finite))
+        sig_px = 1.4826 * float(np.median(np.abs(finite - med)))
+        if sig_px <= 0:
+            sig_px = float(np.std(finite)) or 1.0
+        z = (img - med) / sig_px
+        disp = np.flipud(np.where(np.isfinite(z), z, 0.0)).astype(np.float32)
+        return {
+            "disp": disp,
+            "n": len(sub),
+            "detectors": sorted({e.detector for e in sub}),
+            "lambda_um": lam,
+            "coverage_center": int(coverage[n_px // 2, n_px // 2]),
+            "sky_sigma_mjy_sr": round(sig_px, 6),
+        }
+
+    # FOCUSED MOVIES: SPHEREx's six detectors are physically separate
+    # strips of the focal plane (unlike WISE, whose W1/W2 observed
+    # simultaneously through a beamsplitter), so a single sky-pass visit
+    # can cover a position with the focus detector but NOT its reference
+    # detector.  Two rules keep the sequence scientifically honest:
+    #
+    # 1. an epoch with NO focus-band exposures carries no information
+    #    about the focus band at that time -> dropped from the sequence
+    #    (never shown as a mislabeled grayscale of another detector);
+    # 2. an epoch missing only the REFERENCE channel gets a FULL-DEPTH
+    #    reference: one deep stack of ALL reference-detector exposures
+    #    across the whole queried span (the unWISE/Legacy-Surveys
+    #    time-resolved-vs-full-depth paradigm: the epoch information
+    #    lives in the focus channel, the reference is a static
+    #    comparison field).  Flagged as ref_scope="full-depth" in the
+    #    channel metadata so the client can label it.
+    focus_name = ref_name = None
+    if focus_det is not None and ref != "none":
+        focus_name = "long" if focus_det >= 5 else "short"
+        ref_name = "short" if focus_name == "long" else "long"
+    full_ref_cache: dict = {}
+
+    def _full_depth_ref():
+        if "ref" not in full_ref_cache:
+            ref_dets = short_dets if ref_name == "short" else long_dets
+            sub = [e for e in exposures if e.detector in ref_dets]
+            full_ref_cache["ref"] = _stack_channel(sub) if sub else None
+        return full_ref_cache["ref"]
+
     frames = []
+    epochs_dropped_no_focus = 0
     for k, (grp, grouping) in enumerate(epochs):
         groups = {
             "short": [e for e in grp if e.detector in short_dets],
@@ -605,38 +680,21 @@ def get_epoch_coadds(
         }
         channels = {}
         for name, sub in groups.items():
-            # Channels below the exposure floor are dropped (3+ recommended
-            # for robust outlier rejection; default 1 keeps sparse QR2 bins).
-            if len(sub) < min_channel_exposures:
-                continue
-            try:
-                img, var, coverage, n_rej, lam = cx.combine(
-                    sub, sigma=clip_sigma, maxiters=maxiters
-                )
-            except Exception as exc:
-                log.warning("Epoch-coadd bin %d channel %s failed: %s", k, name, exc)
-                continue
-            finite = img[np.isfinite(img)]
-            if finite.size == 0:
-                continue
-            # Robust z-score: per-epoch sky-noise units (zodi varies
-            # seasonally, so raw MJy/sr levels differ bin to bin).
-            med = float(np.median(finite))
-            sig_px = 1.4826 * float(np.median(np.abs(finite - med)))
-            if sig_px <= 0:
-                sig_px = float(np.std(finite)) or 1.0
-            z = (img - med) / sig_px
-            disp = np.flipud(np.where(np.isfinite(z), z, 0.0)).astype(np.float32)
-            channels[name] = {
-                "disp": disp,
-                "n": len(sub),
-                "detectors": sorted({e.detector for e in sub}),
-                "lambda_um": lam,
-                "coverage_center": int(coverage[n_px // 2, n_px // 2]),
-                "sky_sigma_mjy_sr": round(sig_px, 6),
-            }
+            ch = _stack_channel(sub)
+            if ch is not None:
+                channels[name] = ch
         if not channels:
             continue
+        ref_scope = "epoch"
+        if focus_name is not None:
+            if focus_name not in channels:
+                epochs_dropped_no_focus += 1
+                continue
+            if ref_name not in channels:
+                fr = _full_depth_ref()
+                if fr is not None:
+                    channels[ref_name] = fr
+                    ref_scope = "full-depth"
         mjds = sorted(e.mjd for e in grp)
         max_gap = max((b - a for a, b in zip(mjds, mjds[1:])), default=0.0)
         kind = "color" if len(channels) == 2 else f"{next(iter(channels))}-only"
@@ -678,6 +736,12 @@ def get_epoch_coadds(
                     "coverage_center": ch["coverage_center"],
                     "sky_sigma_mjy_sr": ch["sky_sigma_mjy_sr"],
                 }
+                if name == ref_name:
+                    # "epoch" = reference observed in this same visit;
+                    # "full-depth" = deep all-epoch reference stack
+                    # substituted because this visit lacked the reference
+                    # detector (separate focal-plane strips).
+                    meta[f"{name}_channel"]["ref_scope"] = ref_scope
         frame = {
             "id": f"epoch{k}",
             "width": n_px,
@@ -709,6 +773,7 @@ def get_epoch_coadds(
             "target_epoch_days": round(bin_days, 3),
             "fallback": "balanced_time_windows",
         },
+        "epochs_dropped_no_focus": epochs_dropped_no_focus,
         "n_exposures_input": len(images),
         "n_exposures_skipped": skipped,
         "count": len(frames),

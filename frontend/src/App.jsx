@@ -29,9 +29,11 @@ function toFrame(base) {
 // D4 feeds blue (data), D6 feeds orange (data2), and a cold source visible
 // only in D6 stays orange across the mission handoff.  Rendering uses the
 // hue-preserving Lupton composite (per-channel sky sigmas restore the
-// calibrated flux ratio; chroma is gated by joint S/N).  If the reference
-// channel is missing at an epoch, the frame is an explicitly labeled
-// GRAYSCALE slice \u2014 a lone band carries no color information.
+// calibrated flux ratio; chroma is gated by joint S/N).  Visits that lack
+// the reference detector arrive with a FULL-DEPTH reference substituted by
+// the backend (ref_scope="full-depth", labeled here) so the color language
+// stays continuous; a frame is grayscale only if no reference exposures
+// exist anywhere in the queried span.
 function toCombinedCoaddFrame(c) {
   const md = c.metadata;
   const isColor = Boolean(c.data2_b64 && md.channels === 'color');
@@ -61,7 +63,11 @@ function toCombinedCoaddFrame(c) {
     sorted: sortPixels(both),
     label:
       `D6 CO-ADD \u00b7 ${nLong} exp` +
-      (md.short_channel ? ` (+${md.short_channel.n_exposures} D4 ref)` : ''),
+      (md.short_channel
+        ? md.short_channel.ref_scope === 'full-depth'
+          ? ` (+${md.short_channel.n_exposures}-exp full-depth D4 ref)`
+          : ` (+${md.short_channel.n_exposures} D4 ref)`
+        : ''),
     sublabel: `${md.datetime_min_utc.slice(0, 10)} \u2192 ${md.datetime_max_utc.slice(0, 10)}`,
     metadata: { ...md, mjd_mid: (md.mjd_min + md.mjd_max) / 2, target_covered: true },
   };

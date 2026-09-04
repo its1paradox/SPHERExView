@@ -184,6 +184,21 @@ DR3 markers in image-pixel coordinates, proper-motion propagated from epoch
   channel between the paired modes re-renders instantly from the already
   fetched data; switching to/from broadband or none rebuilds automatically.
 
+- **No spurious grayscale epochs in focused movies**: SPHEREx's six
+  detectors are separate strips of the focal plane (unlike WISE, whose
+  W1/W2 observed simultaneously through a beamsplitter), so a sky-pass
+  visit can cover a position with the focus detector but not its reference
+  detector — or vice versa. In a focused movie (e.g. D6 + D4 reference), a
+  visit with no focus-band exposures is dropped (it says nothing about the
+  focus band at that time and would otherwise appear as a mislabeled
+  grayscale of the other detector), and a visit missing only the reference
+  gets a **full-depth reference** — one deep stack of all reference
+  exposures in the queried span, the unWISE/Legacy-Surveys
+  time-resolved-vs-full-depth paradigm — labeled explicitly (e.g.
+  “+90-exp full-depth D4 ref”, `ref_scope="full-depth"` in the metadata).
+  The epoch information always lives in the focus channel; the reference
+  is a static comparison field, so color stays continuous across the blink.
+
 - **WISE → D6 epoch coadds in the combined timeline**: the combined timeline
   can play *D6 + D4-reference epoch coadds* (one per sky-pass visit) after
   the unWISE epochs instead of raw SPHEREx exposures (“SPHEREx frames after
