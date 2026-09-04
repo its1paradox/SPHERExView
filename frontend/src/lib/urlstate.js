@@ -24,7 +24,6 @@ export const DEFAULT_DISPLAY = {
   wiseStretch: 'linear',
   wiseInvert: true,
   wiseSmooth: false,
-  wiseDiffuse: false,
 };
 
 export const DEFAULT_FORM = {
@@ -32,7 +31,7 @@ export const DEFAULT_FORM = {
   fov: '240',
   survey: 'wide',
   bands: [], // empty = all bands
-  limit: '0',
+  limit: '20',
   wiseBand: 'w2',
 };
 
@@ -97,8 +96,7 @@ export function parseHash(hashText) {
   setB('showCoadd', 'coadd');
   setN('displaySize', 'zoom', 150, 900);
   setN('speedMs', 'speed', 60, 1200);
-  if (['percentile', 'zscale', 'diffuse'].includes(get('sxscale'))) view.sxScaleMode = get('sxscale');
-  if (get('wisediffuse') !== undefined) view.wiseDiffuse = get('wisediffuse') === '1';
+  if (['percentile', 'zscale'].includes(get('sxscale'))) view.sxScaleMode = get('sxscale');
   setN('sxBlackPct', 'sxblack', 0, 50);
   setN('sxWhitePct', 'sxwhite', 80, 100);
   if (['sqrt', 'asinh', 'linear', 'log'].includes(get('sxstretch'))) view.sxStretch = get('sxstretch');
@@ -147,6 +145,5 @@ export function buildHash(form, view) {
   push('wstretch', view.wiseStretch);
   push('winvert', view.wiseInvert ? 1 : 0);
   push('wsmooth', view.wiseSmooth ? 1 : 0);
-  push('wisediffuse', view.wiseDiffuse ? 1 : 0);
   return '#' + parts.join('&');
 }

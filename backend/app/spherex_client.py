@@ -163,11 +163,7 @@ def query_sia2(
         "SIA2 query: ra=%.5f dec=%.5f r=%.4f deg collection=%s",
         ra, dec, radius_deg, collection,
     )
-    # Explicit high MAXREC so the VO service's default row cap can never
-    # silently truncate the exposure list (verified: IRSA honours it).
-    table = Irsa.query_sia(
-        pos=(coord, radius_deg * u.deg), collection=collection, maxrec=100000
-    )
+    table = Irsa.query_sia(pos=(coord, radius_deg * u.deg), collection=collection)
 
     images: List[SpherexImage] = []
     for row in table:

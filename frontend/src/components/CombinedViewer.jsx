@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   astroToolboxLimits,
-  diffuseFrame,
-  diffuseLimits,
-  diffuseWindowFromRender,
   percentileLimits,
   renderOffscreen,
   worldToPixel,
@@ -144,60 +141,25 @@ export default function CombinedViewer({
     [spherexFrames],
   );
 
-  // Diffuse-emission mode (same enhancement as the panels above): SPHEREx
-  // entries follow the SPHEREx Scale select, WISE entries follow the WISE
-  // diffuse checkbox. diffuseFrame is memoized per source array, so this
-  // only pays the enhancement cost once per frame.
-  const sxDiffuse = view.sxScaleMode === 'diffuse';
-  const wiseDiffuse = Boolean(view.wiseDiffuse);
-  const drawFrames = useMemo(
-    () =>
-      frames.map((e) => {
-        const useDiffuse = e.mission === 'WISE' ? wiseDiffuse : sxDiffuse;
-        return useDiffuse ? { ...e, f: diffuseFrame(e.f) } : e;
-      }),
-    [frames, sxDiffuse, wiseDiffuse],
-  );
-
   // Contrast limits per mission (same algorithms as the panels above).
   const limits = useMemo(() => {
     const wiseRef = wiseFrames.length
-      ? wiseDiffuse
-        ? [0, 1] // placeholder; per-frame diffuse limits computed below
-        : astroToolboxLimits(
-            wiseFrames[0].sorted2 || wiseFrames[0].sorted,
-            view.wiseBrightness,
-            view.wiseContrast,
-          )
+      ? astroToolboxLimits(
+          wiseFrames[0].sorted2 || wiseFrames[0].sorted,
+          view.wiseBrightness,
+          view.wiseContrast,
+        )
       : [0, 1];
-    const [wLow, wHigh] = diffuseWindowFromRender({
-      brightness: view.wiseBrightness,
-      contrast: view.wiseContrast,
-    });
-    const [sLow, sHigh] = diffuseWindowFromRender({
-      blackPct: view.sxBlackPct,
-      whitePct: view.sxWhitePct,
-    });
-    return drawFrames.map((e) => {
-      if (e.mission === 'WISE') {
-        if (wiseDiffuse) {
-          return diffuseLimits(e.f.sorted2 || e.f.sorted, wLow, wHigh);
-        }
-        return wiseRef;
-      }
-      if (sxDiffuse) {
-        return diffuseLimits(e.f.sorted2 || e.f.sorted, sLow, sHigh);
-      }
+    return frames.map((e) => {
+      if (e.mission === 'WISE') return wiseRef;
       if (view.sxScaleMode === 'percentile') {
         return percentileLimits(e.f.sorted, view.sxBlackPct, view.sxWhitePct);
       }
       return zscaleLimits(e.f.sorted);
     });
   }, [
-    drawFrames,
+    frames,
     wiseFrames,
-    wiseDiffuse,
-    sxDiffuse,
     view.wiseBrightness,
     view.wiseContrast,
     view.sxScaleMode,
@@ -230,14 +192,12 @@ export default function CombinedViewer({
     const canvas = canvasRef.current;
     if (!canvas || frames.length === 0) return;
     const i = Math.min(index, frames.length - 1);
-    const entry = drawFrames[i];
+    const entry = frames[i];
     const tf = transforms[i];
     const [vmin, vmax] = limits[i];
     const isWise = entry.mission === 'WISE';
-    const entryDiffuse = isWise ? wiseDiffuse : sxDiffuse;
     const invert = isWise ? view.wiseInvert : view.sxInvert;
-    // Diffuse mode is defined as a LINEAR stretch on its narrow window.
-    const stretch = entryDiffuse ? 'linear' : isWise ? view.wiseStretch : view.sxStretch;
+    const stretch = isWise ? view.wiseStretch : view.sxStretch;
     const smooth = isWise ? view.wiseSmooth : view.sxSmooth;
 
     canvas.width = displaySize;
@@ -252,10 +212,8 @@ export default function CombinedViewer({
       {
         stretch,
         invert,
-        whitePct:
-          !isWise && view.sxScaleMode === 'percentile' ? view.sxWhitePct : undefined,
-        blackPct:
-          !isWise && view.sxScaleMode === 'percentile' ? view.sxBlackPct : undefined,
+        whitePct: !isWise && view.sxScaleMode === 'percentile' ? view.sxWhitePct : undefined,
+        blackPct: !isWise && view.sxScaleMode === 'percentile' ? view.sxBlackPct : undefined,
       },
     );
     ctx.save();
@@ -314,7 +272,7 @@ export default function CombinedViewer({
         ctx.fill();
       }
     }
-  }, [frames, drawFrames, transforms, limits, index, displaySize, fov, view, pin]);
+  }, [frames, transforms, limits, index, displaySize, fov, view, pin]);
 
   if (frames.length === 0) return null;
 

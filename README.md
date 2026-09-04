@@ -93,8 +93,9 @@ FITS downloads are cached under `backend/cache/`, so a persistent disk
 
 Query params: `ra`, `dec` (deg), `radius_arcsec` (default 60), `survey`
 (`wide` → `spherex_qr2`, `deep` → `spherex_qr2_deep`), `band` (optional
-substring filter, e.g. `SPHEREx-D1`), `limit` (max frames; cutouts are
-cached on disk after the first download).
+substring filter, e.g. `SPHEREx-D1`), `limit` (max frames — no upper cap;
+hundreds of frames just take proportionally longer to download the first
+time, cutouts are cached on disk afterwards).
 
 Response cutouts include `data_b64` (raw little-endian float32 pixels,
 display-oriented: row 0 = top), `width`/`height`, `fits_url` (original cutout
@@ -252,33 +253,6 @@ DR3 markers in image-pixel coordinates, proper-motion propagated from epoch
   ~3.8 µm — the signature of an extremely cold object (late-T/Y dwarfs
   such as WISE 0855−0714, which is bright at 4.5 µm yet invisible
   bluewards), exactly like an orange W2-only mover in WiseView.
-- **Diffuse-emission display mode (rings & nebulae)**: a *Diffuse
-  emission* option in the SPHEREx *Scale* select (and a matching checkbox
-  for the WISE panel) re-renders frames for faint EXTENDED structure that
-  normal point-source stretches hide. Recipe, applied client-side and
-  non-destructively (raw pixels are untouched — switching back restores
-  the normal view): (1) *star-clip* — pixels brighter than
-  median + 2.5·MADσ are replaced by their local neighbourhood median, so
-  stars are erased but the underlying diffuse level they sit on is kept
-  (a plain median filter would also thin out faint shell rims);
-  (2) gentle Gaussian smoothing (σ ≈ 1.2 px) to suppress pixel noise
-  BEFORE any stretch magnifies it; (3) a narrow LINEAR display window
-  hugging the sky level (default median − 0.5σ … median + 3.5σ, σ from
-  the 16th/84th percentiles), the same trick that makes
-  low-surface-brightness shells appear in WiseView when the max slider is
-  pulled down to just above sky. The window is TUNABLE, WiseView-style:
-  in diffuse mode the SPHEREx black/white-point sliders become *Sky floor*
-  (σ below sky) and *Ceiling* (σ above sky, exponential — lower ceiling =
-  stronger), and the WISE panel's brightness/contrast sliders play the
-  same roles for its diffuse checkbox. The combined WISE → SPHEREx
-  timeline honours both diffuse settings per mission. The ignored Stretch
-  select is disabled while diffuse is active (the mode is linear by
-  definition). This is a VISUALIZATION aid, not photometry — stars are
-  intentionally destroyed and the hint says so. Validated on the
-  ≈150″ elliptical shell of the planetary-nebula candidate
-  PN G165.6−10.1 (HASH 33778) at RA 66.7727 Dec +34.2532, which is
-  invisible in the default stretch yet obvious in diffuse mode in both
-  the unWISE W2 epochs and the SPHEREx D5 detector CO-ADD.
 - **Shared pin on every tile**: click any panel — SPHEREx epochs, WISE
   epochs, detector coadds, or the combined timeline — and one sky-anchored
   pin marks that exact RA/Dec on ALL panels through each frame's own WCS

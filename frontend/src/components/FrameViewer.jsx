@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   astroToolboxLimits,
-  diffuseFrame,
-  diffuseLimits,
-  diffuseWindowFromRender,
   drawFrame,
   percentileLimits,
   pixelToWorld,
@@ -38,17 +35,13 @@ function fmtVal(key, val) {
  *
  * frames: [{ data: Float32Array, sorted: Float32Array, width, height,
  *            label, sublabel, wcs?, markers? }]
- * render: { mode: 'zscale' | 'percentile' | 'atb' | 'diffuse', brightness?,
- *           contrast?, blackPct?, whitePct?, stretch, invert, smooth? }
+ * render: { mode: 'zscale' | 'percentile' | 'atb', brightness?, contrast?,
+ *           blackPct?, whitePct?, stretch, invert, smooth? }
  *   - 'zscale':     per-frame IRAF zscale limits (SPHEREx default look)
  *   - 'percentile': per-frame manual black/white point percentiles
  *   - 'atb':        AstroToolBox limits from the FIRST frame (its W2 array
  *                   for W1+W2 composites), shared by all epochs for a
  *                   steady blink, like AstroToolBox / WiseView
- *   - 'diffuse':    star-clipped + smoothed frames on a narrow linear
- *                   window just above sky -- reveals faint EXTENDED
- *                   emission (rings, shells, nebulae) that point sources
- *                   and wide stretches bury
  */
 export default function FrameViewer({
   title,
@@ -96,18 +89,11 @@ export default function FrameViewer({
   // "Outer epochs" mode (WiseView-style): blink only the two endpoint
   // frames, back and forth -- middle epochs skipped. If both endpoints
   // resolve to the same frame, show just that one (warned in the UI).
-  const framesSel = useMemo(() => {
+  const frames = useMemo(() => {
     if (!outerOnly || framesAll.length < 2) return framesAll;
     if (outerA === outerB) return [framesAll[outerA]];
     return [framesAll[outerA], framesAll[outerB]];
   }, [framesAll, outerOnly, outerA, outerB]);
-
-  // Diffuse mode swaps in star-clipped, smoothed pixel arrays (geometry,
-  // WCS, labels untouched). Enhancement is cached per source array.
-  const frames = useMemo(
-    () => (render.mode === 'diffuse' ? framesSel.map(diffuseFrame) : framesSel),
-    [framesSel, render.mode],
-  );
 
   const maxW = useMemo(() => Math.max(1, ...frames.map((f) => f.width)), [frames]);
   const maxH = useMemo(() => Math.max(1, ...frames.map((f) => f.height)), [frames]);
@@ -129,13 +115,6 @@ export default function FrameViewer({
     }
     if (render.mode === 'percentile') {
       return frames.map((f) => percentileLimits(f.sorted, render.blackPct, render.whitePct));
-    }
-    if (render.mode === 'diffuse') {
-      // Narrow window just above sky; W2 channel sets it for composites.
-      // The panel's sliders (black/white point, or brightness/contrast on
-      // the WISE panel) tune the window in sky-sigma units.
-      const [lowS, highS] = diffuseWindowFromRender(render);
-      return frames.map((f) => diffuseLimits(f.sorted2 || f.sorted, lowS, highS));
     }
     return frames.map((f) => zscaleLimits(f.sorted));
   }, [
@@ -197,8 +176,7 @@ export default function FrameViewer({
       scale,
       canvasW: Math.round(maxW * scale),
       canvasH: Math.round(maxH * scale),
-      // Diffuse mode is defined as a LINEAR stretch on its narrow window.
-      stretch: render.mode === 'diffuse' ? 'linear' : render.stretch,
+      stretch: render.stretch,
       invert: render.invert,
       whitePct: render.mode === 'percentile' ? render.whitePct : undefined,
       blackPct: render.mode === 'percentile' ? render.blackPct : undefined,
