@@ -2,9 +2,10 @@ import { resolve } from 'path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// Two pages: the main viewer (index.html) and the spectrum viewer opened in
-// a new tab (spectrum.html).  API + static cutout requests proxy to the
-// FastAPI backend in dev.
+// Three pages: the main viewer (index.html), the spectrum viewer
+// (spectrum.html) and the time-resolved coadd movie (movie.html), both
+// opened in new tabs.  API + static cutout requests proxy to the FastAPI
+// backend in dev.
 export default defineConfig({
   plugins: [react()],
   build: {
@@ -12,6 +13,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         spectrum: resolve(__dirname, 'spectrum.html'),
+        movie: resolve(__dirname, 'movie.html'),
       },
     },
   },

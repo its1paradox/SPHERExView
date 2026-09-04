@@ -84,6 +84,7 @@ FITS downloads are cached under `backend/cache/`, so a persistent disk
 | `GET /api/cutouts` | Cutouts around a position |
 | `GET /api/epoch-stack` | Time-ordered cutout stack for blinking |
 | `GET /api/coadd` | Per-detector CO-ADD stacks (deep, mixed-wavelength images; `background=zodi\|none`, `sigma`, `maxiters`) |
+| `GET /api/coadd-movie` | Time-resolved COLOR coadd movie: exposures binned into `bin_months`-wide windows (default 6 = one SPHEREx sky pass), each bin stacked into a blue (D1–D4) + orange (D5–D6) two-channel frame on ONE shared grid, per-bin robust z-scored. When more exposures exist than `limit`, they are subsampled evenly across time so the movie spans the full archive baseline. `min_channel_exposures` optionally drops under-filled channels |
 | `GET /api/wise-stack` | Time-resolved unWISE epoch stack via WiseView (byw.tools), one dated frame per ~6-month visit, optional Gaia DR3 markers |
 | `POST /api/spectra/submit` | Submit an IRSA SPHEREx spectrophotometry job (`ra`, `dec`, `bkg_region`) |
 | `GET /api/spectra/status/{job_id}` | UWS job phase (QUEUED / EXECUTING / COMPLETED / ERROR) |
@@ -112,6 +113,25 @@ DR3 markers in image-pixel coordinates, proper-motion propagated from epoch
 
 
 ## Features
+
+- **Time-resolved COLOR coadd movie** (`movie.html`, button next to the
+  spectrum button): the SPHEREx analogue of what WiseView actually blinks.
+  WiseView blinks unWISE *time-resolved coadds* — one W1/W2 stack per
+  6-month WISE sky pass (Meisner et al. 2018) — not raw exposures. SPHEREx
+  likewise sweeps the whole sky every ~6 months, so this page bins all
+  exposures at a position into configurable time windows (1/2/3/6/12
+  months), stacks each bin into a two-channel color coadd (blue = D1–D4
+  < 3.82 µm, orange = D5–D6 > 3.82 µm) on one shared north-up grid, and
+  blinks the bins chronologically at coadd depth. Each bin is z-scored to
+  its own sky noise and one display scale is shared by all epochs, so the
+  blink is photometrically and astrometrically rigid: movers drift,
+  variables pulse, artifacts vanish, static sky stays pinned. Validated
+  end-to-end: Barnard's star's saturation-masked core moves −0.99 px north
+  between the two archived passes vs −0.97 px predicted by the Gaia DR3
+  ephemeris; the NEP deep field resolves into 15 consecutive monthly color
+  epochs. Dedicated window with its own playback/display controls, hover
+  RA/Dec, pins with one-click spectra, per-epoch provenance panel, and
+  shareable URL hash.
 
 - **Shareable URLs**: every query and display attribute — target, FoV,
   survey, bands, WISE band, zoom, blink speed, stretch, black/white points,

@@ -308,47 +308,29 @@ def get_epoch_stack(
     return _build_stack(ra, dec, radius_arcsec, survey, band, limit)
 
 
-@app.get("/api/coadd")
-def get_coadd(
-    ra: float,
-    dec: float,
-    radius_arcsec: float = Query(60.0, gt=0, le=3600),
-    survey: str = "wide",
-    band: Optional[str] = None,
-    limit: int = Query(200, gt=0),
-    background: str = Query("zodi", pattern="^(zodi|none)$"),
-    sigma: float = Query(5.0, ge=0),
-    maxiters: int = Query(2, ge=0, le=10),
-):
-    """Per-detector CO-ADD of every matching SPHEREx exposure.
-
-    For each detector (D1-D6) all exposures covering the target are
-    background-subtracted (IMAGE - ZODI), resampled once onto ONE shared
-    north-up grid, quality-masked via FLAGS/VARIANCE, optionally
-    sigma-clipped (N >= 5), and combined with an inverse-variance weighted
-    mean (per-exposure scalar weights = inverse median sky variance, so
-    photometry stays unbiased).  Because each detector's LVF mixes wavelengths, the result is a
-    broadband-like image; the response reports the actual wavelength range
-    sampled at the target.  See backend/app/coadd.py for the full rationale.
-    """
+def _query_sorted_images(ra, dec, radius_arcsec, survey, band, limit):
+    """SIA2 query -> exposures sorted by time, truncated to ``limit``."""
     collection = sx.COLLECTIONS.get(survey)
     if collection is None:
         raise HTTPException(400, f"Unknown survey '{survey}'; use one of {list(sx.COLLECTIONS)}")
-
     try:
         images = sx.query_sia2(ra, dec, radius_deg=radius_arcsec / 3600.0,
                                collection=collection, band=band)
     except Exception as exc:
         log.exception("SIA2 query failed")
         raise HTTPException(502, f"SIA2 query failed: {exc}") from exc
-
     images.sort(key=lambda im: (im.mjd_mid is None, im.mjd_mid or 0.0))
-    images = images[:limit]
-    size_arcsec = 2 * radius_arcsec
-    clip_sigma = sigma if sigma > 0 else None
+    return images[:limit]
 
-    def fetch_aligned(im: sx.SpherexImage):
-        """Download + align one exposure; None = skip (never raises)."""
+
+def _fetch_aligned(images, ra, dec, size_arcsec, background):
+    """Download + align exposures onto the shared coadd grid (parallel).
+
+    Per-image failures (no overlap, missing extensions, ...) are skipped,
+    never raised.  Returns (exposures, n_skipped).
+    """
+
+    def fetch_one(im: sx.SpherexImage):
         cutout_url = sx.get_cutout_url(im.access_url, ra, dec, size_arcsec * 1.45)
         try:
             fits_path = sx.download_cutout(cutout_url)
@@ -373,9 +355,38 @@ def get_coadd(
         return exp
 
     with ThreadPoolExecutor(max_workers=8) as pool:
-        results = list(pool.map(fetch_aligned, images))
+        results = list(pool.map(fetch_one, images))
     exposures = [r for r in results if r is not None]
-    skipped = len(results) - len(exposures)
+    return exposures, len(results) - len(exposures)
+
+
+@app.get("/api/coadd")
+def get_coadd(
+    ra: float,
+    dec: float,
+    radius_arcsec: float = Query(60.0, gt=0, le=3600),
+    survey: str = "wide",
+    band: Optional[str] = None,
+    limit: int = Query(200, gt=0),
+    background: str = Query("zodi", pattern="^(zodi|none)$"),
+    sigma: float = Query(5.0, ge=0),
+    maxiters: int = Query(2, ge=0, le=10),
+):
+    """Per-detector CO-ADD of every matching SPHEREx exposure.
+
+    For each detector (D1-D6) all exposures covering the target are
+    background-subtracted (IMAGE - ZODI), resampled once onto ONE shared
+    north-up grid, quality-masked via FLAGS/VARIANCE, optionally
+    sigma-clipped (N >= 5), and combined with an inverse-variance weighted
+    mean (per-exposure scalar weights = inverse median sky variance, so
+    photometry stays unbiased).  Because each detector's LVF mixes wavelengths, the result is a
+    broadband-like image; the response reports the actual wavelength range
+    sampled at the target.  See backend/app/coadd.py for the full rationale.
+    """
+    images = _query_sorted_images(ra, dec, radius_arcsec, survey, band, limit)
+    size_arcsec = 2 * radius_arcsec
+    clip_sigma = sigma if sigma > 0 else None
+    exposures, skipped = _fetch_aligned(images, ra, dec, size_arcsec, background)
 
     n_px, wcs_out = cx.output_grid(ra, dec, size_arcsec)
     wcs_dict = imaging.wcs_to_dict(wcs_out, n_px)
@@ -442,6 +453,165 @@ def get_coadd(
         "n_exposures_skipped": skipped,
         "count": len(coadds),
         "coadds": coadds,
+    }
+
+
+@app.get("/api/coadd-movie")
+def get_coadd_movie(
+    ra: float,
+    dec: float,
+    radius_arcsec: float = Query(120.0, gt=0, le=3600),
+    survey: str = "wide",
+    limit: int = Query(500, gt=0),
+    bin_months: float = Query(6.0, ge=0.25, le=25),
+    background: str = Query("zodi", pattern="^(zodi|none)$"),
+    sigma: float = Query(5.0, ge=0),
+    maxiters: int = Query(2, ge=0, le=10),
+    min_channel_exposures: int = Query(1, ge=1),
+):
+    """Time-resolved COLOR coadd movie: unWISE-style epoch coadds for SPHEREx.
+
+    Exposures are binned into ``bin_months``-wide time windows (default
+    6 months = one SPHEREx all-sky pass, the direct analogue of the
+    time-resolved unWISE coadds that WiseView blinks).  Each bin is stacked
+    into a TWO-CHANNEL frame on the exact shared north-up grid used by
+    /api/coadd:
+
+    - blue channel  = short-wavelength detectors D1-D4 (< 3.82 um)
+    - orange channel = long-wavelength detectors D5-D6 (3.82-5.0 um)
+
+    Each channel is a sky-noise (scalar inverse median variance) weighted
+    mean of its zodi-subtracted, FLAGS-masked exposures, then robustly
+    z-scored (median / 1.4826*MAD over finite pixels).  Z-scoring matters
+    here more than in the static coadd: the zodiacal background level and
+    its photon noise CHANGE between 6-month epochs at a fixed sky position,
+    so frames are put in per-epoch sky-noise units to blink smoothly.
+    Bins where only one channel has coverage are still returned (grayscale)
+    and flagged in ``metadata.channels``.
+    """
+    import numpy as np
+
+    # No truncation at query time: when more exposures exist than ``limit``,
+    # subsample EVENLY ACROSS TIME so the movie still spans every epoch
+    # (plain head-truncation would keep only the earliest days and collapse
+    # the movie to one bin — deep fields have thousands of exposures).
+    images = _query_sorted_images(ra, dec, radius_arcsec, survey, None, 10 ** 9)
+    if len(images) > limit:
+        idx = np.unique(np.linspace(0, len(images) - 1, limit).round().astype(int))
+        images = [images[i] for i in idx]
+    size_arcsec = 2 * radius_arcsec
+    clip_sigma = sigma if sigma > 0 else None
+    exposures, skipped = _fetch_aligned(images, ra, dec, size_arcsec, background)
+    exposures = [e for e in exposures if e.mjd is not None and e.detector]
+    if not exposures:
+        raise HTTPException(404, "No usable SPHEREx exposures cover this position")
+
+    n_px, wcs_out = cx.output_grid(ra, dec, size_arcsec)
+    wcs_dict = imaging.wcs_to_dict(wcs_out, n_px)
+
+    bin_days = bin_months * 30.4375  # mean month length
+    mjd0 = min(e.mjd for e in exposures)
+    bins: dict = {}
+    for e in exposures:
+        bins.setdefault(int((e.mjd - mjd0) // bin_days), []).append(e)
+
+    frames = []
+    for k in sorted(bins):
+        grp = bins[k]
+        groups = {
+            "short": [e for e in grp if e.detector <= 4],
+            "long": [e for e in grp if e.detector >= 5],
+        }
+        channels = {}
+        for name, sub in groups.items():
+            # Channels below the exposure floor are dropped (3+ recommended
+            # for robust outlier rejection; default 1 keeps sparse QR2 bins).
+            if len(sub) < min_channel_exposures:
+                continue
+            try:
+                img, var, coverage, n_rej, lam = cx.combine(
+                    sub, sigma=clip_sigma, maxiters=maxiters
+                )
+            except Exception as exc:
+                log.warning("Movie bin %d channel %s failed: %s", k, name, exc)
+                continue
+            finite = img[np.isfinite(img)]
+            if finite.size == 0:
+                continue
+            # Robust z-score: per-epoch sky-noise units (zodi varies
+            # seasonally, so raw MJy/sr levels differ bin to bin).
+            med = float(np.median(finite))
+            sig_px = 1.4826 * float(np.median(np.abs(finite - med)))
+            if sig_px <= 0:
+                sig_px = float(np.std(finite)) or 1.0
+            z = (img - med) / sig_px
+            disp = np.flipud(np.where(np.isfinite(z), z, 0.0)).astype(np.float32)
+            channels[name] = {
+                "disp": disp,
+                "n": len(sub),
+                "detectors": sorted({e.detector for e in sub}),
+                "lambda_um": lam,
+                "coverage_center": int(coverage[n_px // 2, n_px // 2]),
+                "sky_sigma_mjy_sr": round(sig_px, 6),
+            }
+        if not channels:
+            continue
+        mjds = [e.mjd for e in grp]
+        kind = "color" if len(channels) == 2 else f"{next(iter(channels))}-only"
+        meta = {
+            "bin_index": k,
+            "channels": kind,
+            "bin_start_mjd": round(mjd0 + k * bin_days, 5),
+            "bin_end_mjd": round(mjd0 + (k + 1) * bin_days, 5),
+            "mjd_min": min(mjds),
+            "mjd_max": max(mjds),
+            "datetime_min_utc": Time(min(mjds), format="mjd").isot,
+            "datetime_max_utc": Time(max(mjds), format="mjd").isot,
+            "n_exposures": len(grp),
+            "background": background,
+            "method": "per-channel sky_ivar_weighted_mean"
+                      + (f"_sigmaclip{clip_sigma:g}" if clip_sigma else "")
+                      + ", median/MAD z-scored per bin",
+            "bunit": "sky-noise sigma (per-bin robust z-score)",
+            "pixscale_arcsec": cx.COADD_PIXSCALE_ARCSEC,
+        }
+        for name in ("short", "long"):
+            ch = channels.get(name)
+            if ch:
+                meta[f"{name}_channel"] = {
+                    "n_exposures": ch["n"],
+                    "detectors": ch["detectors"],
+                    "lambda_target_um": ch["lambda_um"],
+                    "coverage_center": ch["coverage_center"],
+                    "sky_sigma_mjy_sr": ch["sky_sigma_mjy_sr"],
+                }
+        frame = {
+            "id": f"movie-bin{k}",
+            "width": n_px,
+            "height": n_px,
+            "wcs": wcs_dict,
+            "metadata": meta,
+        }
+        if "short" in channels:
+            frame["data_b64"] = imaging.array_to_b64(channels["short"]["disp"])
+            if "long" in channels:
+                frame["data2_b64"] = imaging.array_to_b64(channels["long"]["disp"])
+        else:  # long-only bin: grayscale from the single available channel
+            frame["data_b64"] = imaging.array_to_b64(channels["long"]["disp"])
+        frames.append(frame)
+
+    return {
+        "ra": ra,
+        "dec": dec,
+        "radius_arcsec": radius_arcsec,
+        "survey": survey,
+        "background": background,
+        "bin_months": bin_months,
+        "bin_days": round(bin_days, 3),
+        "n_exposures_input": len(images),
+        "n_exposures_skipped": skipped,
+        "count": len(frames),
+        "frames": frames,
     }
 
 

@@ -89,6 +89,20 @@ export function openSpectrumTab(ra, dec) {
   window.open(`spectrum.html#${params}`, '_blank', 'noopener');
 }
 
+// Opens the time-resolved COLOR coadd movie (unWISE-style epoch coadds) in
+// a new tab for the current target/field.
+export function openMovieTab(ra, dec, fov, survey, limit) {
+  const params = new URLSearchParams({
+    ra: ra.toFixed(6),
+    dec: dec.toFixed(6),
+    size: fov,
+    survey,
+    months: 6,
+    maxframes: limit,
+  });
+  window.open(`movie.html#${params}`, '_blank', 'noopener');
+}
+
 export default function App() {
   // Query form + display settings restore from the URL hash (WiseView-style
   // shareable links), and every later change is written back to it.

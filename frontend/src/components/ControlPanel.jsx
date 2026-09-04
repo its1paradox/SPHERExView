@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { openSpectrumTab } from '../App.jsx';
+import { openMovieTab, openSpectrumTab } from '../App.jsx';
 import { DEFAULT_DISPLAY } from '../lib/urlstate.js';
 
 const SPHEREX_BANDS = [
@@ -179,11 +179,27 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
         >
           Generate spectrum at target
         </button>
+        <button
+          type="button"
+          className="spectrum-btn"
+          onClick={() => {
+            const coords = parseCoords(form.coords);
+            if (!coords) {
+              setCoordsError('Enter RA and Dec in decimal degrees, e.g. 11.889632 28.089606');
+              return;
+            }
+            openMovieTab(coords.ra, coords.dec, form.fov, form.survey, form.limit);
+          }}
+        >
+          Time-resolved movie
+        </button>
         <p className="hint">
-          Opens a new tab and extracts a forced-photometry spectrum at the
-          target coordinates from all SPHEREx images via IRSA (takes a few
-          minutes). Drop a pin on the SPHEREx image to get a spectrum at an
-          exact source position instead.
+          Spectrum: opens a new tab and extracts a forced-photometry spectrum
+          at the target coordinates from all SPHEREx images via IRSA (takes a
+          few minutes). Drop a pin on the SPHEREx image to get a spectrum at
+          an exact source position instead. Movie: blinks one COLOR coadd per
+          6-month sky pass (configurable) {'\u2014'} unWISE-style epoch
+          coadds, the WiseView paradigm at SPHEREx depth.
         </p>
       </form>
 
