@@ -28,6 +28,19 @@ import {
 
 const MONTH_OPTIONS = [1, 2, 3, 6, 12];
 
+// Detector choices for single-band movies. 'all' keeps the two-channel
+// COLOR stack (blue = D1–D4, orange = D5–D6); a single detector narrows
+// each epoch coadd to one wavelength slice.
+const BAND_OPTIONS = [
+  { value: 'all', label: 'All 6 detectors (COLOR)' },
+  { value: 'SPHEREx-D1', label: 'D1 only (0.75\u20131.11 \u00b5m)' },
+  { value: 'SPHEREx-D2', label: 'D2 only (1.10\u20131.64 \u00b5m)' },
+  { value: 'SPHEREx-D3', label: 'D3 only (1.63\u20132.42 \u00b5m)' },
+  { value: 'SPHEREx-D4', label: 'D4 only (2.42\u20133.82 \u00b5m)' },
+  { value: 'SPHEREx-D5', label: 'D5 only (3.82\u20134.42 \u00b5m)' },
+  { value: 'SPHEREx-D6', label: 'D6 only (4.42\u20135.00 \u00b5m) \u2014 W2 successor' },
+];
+
 function parseMovieHash() {
   const p = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   return {
@@ -36,6 +49,7 @@ function parseMovieHash() {
     survey: p.get('survey') || 'wide',
     months: p.get('months') || '6',
     maxframes: p.get('maxframes') || '500',
+    band: p.get('band') || 'all',
   };
 }
 
@@ -107,6 +121,7 @@ export default function MoviePage() {
       bin_months: f.months,
       limit: f.maxframes,
     });
+    if (f.band && f.band !== 'all') params.set('band', f.band);
     try {
       const d = await fetch(`/api/coadd-movie?${params}`).then((r) =>
         r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.detail || r.statusText))),
@@ -132,6 +147,7 @@ export default function MoviePage() {
         survey: f.survey,
         months: f.months,
         maxframes: f.maxframes,
+        ...(f.band && f.band !== 'all' ? { band: f.band } : {}),
       }).toString();
     } catch (err) {
       setStatus(null);
@@ -178,11 +194,26 @@ export default function MoviePage() {
     return () => clearInterval(t);
   }, [playing, frames, speedMs]);
 
+  // Empty (all-zero) channel used to render single-channel epochs in their
+  // natural COLOR: the frames are per-bin z-scored, so 0 = sky level, and a
+  // zero counterpart channel shows neutral sky while the real channel's
+  // sources come out blue (short-\u03bb) or orange (long-\u03bb) — the same
+  // hue they would have inside a full two-channel COLOR frame.
+  const zeroChannel = useMemo(
+    () => (frames.length ? new Float32Array(frames[0].width * frames[0].height) : null),
+    [frames],
+  );
+
   // Draw the current epoch.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || frames.length === 0) return;
-    const f = frames[Math.min(index, frames.length - 1)];
+    let f = frames[Math.min(index, frames.length - 1)];
+    if (!f.data2 && zeroChannel) {
+      f = f.metadata?.channels === 'long-only'
+        ? { ...f, data: zeroChannel, data2: f.data }
+        : { ...f, data2: zeroChannel };
+    }
     const scale = displaySize / Math.max(f.width, f.height);
     let pinPx = null;
     if (pin && f.wcs) {
@@ -201,7 +232,7 @@ export default function MoviePage() {
       showMarkers: false,
       pin: pinPx,
     });
-  }, [frames, index, vmin, vmax, displaySize, stretch, invert, pin]);
+  }, [frames, index, vmin, vmax, displaySize, stretch, invert, pin, zeroChannel]);
 
   const setF = (key) => (e) => setForm({ ...form, [key]: e.target.value });
   const f = frames.length ? frames[Math.min(index, frames.length - 1)] : null;
@@ -219,12 +250,17 @@ export default function MoviePage() {
     return { ra, dec };
   };
 
+  const soloDetectors = m && m.channels !== 'color'
+    ? (m.channels === 'short-only' ? m.short_channel : m.long_channel)?.detectors
+    : null;
   const kindLabel = m
     ? m.channels === 'color'
       ? 'COLOR'
-      : m.channels === 'short-only'
-        ? 'short-\u03bb only'
-        : 'long-\u03bb only'
+      : soloDetectors && soloDetectors.length === 1
+        ? `D${soloDetectors[0]} only`
+        : m.channels === 'short-only'
+          ? 'short-\u03bb only'
+          : 'long-\u03bb only'
     : '';
   const chanSummary = m
     ? [
@@ -240,9 +276,9 @@ export default function MoviePage() {
       <header>
         <h1>SPHERExView {'\u2014'} Time-resolved movie</h1>
         <p className="subtitle">
-          One COLOR coadd per {form.months}-month sky pass, blinked chronologically {'\u2014'} the
-          SPHEREx analogue of WiseView{"'"}s unWISE time-resolved coadds (blue {'<'} 3.82 {'\u00b5'}m
-          {' \u00b7 '}orange {'>'} 3.82 {'\u00b5'}m)
+          {form.band && form.band !== 'all'
+            ? `One ${form.band.replace('SPHEREx-', '')}-only coadd per ${form.months}-month sky pass, blinked chronologically \u2014 a single wavelength slice of the SPHEREx archive`
+            : `One COLOR coadd per ${form.months}-month sky pass, blinked chronologically \u2014 the SPHEREx analogue of WiseView's unWISE time-resolved coadds (blue < 3.82 \u00b5m \u00b7 orange > 3.82 \u00b5m)`}
         </p>
       </header>
       <div className="layout">
@@ -270,6 +306,20 @@ export default function MoviePage() {
                 <option value="deep">Deep (QR2)</option>
               </select>
             </label>
+            <label>
+              Detector band
+              <select value={form.band} onChange={setF('band')}>
+                {BAND_OPTIONS.map((b) => (
+                  <option key={b.value} value={b.value}>
+                    {b.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="hint">
+              A single detector narrows every epoch coadd to one wavelength slice {'\u2014'} D6
+              (4.42{'\u2013'}5.00 {'\u00b5'}m) is the closest match to WISE W2 (4.6 {'\u00b5'}m).
+            </p>
           </fieldset>
 
           <fieldset>

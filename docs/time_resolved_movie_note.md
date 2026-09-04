@@ -51,3 +51,34 @@ A dedicated page (button **"Time-resolved movie"** next to the spectrum button) 
 | Exposure cap | 500, sampled evenly in time | Bounded build time, full time baseline preserved |
 
 A full literature review with derivations and the audit trail of every number quoted here accompanies this note (`time_resolved_coadd_research.md`).
+
+## Addendum: single-band epoch movies and WISE → D6 continuity
+
+Two extensions narrow the movie down to a chosen wavelength slice:
+
+**Single-detector movies.** `/api/coadd-movie` accepts `band=SPHEREx-D1..D6`,
+restricting every epoch coadd to one detector; the movie page exposes this as
+a *Detector band* select. Scientifically this trades depth for spectral
+purity: each SPHEREx detector is an LVF spanning a finite wavelength range,
+so an all-band epoch coadd mixes 0.75–5.0 µm light, while a D6-only coadd is
+a clean 4.42–5.00 µm image — the regime where cold brown dwarfs peak
+(the same reason WiseView's W2 channel finds them at 4.6 µm). Single-channel
+epochs keep their natural composite hue (blue for D1–D4, orange for D5–D6):
+the missing channel is rendered at sky level (0 in per-bin z-scored units),
+so a D6-only movie is literally the orange layer of the full COLOR movie.
+
+**D6 epoch coadds after the WISE movie.** The combined WISE → SPHEREx
+timeline can now play D6-only 6-month epoch coadds after the unWISE epochs
+instead of raw exposures (*SPHEREx frames after WISE*, `cmode=d6`). This is
+the band-matched continuation of the WiseView paradigm: W1/W2 unWISE epoch
+coadds cover 2010→2024 at 4.6 µm, and the SPHEREx D6 epoch coadds continue
+the same wavelength regime from 2025 onward — at coadd depth rather than
+single-exposure noise, in the same rigid north-up sky frame. A W2-orange
+mover therefore keeps its color and its direction of motion across the
+mission handoff.
+
+Validation: D6-only stacks on Barnard's field reproduce the long channel of
+the all-band movie (source-level correlation with independent exposure sets),
+per-bin z-scores stay at median 0 / σ ≈ 0.99, invalid `band` values are
+rejected (422), and a 24-check end-to-end browser suite covers both features,
+including hash round-trips and color rendering on the canvas.

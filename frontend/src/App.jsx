@@ -20,6 +20,27 @@ function toFrame(base) {
   return frame;
 }
 
+// D6-only epoch coadd (from /api/coadd-movie?band=SPHEREx-D6) as a frame the
+// combined WISE→SPHEREx movie can play after the unWISE epochs.  D6
+// (4.42–5.00 µm) is the natural W2 (4.6 µm) successor, so the movie stays
+// in one wavelength regime across the mission handoff.  The image rides in
+// the ORANGE channel (data2) with an all-zero blue channel: frames are
+// per-bin z-scored server-side, so 0 = sky level and D6 sources keep the
+// same orange hue W2-only detections have in the WiseView-style composite.
+function toCombinedCoaddFrame(c) {
+  const img = decodeB64Float32(c.data2_b64 || c.data_b64);
+  const md = c.metadata;
+  return {
+    ...c,
+    data: new Float32Array(img.length),
+    data2: img,
+    sorted: sortPixels(img),
+    label: `D6 CO-ADD \u00b7 ${md.n_exposures} exp`,
+    sublabel: `${md.datetime_min_utc.slice(0, 10)} \u2192 ${md.datetime_max_utc.slice(0, 10)}`,
+    metadata: { ...md, mjd_mid: (md.mjd_min + md.mjd_max) / 2, target_covered: true },
+  };
+}
+
 // WiseView-style two-channel colour frame from the per-detector coadds:
 // short-wavelength detectors (D1–D4, 0.75–3.82 µm) feed the blue channel,
 // long-wavelength ones (D5–D6, 3.82–5.0 µm) the orange channel — the same
@@ -112,6 +133,10 @@ export default function App() {
   const [coaddFrames, setCoaddFrames] = useState([]);
   const [coaddStatus, setCoaddStatus] = useState(null);
   const coaddKey = useRef(null); // query already coadded (avoid refetch)
+  // D6-only epoch coadds for the combined movie (lazy, cached per field).
+  const [combinedCoadds, setCombinedCoadds] = useState([]);
+  const [combinedCoaddStatus, setCombinedCoaddStatus] = useState(null);
+  const combinedCoaddKey = useRef(null);
   const [status, setStatus] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -141,6 +166,46 @@ export default function App() {
     if (view.showCoadd && queried && !loading) fetchCoadd(queried);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view.showCoadd, queried, loading]);
+
+  // Selecting "D6 epoch coadds" for the combined movie lazily builds them
+  // (6-month bins, one per sky pass — the exact frames the movie page makes
+  // for band=SPHEREx-D6).  Cached per field so flipping the select is free.
+  useEffect(() => {
+    if (!queried || loading || !view.showCombined || view.combinedMode !== 'd6') return;
+    const key = `${queried.ra},${queried.dec},${queried.fov},${queried.survey}`;
+    if (combinedCoaddKey.current === key) return;
+    combinedCoaddKey.current = key;
+    setCombinedCoadds([]);
+    setCombinedCoaddStatus(
+      'Stacking D6 epoch coadds for the combined movie\u2026 one coadd per 6-month sky pass.',
+    );
+    const params = new URLSearchParams({
+      ra: queried.ra,
+      dec: queried.dec,
+      radius_arcsec: queried.fov / 2,
+      survey: queried.survey,
+      bin_months: 6,
+      band: 'SPHEREx-D6',
+      limit: 500,
+    });
+    fetch(`/api/coadd-movie?${params}`)
+      .then((r) =>
+        r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.detail || r.statusText))),
+      )
+      .then((d) => {
+        setCombinedCoadds(d.frames.map(toCombinedCoaddFrame));
+        setCombinedCoaddStatus(
+          d.count
+            ? null
+            : 'No D6 epoch coadds available for this field \u2014 showing nothing after WISE.',
+        );
+      })
+      .catch((err) => {
+        combinedCoaddKey.current = null;
+        setCombinedCoaddStatus(`D6 epoch coadds failed: ${err.message}`);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queried, loading, view.showCombined, view.combinedMode]);
 
   // Per-detector CO-ADD stacks (mixed-lambda deep images).  Fetched AFTER
   // the epoch stack so the exposure cutouts are already in the backend's
@@ -198,6 +263,9 @@ export default function App() {
     setWiseFrames([]);
     setCoaddFrames([]);
     setCoaddStatus(null);
+    setCombinedCoadds([]);
+    setCombinedCoaddStatus(null);
+    combinedCoaddKey.current = null;
     setPin(null); // shared pin belongs to the previous field
     coaddKey.current = null;
     setQueried({
@@ -412,14 +480,17 @@ export default function App() {
           {view.showCoadd && coaddFrames.length > 0 && coaddStatus && (
             <p className="status coadd-note">{coaddStatus}</p>
           )}
+          {view.showCombined && view.combinedMode === 'd6' && combinedCoaddStatus && (
+            <p className="status coadd-note">{combinedCoaddStatus}</p>
+          )}
           {view.showCombined &&
             queried &&
-            spherexFrames.length > 0 &&
+            (view.combinedMode === 'd6' ? combinedCoadds : spherexFrames).length > 0 &&
             wiseFrames.length > 0 && (
               <div className="viewer-row">
                 <CombinedViewer
                   wiseFrames={wiseFrames}
-                  spherexFrames={spherexFrames}
+                  spherexFrames={view.combinedMode === 'd6' ? combinedCoadds : spherexFrames}
                   target={queried}
                   fov={queried.fov}
                   view={view}

@@ -40,6 +40,7 @@ export const DEFAULT_VIEW = {
   showWise: true,
   showMarkers: false,
   showCombined: true,
+  combinedMode: 'exposures', // 'exposures' | 'd6' (D6 epoch coadds after WISE)
   showCoadd: true,
 };
 
@@ -91,6 +92,7 @@ export function parseHash(hashText) {
   setB('showWise', 'wise');
   setB('showMarkers', 'gaia');
   setB('showCombined', 'combined');
+  if (['exposures', 'd6'].includes(get('cmode'))) view.combinedMode = get('cmode');
   setB('showCoadd', 'coadd');
   setN('displaySize', 'zoom', 150, 900);
   setN('speedMs', 'speed', 60, 1200);
@@ -127,6 +129,7 @@ export function buildHash(form, view) {
   push('wise', view.showWise ? 1 : 0);
   push('gaia', view.showMarkers ? 1 : 0);
   push('combined', view.showCombined ? 1 : 0);
+  push('cmode', view.combinedMode);
   push('coadd', view.showCoadd ? 1 : 0);
   push('zoom', view.displaySize);
   push('speed', view.speedMs);

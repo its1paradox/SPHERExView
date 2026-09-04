@@ -468,8 +468,14 @@ def get_coadd_movie(
     sigma: float = Query(5.0, ge=0),
     maxiters: int = Query(2, ge=0, le=10),
     min_channel_exposures: int = Query(1, ge=1),
+    band: str | None = Query(None, pattern="^SPHEREx-D[1-6]$"),
 ):
     """Time-resolved COLOR coadd movie: unWISE-style epoch coadds for SPHEREx.
+
+    ``band`` restricts the stack to ONE detector (e.g. ``SPHEREx-D6``): each
+    bin then contains a single-channel coadd of just that band's exposures,
+    letting the movie isolate a wavelength slice — D6 (4.42–5.0 µm) is the
+    natural W2 successor for WISE-continuity blinks.
 
     Exposures are binned into ``bin_months``-wide time windows (default
     6 months = one SPHEREx all-sky pass, the direct analogue of the
@@ -495,7 +501,7 @@ def get_coadd_movie(
     # subsample EVENLY ACROSS TIME so the movie still spans every epoch
     # (plain head-truncation would keep only the earliest days and collapse
     # the movie to one bin — deep fields have thousands of exposures).
-    images = _query_sorted_images(ra, dec, radius_arcsec, survey, None, 10 ** 9)
+    images = _query_sorted_images(ra, dec, radius_arcsec, survey, band, 10 ** 9)
     if len(images) > limit:
         idx = np.unique(np.linspace(0, len(images) - 1, limit).round().astype(int))
         images = [images[i] for i in idx]
@@ -605,6 +611,7 @@ def get_coadd_movie(
         "dec": dec,
         "radius_arcsec": radius_arcsec,
         "survey": survey,
+        "band": band,
         "background": background,
         "bin_months": bin_months,
         "bin_days": round(bin_days, 3),

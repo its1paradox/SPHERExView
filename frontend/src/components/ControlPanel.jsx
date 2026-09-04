@@ -151,6 +151,15 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
             />
             Combined WISE {'\u2192'} SPHEREx movie
           </label>
+          {view.showCombined && (
+            <label>
+              SPHEREx frames after WISE
+              <select value={view.combinedMode} onChange={setV('combinedMode', String)}>
+                <option value="exposures">Raw exposures (all bands)</option>
+                <option value="d6">D6 epoch coadds {'\u2014'} W2 successor</option>
+              </select>
+            </label>
+          )}
           <label className="check">
             <input
               type="checkbox"

@@ -84,7 +84,7 @@ FITS downloads are cached under `backend/cache/`, so a persistent disk
 | `GET /api/cutouts` | Cutouts around a position |
 | `GET /api/epoch-stack` | Time-ordered cutout stack for blinking |
 | `GET /api/coadd` | Per-detector CO-ADD stacks (deep, mixed-wavelength images; `background=zodi\|none`, `sigma`, `maxiters`) |
-| `GET /api/coadd-movie` | Time-resolved COLOR coadd movie: exposures binned into `bin_months`-wide windows (default 6 = one SPHEREx sky pass), each bin stacked into a blue (D1–D4) + orange (D5–D6) two-channel frame on ONE shared grid, per-bin robust z-scored. When more exposures exist than `limit`, they are subsampled evenly across time so the movie spans the full archive baseline. `min_channel_exposures` optionally drops under-filled channels |
+| `GET /api/coadd-movie` | Time-resolved COLOR coadd movie: exposures binned into `bin_months`-wide windows (default 6 = one SPHEREx sky pass), each bin stacked into a blue (D1–D4) + orange (D5–D6) two-channel frame on ONE shared grid, per-bin robust z-scored. When more exposures exist than `limit`, they are subsampled evenly across time so the movie spans the full archive baseline. `min_channel_exposures` optionally drops under-filled channels. Optional `band=SPHEREx-D1..D6` restricts every epoch coadd to ONE detector (a single wavelength slice — D6 is the natural WISE W2 successor) |
 | `GET /api/wise-stack` | Time-resolved unWISE epoch stack via WiseView (byw.tools), one dated frame per ~6-month visit, optional Gaia DR3 markers |
 | `POST /api/spectra/submit` | Submit an IRSA SPHEREx spectrophotometry job (`ra`, `dec`, `bkg_region`) |
 | `GET /api/spectra/status/{job_id}` | UWS job phase (QUEUED / EXECUTING / COMPLETED / ERROR) |
@@ -132,6 +132,22 @@ DR3 markers in image-pixel coordinates, proper-motion propagated from epoch
   epochs. Dedicated window with its own playback/display controls, hover
   RA/Dec, pins with one-click spectra, per-epoch provenance panel, and
   shareable URL hash.
+
+- **Single-band epoch movies**: a *Detector band* select on the movie page
+  narrows every epoch coadd to one detector (D1…D6) instead of stacking
+  all six — one wavelength slice blinked through time. Single-channel
+  epochs keep their natural COLOR hue (blue for D1–D4, orange for D5–D6)
+  by rendering the missing channel as sky level, so a D6-only movie looks
+  exactly like the orange layer of the full composite. Travels in the URL
+  hash as `band=SPHEREx-Dn`.
+
+- **WISE → D6 epoch coadds in the combined movie**: the combined timeline
+  can play *D6-only 6-month epoch coadds* after the unWISE epochs instead
+  of raw SPHEREx exposures (“SPHEREx frames after WISE” select). D6
+  (4.42–5.00 µm) is the closest SPHEREx match to WISE W2 (4.6 µm), so the
+  movie stays in one wavelength regime across the mission handoff —
+  W1/W2 epoch coadds 2010→2024, then W2-like SPHEREx epoch coadds at
+  coadd depth, all in the same rigid sky frame (`cmode=d6` in the hash).
 
 - **Shareable URLs**: every query and display attribute — target, FoV,
   survey, bands, WISE band, zoom, blink speed, stretch, black/white points,
