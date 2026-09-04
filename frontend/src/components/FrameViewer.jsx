@@ -3,6 +3,7 @@ import {
   astroToolboxLimits,
   diffuseFrame,
   diffuseLimits,
+  diffuseWindowFromRender,
   drawFrame,
   percentileLimits,
   pixelToWorld,
@@ -131,7 +132,10 @@ export default function FrameViewer({
     }
     if (render.mode === 'diffuse') {
       // Narrow window just above sky; W2 channel sets it for composites.
-      return frames.map((f) => diffuseLimits(f.sorted2 || f.sorted));
+      // The panel's sliders (black/white point, or brightness/contrast on
+      // the WISE panel) tune the window in sky-sigma units.
+      const [lowS, highS] = diffuseWindowFromRender(render);
+      return frames.map((f) => diffuseLimits(f.sorted2 || f.sorted, lowS, highS));
     }
     return frames.map((f) => zscaleLimits(f.sorted));
   }, [

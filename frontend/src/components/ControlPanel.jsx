@@ -249,33 +249,41 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
             <option value="diffuse">Diffuse emission (rings &amp; nebulae)</option>
           </select>
         </label>
-        <label className={view.sxScaleMode !== 'percentile' ? 'disabled' : ''}>
-          Black point ({view.sxBlackPct}%)
+        <label className={view.sxScaleMode === 'zscale' ? 'disabled' : ''}>
+          {view.sxScaleMode === 'diffuse'
+            ? `Sky floor (\u2212${view.sxBlackPct}\u03c3)`
+            : `Black point (${view.sxBlackPct}%)`}
           <input
             type="range"
             min="0"
             max="50"
             step="0.5"
             value={view.sxBlackPct}
-            disabled={view.sxScaleMode !== 'percentile'}
+            disabled={view.sxScaleMode === 'zscale'}
             onChange={setV('sxBlackPct')}
           />
         </label>
-        <label className={view.sxScaleMode !== 'percentile' ? 'disabled' : ''}>
-          White point ({view.sxWhitePct}%)
+        <label className={view.sxScaleMode === 'zscale' ? 'disabled' : ''}>
+          {view.sxScaleMode === 'diffuse'
+            ? `Ceiling (+${(3.5 * 2 ** ((view.sxWhitePct - 95) / 5)).toFixed(1)}\u03c3)`
+            : `White point (${view.sxWhitePct}%)`}
           <input
             type="range"
             min="80"
             max="100"
             step="0.1"
             value={view.sxWhitePct}
-            disabled={view.sxScaleMode !== 'percentile'}
+            disabled={view.sxScaleMode === 'zscale'}
             onChange={setV('sxWhitePct')}
           />
         </label>
-        <label>
-          Stretch
-          <select value={view.sxStretch} onChange={setV('sxStretch', String)}>
+        <label className={view.sxScaleMode === 'diffuse' ? 'disabled' : ''}>
+          Stretch{view.sxScaleMode === 'diffuse' ? ' (linear in diffuse mode)' : ''}
+          <select
+            value={view.sxStretch}
+            disabled={view.sxScaleMode === 'diffuse'}
+            onChange={setV('sxStretch', String)}
+          >
             <option value="sqrt">Sqrt (default)</option>
             <option value="asinh">Asinh</option>
             <option value="linear">Linear</option>
@@ -301,9 +309,11 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
         {view.sxScaleMode === 'diffuse' && (
           <p className="hint">
             Diffuse mode suppresses point sources (star-clip to the local
-            median), smooths, and stretches a narrow linear window just above
+            median), smooths, and shows a narrow linear window just above
             sky {'\u2014'} faint extended structure (rings, shells) stands
-            out; stars are intentionally erased. Best on the detector
+            out; stars are intentionally erased. The two sliders set the
+            window in sky-noise units: sky floor below the median, ceiling
+            above it (lower ceiling = stronger). Best on the detector
             CO-ADDs.
           </p>
         )}
@@ -345,9 +355,13 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
             onChange={setV('wiseContrast')}
           />
         </label>
-        <label>
-          Stretch
-          <select value={view.wiseStretch} onChange={setV('wiseStretch', String)}>
+        <label className={view.wiseDiffuse ? 'disabled' : ''}>
+          Stretch{view.wiseDiffuse ? ' (linear in diffuse mode)' : ''}
+          <select
+            value={view.wiseStretch}
+            disabled={view.wiseDiffuse}
+            onChange={setV('wiseStretch', String)}
+          >
             <option value="linear">Linear (default)</option>
             <option value="asinh">Asinh</option>
             <option value="sqrt">Sqrt</option>
@@ -383,7 +397,8 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
             Point sources are clipped to the local median, the image is
             smoothed, and a narrow linear window just above sky is shown
             {'\u2014'} faint extended structure stands out; stars are
-            intentionally erased.
+            intentionally erased. Brightness deepens the sky floor,
+            contrast lowers the ceiling (higher = stronger).
           </p>
         )}
         <p className="hint">

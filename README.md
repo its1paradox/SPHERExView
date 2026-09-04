@@ -263,10 +263,17 @@ DR3 markers in image-pixel coordinates, proper-motion propagated from epoch
   (a plain median filter would also thin out faint shell rims);
   (2) gentle Gaussian smoothing (σ ≈ 1.2 px) to suppress pixel noise
   BEFORE any stretch magnifies it; (3) a narrow LINEAR display window
-  hugging the sky level (median − 0.5σ … median + 3.5σ, σ from the
-  16th/84th percentiles), the same trick that makes low-surface-brightness
-  shells appear in WiseView when the max slider is pulled down to just
-  above sky. This is a VISUALIZATION aid, not photometry — stars are
+  hugging the sky level (default median − 0.5σ … median + 3.5σ, σ from
+  the 16th/84th percentiles), the same trick that makes
+  low-surface-brightness shells appear in WiseView when the max slider is
+  pulled down to just above sky. The window is TUNABLE, WiseView-style:
+  in diffuse mode the SPHEREx black/white-point sliders become *Sky floor*
+  (σ below sky) and *Ceiling* (σ above sky, exponential — lower ceiling =
+  stronger), and the WISE panel's brightness/contrast sliders play the
+  same roles for its diffuse checkbox. The combined WISE → SPHEREx
+  timeline honours both diffuse settings per mission. The ignored Stretch
+  select is disabled while diffuse is active (the mode is linear by
+  definition). This is a VISUALIZATION aid, not photometry — stars are
   intentionally destroyed and the hint says so. Validated on the
   ≈150″ elliptical shell of the planetary-nebula candidate
   PN G165.6−10.1 (HASH 33778) at RA 66.7727 Dec +34.2532, which is

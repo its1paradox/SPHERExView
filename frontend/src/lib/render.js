@@ -570,12 +570,35 @@ export function diffuseEnhanceArray(data, w, h) {
 
 // Display window for an enhanced array: med - 0.5 sigma .. med + 3.5 sigma
 // (sigma re-measured AFTER clipping/smoothing, from the sorted pixels).
-export function diffuseLimits(sorted) {
+export function diffuseLimits(sorted, lowSigma = 0.5, highSigma = 3.5) {
   const at = (p) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round((p / 100) * (sorted.length - 1))))];
   const med = at(50);
   // Robust sigma from the 16th/84th percentiles of the smoothed image.
   const sigma = Math.max((at(84.1) - at(15.9)) / 2, 1e-12);
-  return [med - 0.5 * sigma, med + 3.5 * sigma];
+  return [med - lowSigma * sigma, med + Math.max(highSigma, -lowSigma + 0.05) * sigma];
+}
+
+// Map the user-facing display sliders onto the diffuse window (in sky-sigma
+// units). SPHEREx panels expose black/white-point sliders; the WISE panel
+// exposes brightness/contrast. Defaults reproduce (-0.5 sigma, +3.5 sigma).
+export function diffuseWindowFromRender(render) {
+  if (render.blackPct !== undefined && render.whitePct !== undefined) {
+    // Black point 0..50 -> sigma below sky; white point 80..100 ->
+    // exponential ceiling, 95% = +3.5 sigma (doubles every 5%).
+    return [
+      Number(render.blackPct),
+      3.5 * Math.pow(2, (Number(render.whitePct) - 95) / 5),
+    ];
+  }
+  if (render.contrast !== undefined) {
+    // Brightness 1..100 -> sigma below sky (default 1 -> 0.5 sigma);
+    // contrast 1..100 -> ceiling, default 75 -> +3.5 sigma, higher = harder.
+    return [
+      0.5 * Number(render.brightness || 1),
+      3.5 * (75 / Math.max(1, Number(render.contrast || 75))),
+    ];
+  }
+  return [0.5, 3.5];
 }
 
 // Frame-level wrapper: enhances data (and data2 for two-band composites),
