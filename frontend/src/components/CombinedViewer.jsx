@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   astroToolboxLimits,
+  luptonSliderMap,
   percentileLimits,
   renderOffscreen,
   worldToPixel,
@@ -220,10 +221,16 @@ export default function CombinedViewer({
       {
         stretch,
         invert,
-        whitePct:
-          !useWiseDisplay && view.sxScaleMode === 'percentile' ? view.sxWhitePct : undefined,
-        blackPct:
-          !useWiseDisplay && view.sxScaleMode === 'percentile' ? view.sxBlackPct : undefined,
+        // Mapped onto the Lupton pooled-intensity scale (95 -> 99.5) so
+        // color frames keep the frozen sequence scale at the defaults.
+        ...(() => {
+          const on = !useWiseDisplay && view.sxScaleMode === 'percentile';
+          const [b, w] = luptonSliderMap(
+            on ? view.sxBlackPct : undefined,
+            on ? view.sxWhitePct : undefined,
+          );
+          return { blackPct: b, whitePct: w };
+        })(),
       },
     );
     ctx.save();

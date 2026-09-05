@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   astroToolboxLimits,
   drawFrame,
+  luptonSliderMap,
   percentileLimits,
   pixelToWorld,
   worldToPixel,
@@ -178,8 +179,16 @@ export default function FrameViewer({
       canvasH: Math.round(maxH * scale),
       stretch: render.stretch,
       invert: render.invert,
-      whitePct: render.mode === 'percentile' ? render.whitePct : undefined,
-      blackPct: render.mode === 'percentile' ? render.blackPct : undefined,
+      // Lupton color frames read the sliders through luptonSliderMap so the
+      // grayscale percentile defaults land on the pooled positive-intensity
+      // scale (95 -> 99.5); grayscale frames ignore these (they use vmin/vmax).
+      ...(() => {
+        const [b, w] = luptonSliderMap(
+          render.mode === 'percentile' ? render.blackPct : undefined,
+          render.mode === 'percentile' ? render.whitePct : undefined,
+        );
+        return { blackPct: b, whitePct: w };
+      })(),
       smooth: render.smooth,
       showMarkers,
       crosshair,

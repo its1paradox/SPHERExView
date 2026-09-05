@@ -215,6 +215,26 @@ function sortedPct(sorted, pct) {
   return sorted[Math.min(sorted.length - 1, Math.max(0, i))];
 }
 
+// The main-page display sliders are calibrated for GRAYSCALE frames: their
+// percentiles index each frame's full sorted pixel distribution (sky is
+// most of it, so white at the 95th percentile is a sensible default).
+// Lupton color frames draw their white/black points from a DIFFERENT
+// distribution -- the pooled POSITIVE calibrated intensity, whose useful
+// white points all live in the top ~2% (sky dominates the rest).  Feeding
+// the grayscale numbers in directly collapses the color white point from
+// the 99.5th to the 95th percentile of that pool -- barely above sky -- so
+// sky noise is amplified into visible speckle.  This maps the grayscale
+// slider ranges onto the pool's useful range instead: white 80..100 ->
+// 98..100 (default 95 -> 99.5), black 0..50 -> 0..5 (default 0.5 -> 0.05,
+// i.e. the sky pedestal), so the DEFAULTS reproduce the original frozen
+// color scale exactly while the sliders stay live.
+export function luptonSliderMap(blackPct, whitePct) {
+  return [
+    blackPct == null ? undefined : blackPct * 0.1,
+    whitePct == null ? undefined : 100 - (100 - whitePct) * 0.1,
+  ];
+}
+
 // Two-channel scientific color composite: short -> blue, long -> red,
 // green = mean (the WiseView / unWISE W1-blue W2-red language, in which a
 // long-only source is exactly (1, 0.5, 0) = orange).
