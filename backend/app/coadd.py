@@ -16,11 +16,15 @@ Recipe (MVP, per the research report):
    ``ZODI`` extension instead of subtracting it.  Zodi is time-variable
    (seasonal) and carries an LVF wavelength gradient, so exposures from
    different dates MUST be background-matched before averaging.
-2. Reproject science / variance / flags once, nearest-neighbour, onto ONE
-   shared north-up TAN grid centred on the target (all detectors share the
-   grid, so the six coadds blink perfectly aligned).  Nearest-neighbour
-   keeps raw pixel values intact: variances stay valid per-pixel and no
-   correlated noise is introduced.  There is NO second reprojection.
+2. Reproject science / variance / flags once onto ONE shared north-up TAN
+   grid centred on the target (all detectors share the grid, so the six
+   coadds blink perfectly aligned).  The conservative default is
+   nearest-neighbour at the native 6.2 arcsec sampling: it keeps raw pixel
+   values intact, variances remain valid per-pixel, and no correlated noise
+   is introduced.  A display-optimised bilinear mode and finer output
+   sampling are also available for less blocky visual inspection; they do
+   not create additional angular resolution.  There is NO second
+   reprojection.
 3. Zero-weight pixels with fatal ``FLAGS`` bits (bit numbers read from each
    file's FLAGS header, e.g. ``MP_NONFUNC``), non-finite science values,
    non-finite / non-positive variance, and no reprojection coverage.
@@ -96,10 +100,15 @@ class AlignedExposure:
     extras: dict = field(default_factory=dict)
 
 
-def output_grid(ra: float, dec: float, out_size_arcsec: float):
+def output_grid(
+    ra: float,
+    dec: float,
+    out_size_arcsec: float,
+    pixscale_arcsec: float = COADD_PIXSCALE_ARCSEC,
+):
     """The shared north-up TAN grid all detector coadds live on."""
-    n = max(4, int(round(out_size_arcsec / COADD_PIXSCALE_ARCSEC)))
-    return n, _north_up_wcs(ra, dec, COADD_PIXSCALE_ARCSEC / 3600.0, n)
+    n = max(4, int(round(out_size_arcsec / pixscale_arcsec)))
+    return n, _north_up_wcs(ra, dec, pixscale_arcsec / 3600.0, n)
 
 
 def _fatal_mask_value(flags_header) -> int:
@@ -132,19 +141,69 @@ def _strip_sip(header: fits.Header) -> fits.Header:
     return h
 
 
+def _masked_bilinear_reproject(sci, var, valid, wcs_in, wcs_out, shape_out):
+    """Bilinearly resample valid samples and propagate their variances.
+
+    A normalized convolution prevents flagged/invalid native pixels from
+    leaking into neighboring output pixels.  If ``a_j`` are the four
+    bilinear coefficients that survive the validity mask, the output
+    variance is ``sum(a_j**2 * V_j) / sum(a_j)**2``.
+    """
+    yy, xx = np.indices(shape_out, dtype=np.float64)
+    lon, lat = wcs_out.pixel_to_world_values(xx, yy)
+    xin, yin = wcs_in.world_to_pixel_values(lon, lat)
+    finite_xy = np.isfinite(xin) & np.isfinite(yin)
+    xin_safe = np.where(finite_xy, xin, 0.0)
+    yin_safe = np.where(finite_xy, yin, 0.0)
+    x0 = np.floor(xin_safe).astype(np.int64)
+    y0 = np.floor(yin_safe).astype(np.int64)
+    dx = xin_safe - x0
+    dy = yin_safe - y0
+
+    norm = np.zeros(shape_out, dtype=np.float64)
+    sci_num = np.zeros(shape_out, dtype=np.float64)
+    var_num = np.zeros(shape_out, dtype=np.float64)
+    h, w = sci.shape
+    for ox, oy, coeff in (
+        (0, 0, (1 - dx) * (1 - dy)),
+        (1, 0, dx * (1 - dy)),
+        (0, 1, (1 - dx) * dy),
+        (1, 1, dx * dy),
+    ):
+        xi = x0 + ox
+        yi = y0 + oy
+        inside = finite_xy & (xi >= 0) & (xi < w) & (yi >= 0) & (yi < h)
+        xi_safe = np.clip(xi, 0, w - 1)
+        yi_safe = np.clip(yi, 0, h - 1)
+        use = inside & valid[yi_safe, xi_safe]
+        a = np.where(use, coeff, 0.0)
+        norm += a
+        sci_num += a * np.where(use, sci[yi_safe, xi_safe], 0.0)
+        var_num += a * a * np.where(use, var[yi_safe, xi_safe], 0.0)
+
+    covered = norm > 1e-12
+    sci_out = np.full(shape_out, np.nan, dtype=np.float64)
+    var_out = np.full(shape_out, np.nan, dtype=np.float64)
+    sci_out[covered] = sci_num[covered] / norm[covered]
+    var_out[covered] = var_num[covered] / np.square(norm[covered])
+    return sci_out, var_out, covered
+
+
 def load_aligned_exposure(
     fits_path: str,
     ra: float,
     dec: float,
     out_size_arcsec: float,
     background: str = "zodi",
+    pixscale_arcsec: float = COADD_PIXSCALE_ARCSEC,
+    resampling: str = "nearest",
 ) -> AlignedExposure:
     """Read one SPHEREx QR cutout and resample it onto the shared grid.
 
     Raises ValueError if the cutout lacks the required extensions or has no
     valid pixel on the output grid.
     """
-    n, wcs_out = output_grid(ra, dec, out_size_arcsec)
+    n, wcs_out = output_grid(ra, dec, out_size_arcsec, pixscale_arcsec)
     shape_out = (n, n)
 
     with fits.open(fits_path) as hdul:
@@ -182,20 +241,29 @@ def load_aligned_exposure(
             except Exception:
                 log.debug("WCS-WAVE lookup failed for %s", fits_path, exc_info=True)
 
-            # Fatal-flag pixels are invalidated in the NATIVE frame, then the
-            # validity mask itself is resampled (nearest-neighbour semantics).
+            # Fatal-flag pixels are invalidated in the NATIVE frame.
             fatal = _fatal_mask_value(flags_header)
             native_valid = (
                 np.isfinite(sci)
                 & np.isfinite(var)
                 & (var > 0)
                 & ((flags & fatal) == 0)
-            ).astype(np.float64)
+            )
 
-            kwargs = dict(shape_out=shape_out, order="nearest-neighbor")
-            sci_out, foot = reproject_interp((sci, wcs_sky), wcs_out, **kwargs)
-            var_out, _ = reproject_interp((var, wcs_sky), wcs_out, **kwargs)
-            valid_out, _ = reproject_interp((native_valid, wcs_sky), wcs_out, **kwargs)
+            if resampling == "bilinear":
+                sci_out, var_out, valid_out = _masked_bilinear_reproject(
+                    sci, var, native_valid, wcs_sky, wcs_out, shape_out
+                )
+                foot = valid_out
+            else:
+                kwargs = dict(shape_out=shape_out, order="nearest-neighbor")
+                sci_out, foot = reproject_interp((sci, wcs_sky), wcs_out, **kwargs)
+                var_out, _ = reproject_interp((var, wcs_sky), wcs_out, **kwargs)
+                valid_out, _ = reproject_interp(
+                    (native_valid.astype(np.float64), wcs_sky),
+                    wcs_out,
+                    **kwargs,
+                )
 
     valid = (
         (foot > 0)

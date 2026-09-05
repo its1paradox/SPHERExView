@@ -41,6 +41,24 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
         ? fm.bands.filter((b) => b !== value)
         : [...fm.bands, value],
     }));
+  const toggleCombinedDetector = (channel, detector) => () => {
+    const key =
+      channel === 'short' ? 'combinedShortDetectors' : 'combinedLongDetectors';
+    const otherKey =
+      channel === 'short' ? 'combinedLongDetectors' : 'combinedShortDetectors';
+    setView((current) => {
+      const selected = current[key];
+      if (selected.includes(detector)) {
+        if (selected.length === 1) return current;
+        return { ...current, [key]: selected.filter((d) => d !== detector) };
+      }
+      return {
+        ...current,
+        [key]: [...selected, detector].sort((a, b) => a - b),
+        [otherKey]: current[otherKey].filter((d) => d !== detector),
+      };
+    });
+  };
 
   const submit = (e) => {
     e.preventDefault();
@@ -133,7 +151,16 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
           <legend>WISE</legend>
           <label>
             Band
-            <select value={form.wiseBand} onChange={set('wiseBand')}>
+            <select
+              value={form.wiseBand}
+              onChange={set('wiseBand')}
+              disabled={view.combinedMode === 'wise'}
+              title={
+                view.combinedMode === 'wise'
+                  ? 'The matched combined timeline requires W1+W2 color epochs'
+                  : undefined
+              }
+            >
               <option value="w1">W1 (3.4 µm)</option>
               <option value="w2">W2 (4.6 µm)</option>
               <option value="w1w2">W1+W2 (color)</option>
@@ -152,13 +179,188 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
             Combined WISE {'\u2192'} SPHEREx timeline
           </label>
           {view.showCombined && (
-            <label>
-              SPHEREx frames after WISE
-              <select value={view.combinedMode} onChange={setV('combinedMode', String)}>
-                <option value="exposures">Raw exposures (all bands)</option>
-                <option value="d6">D6 epoch coadds {'\u2014'} W2 bandpass (4.42{'\u2013'}5.00 {'\u00b5'}m)</option>
-              </select>
-            </label>
+            <>
+              <label>
+                SPHEREx frames after WISE
+                <select
+                  value={view.combinedMode}
+                  onChange={(event) => {
+                    const mode = event.target.value;
+                    setView((current) => ({ ...current, combinedMode: mode }));
+                    if (mode === 'wise') {
+                      setForm((current) => ({ ...current, wiseBand: 'w1w2' }));
+                    }
+                  }}
+                  data-testid="select-combined-mode"
+                >
+                  <option value="exposures">Raw exposures (all bands)</option>
+                  <option value="d6">
+                    D6-only epoch coadds {'\u2014'} grayscale W2 bandpass
+                  </option>
+                  <option value="wise">
+                    D4+D6 color coadds {'\u2014'} W1+W2 matched
+                  </option>
+                  <option value="custom">
+                    Configurable color coadds {'\u2014'} maximum depth
+                  </option>
+                </select>
+              </label>
+              {view.combinedMode === 'wise' && (
+                <p className="hint">
+                  D4 (2.42{'\u2013'}3.82 {'\u00b5'}m) occupies the W1 color
+                  channel and D6 (4.42{'\u2013'}5.00 {'\u00b5'}m) the W2
+                  channel. These frames use the same color mapping,
+                  brightness, contrast, stretch and inversion controls as
+                  W1+W2 for a continuous mission handoff.
+                </p>
+              )}
+              {view.combinedMode === 'd6' && (
+                <p className="hint">
+                  A scientifically honest single-band product: only D6 is
+                  stacked. No D4 reference is silently mixed into this mode.
+                </p>
+              )}
+              {view.combinedMode !== 'exposures' && (
+                <details className="coadd-settings" open={view.combinedMode === 'custom'}>
+                  <summary>Epoch coadd recipe</summary>
+                  {view.combinedMode === 'custom' && (
+                    <>
+                      <span className="band-group-title">Blue / short-wavelength channel</span>
+                      <div className="detector-grid">
+                        {[1, 2, 3, 4, 5, 6].map((detector) => (
+                          <label className="check" key={`short-${detector}`}>
+                            <input
+                              type="checkbox"
+                              checked={view.combinedShortDetectors.includes(detector)}
+                              disabled={view.combinedLongDetectors.includes(detector)}
+                              onChange={toggleCombinedDetector('short', detector)}
+                              data-testid={`checkbox-combined-short-d${detector}`}
+                            />
+                            D{detector}
+                          </label>
+                        ))}
+                      </div>
+                      <span className="band-group-title">Orange / long-wavelength channel</span>
+                      <div className="detector-grid">
+                        {[1, 2, 3, 4, 5, 6].map((detector) => (
+                          <label className="check" key={`long-${detector}`}>
+                            <input
+                              type="checkbox"
+                              checked={view.combinedLongDetectors.includes(detector)}
+                              disabled={view.combinedShortDetectors.includes(detector)}
+                              onChange={toggleCombinedDetector('long', detector)}
+                              data-testid={`checkbox-combined-long-d${detector}`}
+                            />
+                            D{detector}
+                          </label>
+                        ))}
+                      </div>
+                      <p className="hint">
+                        Default: D1{'\u2013'}D4 versus D5+D6, using all
+                        available wavelengths for the deepest two-channel
+                        timeline.
+                      </p>
+                    </>
+                  )}
+                  <label>
+                    Maximum epoch span ({view.combinedMonths} months)
+                    <input
+                      type="range"
+                      min="0.25"
+                      max="25"
+                      step="0.25"
+                      value={view.combinedMonths}
+                      onChange={setV('combinedMonths')}
+                      data-testid="range-combined-months"
+                    />
+                  </label>
+                  <label>
+                    Maximum input exposures
+                    <input
+                      type="number"
+                      min="1"
+                      max="10000"
+                      value={view.combinedLimit}
+                      onChange={setV('combinedLimit')}
+                      data-testid="input-combined-limit"
+                    />
+                  </label>
+                  <label>
+                    Minimum exposures per channel
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={view.combinedMinChannelExposures}
+                      onChange={setV('combinedMinChannelExposures')}
+                      data-testid="input-combined-min-exposures"
+                    />
+                  </label>
+                  <label>
+                    Background treatment
+                    <select
+                      value={view.combinedBackground}
+                      onChange={setV('combinedBackground', String)}
+                      data-testid="select-combined-background"
+                    >
+                      <option value="zodi">Subtract zodiacal-light model</option>
+                      <option value="none">Keep pipeline background</option>
+                    </select>
+                  </label>
+                  <label>
+                    Sigma clipping ({view.combinedSigma === 0 ? 'off' : `${view.combinedSigma}\u03c3`})
+                    <input
+                      type="range"
+                      min="0"
+                      max="10"
+                      step="0.5"
+                      value={view.combinedSigma}
+                      onChange={setV('combinedSigma')}
+                      data-testid="range-combined-sigma"
+                    />
+                  </label>
+                  <label>
+                    Clipping iterations
+                    <input
+                      type="number"
+                      min="0"
+                      max="10"
+                      value={view.combinedMaxiters}
+                      onChange={setV('combinedMaxiters')}
+                      data-testid="input-combined-maxiters"
+                    />
+                  </label>
+                  <label>
+                    Output pixel scale
+                    <select
+                      value={view.combinedPixscale}
+                      onChange={setV('combinedPixscale')}
+                      data-testid="select-combined-pixscale"
+                    >
+                      <option value="3.1">3.1 arcsec (2x display sampling)</option>
+                      <option value="6.2">6.2 arcsec (native sampling)</option>
+                    </select>
+                  </label>
+                  <label>
+                    Resampling
+                    <select
+                      value={view.combinedResampling}
+                      onChange={setV('combinedResampling', String)}
+                      data-testid="select-combined-resampling"
+                    >
+                      <option value="bilinear">Bilinear (clearer display)</option>
+                      <option value="nearest">Nearest (pixel preserving)</option>
+                    </select>
+                  </label>
+                  <p className="hint">
+                    3.1″ bilinear output reduces blockiness and can use
+                    sub-pixel visit offsets, but it does not create angular
+                    resolution beyond SPHEREx. Use 6.2″ nearest for the most
+                    conservative pixel-preserving product.
+                  </p>
+                </details>
+              )}
+            </>
           )}
           <label className="check">
             <input

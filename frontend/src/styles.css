@@ -131,6 +131,32 @@ header h1 {
   margin: 0;
 }
 
+.coadd-settings {
+  margin: 2px 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.coadd-settings summary {
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 7px;
+}
+
+.detector-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px 6px;
+  margin: 4px 0 8px;
+}
+
+.detector-grid label.check {
+  margin: 0;
+}
+
 .fetch-btn {
   width: 100%;
   background: var(--accent);
