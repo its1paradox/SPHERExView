@@ -7,6 +7,13 @@ import {
   sortPixels,
   worldToPixel,
 } from '../lib/render.js';
+import {
+  buildBlinkDataKey,
+  buildBlinkHash,
+  buildBlinkParams,
+  parseBlinkHash,
+  validateBlinkGrid,
+} from '../lib/blinkstate.js';
 
 /**
  * Time-resolved COLOR epoch blink — the SPHEREx analogue of WiseView.
@@ -17,11 +24,13 @@ import {
  * natural sky-pass VISITS (a new epoch starts where the gap between
  * consecutive exposures exceeds ~30 days — the unWISE rule scaled to
  * SPHEREx; continuous polar coverage falls back to balanced time windows),
- * each epoch is stacked into a two-channel color coadd (D1–D4 < 3.82 µm
- * rendered blue, D5–D6 > 3.82 µm rendered orange) on ONE shared north-up
- * grid, and the epochs blink chronologically.  Movers drift, variables
- * pulse, and everything static stays pinned — at coadd depth instead of
- * single-exposure noise.
+ * each epoch is stacked into a two-channel color coadd on ONE shared
+ * north-up grid, and the epochs blink chronologically.  The default is
+ * D1–D4 rendered blue and D5–D6 rendered orange; observers can instead
+ * assign any two non-overlapping detector groups to the display channels.
+ * Movers drift,
+ * variables pulse, and everything static stays pinned — at coadd depth
+ * instead of single-exposure noise.
  *
  * Focusing one detector keeps a WiseView-style color composite: the focus
  * detector against a reference channel (D6 focus → D4 reference, the
@@ -32,13 +41,12 @@ import {
  * astrometrically rigid.
  */
 
-const MONTH_OPTIONS = [1, 2, 3, 6, 12];
-
 // Detector choices for single-band blink sequences. 'all' keeps the two-channel
 // COLOR stack (blue = D1–D4, orange = D5–D6); a single detector narrows
 // each epoch coadd to one wavelength slice.
 const BAND_OPTIONS = [
-  { value: 'all', label: 'All 6 detectors (COLOR)' },
+  { value: 'all', label: 'Maximum depth (D1–D4 + D5–D6 COLOR)' },
+  { value: 'custom', label: 'Custom detector channels (COLOR)' },
   { value: 'SPHEREx-D1', label: 'D1 focus (0.75\u20131.11 \u00b5m)' },
   { value: 'SPHEREx-D2', label: 'D2 focus (1.10\u20131.64 \u00b5m)' },
   { value: 'SPHEREx-D3', label: 'D3 focus (1.63\u20132.42 \u00b5m)' },
@@ -70,19 +78,6 @@ const fmtDets = (dets) => {
     : dets.map((d) => `D${d}`).join('+');
 };
 
-function parseBlinkHash() {
-  const p = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-  return {
-    coords: p.get('ra') && p.get('dec') ? `${p.get('ra')} ${p.get('dec')}` : '',
-    size: p.get('size') || '240',
-    survey: p.get('survey') || 'wide',
-    months: p.get('months') || '6',
-    maxframes: p.get('maxframes') || '500',
-    band: p.get('band') || 'all',
-    ref: p.get('ref') || 'auto',
-  };
-}
-
 function parseCoords(text) {
   const parts = text.trim().split(/[\s,;]+/);
   if (parts.length !== 2) return null;
@@ -107,7 +102,7 @@ function fmtVal(v, depth = 0) {
 }
 
 export default function BlinkPage() {
-  const [form, setForm] = useState(parseBlinkHash);
+  const [form, setForm] = useState(() => parseBlinkHash(window.location.hash));
   const [frames, setFrames] = useState([]);
   const [status, setStatus] = useState(null);
   const [error, setError] = useState(null);
@@ -127,6 +122,9 @@ export default function BlinkPage() {
   const [copied, setCopied] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const canvasRef = useRef(null);
+  const buildAbort = useRef(null);
+  const buildSequence = useRef(0);
+  const appliedDataKey = useRef(null);
 
   const build = async (f) => {
     const coords = parseCoords(f.coords);
@@ -134,6 +132,63 @@ export default function BlinkPage() {
       setError('Enter RA and Dec in decimal degrees, e.g. 133.786 -7.245');
       return;
     }
+    const size = Number(f.size);
+    const months = Number(f.months);
+    const maxframes = Number(f.maxframes);
+    const sigma = Number(f.sigma);
+    const maxiters = Number(f.maxiters);
+    const minChannelExposures = Number(f.minChannelExposures);
+    const pixscale = Number(f.pixscale);
+    if (!Number.isFinite(size) || size < 30 || size > 7200) {
+      setError('Field of view must be between 30 and 7200 arcsec.');
+      return;
+    }
+    if (!Number.isFinite(months) || months < 0.25 || months > 25) {
+      setError('Maximum epoch span must be between 0.25 and 25 months.');
+      return;
+    }
+    if (!Number.isInteger(maxframes) || maxframes < 1 || maxframes > 10000) {
+      setError('Maximum exposures must be an integer between 1 and 10000.');
+      return;
+    }
+    if (!Number.isFinite(sigma) || sigma < 0 || sigma > 20) {
+      setError('Sigma clipping must be between 0 and 20.');
+      return;
+    }
+    if (!Number.isInteger(maxiters) || maxiters < 0 || maxiters > 10) {
+      setError('Clipping iterations must be an integer between 0 and 10.');
+      return;
+    }
+    if (
+      !Number.isInteger(minChannelExposures) ||
+      minChannelExposures < 1 ||
+      minChannelExposures > 100
+    ) {
+      setError('Minimum exposures per channel must be an integer between 1 and 100.');
+      return;
+    }
+    if (!Number.isFinite(pixscale) || pixscale < 1.5 || pixscale > 12) {
+      setError('Output pixel scale must be between 1.5 and 12 arcsec.');
+      return;
+    }
+    const gridError = validateBlinkGrid(size, pixscale);
+    if (gridError) {
+      setError(gridError);
+      return;
+    }
+    if (
+      f.band === 'custom' &&
+      (!f.shortDetectors.length ||
+        !f.longDetectors.length ||
+        f.shortDetectors.some((detector) => f.longDetectors.includes(detector)))
+    ) {
+      setError('Custom color coadds require two non-empty, non-overlapping detector channels.');
+      return;
+    }
+    buildAbort.current?.abort();
+    const controller = new AbortController();
+    buildAbort.current = controller;
+    const sequence = ++buildSequence.current;
     setLoading(true);
     setError(null);
     setFrames([]);
@@ -143,22 +198,12 @@ export default function BlinkPage() {
       'Building time-resolved coadds\u2026 every exposure is downloaded, ' +
         'zodi-subtracted and stacked per epoch (a fresh field can take a few minutes).',
     );
-    const params = new URLSearchParams({
-      ra: coords.ra,
-      dec: coords.dec,
-      radius_arcsec: parseFloat(f.size) / 2,
-      survey: f.survey,
-      bin_months: f.months,
-      limit: f.maxframes,
-    });
-    if (f.band && f.band !== 'all') {
-      params.set('band', f.band);
-      params.set('ref', f.ref || 'auto');
-    }
+    const params = buildBlinkParams(f, coords);
     try {
-      const d = await fetch(`/api/epoch-coadds?${params}`).then((r) =>
+      const d = await fetch(`/api/epoch-coadds?${params}`, { signal: controller.signal }).then((r) =>
         r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.detail || r.statusText))),
       );
+      if (sequence !== buildSequence.current) return;
       const fr = d.frames.map((c) => ({
         ...c,
         data: decodeB64Float32(c.data_b64),
@@ -173,31 +218,30 @@ export default function BlinkPage() {
       setIndex(0);
       setPlaying(true);
       setMeta(d);
+      appliedDataKey.current = buildBlinkDataKey(f, coords);
       setStatus(
         `${d.count} epoch coadds \u00b7 visit-grouped (new epoch when the gap exceeds ` +
           `${d.grouping ? d.grouping.gap_days : 30} d) \u00b7 ` +
           `${d.n_exposures_input - d.n_exposures_skipped} exposures stacked` +
           (d.n_exposures_skipped ? ` (${d.n_exposures_skipped} skipped)` : ''),
       );
-      window.location.hash = new URLSearchParams({
-        ra: coords.ra,
-        dec: coords.dec,
-        size: f.size,
-        survey: f.survey,
-        months: f.months,
-        maxframes: f.maxframes,
-        ...(f.band && f.band !== 'all' ? { band: f.band, ref: f.ref || 'auto' } : {}),
-      }).toString();
+      window.location.hash = buildBlinkHash(f, coords);
     } catch (err) {
+      if (err.name === 'AbortError' || sequence !== buildSequence.current) return;
       setStatus(null);
       setError(`Blink build failed: ${err.message}`);
+    } finally {
+      if (sequence === buildSequence.current) {
+        setLoading(false);
+        if (buildAbort.current === controller) buildAbort.current = null;
+      }
     }
-    setLoading(false);
   };
 
   // Auto-build when opened with coordinates in the URL.
   useEffect(() => {
     if (form.coords) build(form);
+    return () => buildAbort.current?.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -256,10 +300,17 @@ export default function BlinkPage() {
     const prev = lastRefMode.current;
     if (form.ref === prev) return;
     lastRefMode.current = form.ref;
-    if (!frames.length || !meta || !form.band || form.band === 'all') return;
+    if (!/^SPHEREx-D[1-6]$/.test(form.band)) return;
     const soft = (r) => r === 'auto' || r === 'excess';
-    if (soft(prev) && soft(form.ref)) {
+    const coords = parseCoords(form.coords);
+    const canReuse =
+      coords &&
+      frames.length &&
+      meta &&
+      appliedDataKey.current === buildBlinkDataKey(form, coords);
+    if (soft(prev) && soft(form.ref) && canReuse) {
       setMeta((mPrev) => (mPrev ? { ...mPrev, ref: form.ref } : mPrev));
+      window.location.hash = buildBlinkHash(form, coords);
     } else {
       build(form);
     }
@@ -319,7 +370,24 @@ export default function BlinkPage() {
     });
   }, [frames, index, vmin, vmax, displaySize, stretch, invert, pin, luptonScale, meta, whitePct, blackPct]);
 
-  const setF = (key) => (e) => setForm({ ...form, [key]: e.target.value });
+  const setF = (key) => (e) =>
+    setForm((current) => ({ ...current, [key]: e.target.value }));
+  const toggleDetector = (channel, detector) => () => {
+    const key = channel === 'short' ? 'shortDetectors' : 'longDetectors';
+    const otherKey = channel === 'short' ? 'longDetectors' : 'shortDetectors';
+    setForm((current) => {
+      const selected = current[key];
+      if (selected.includes(detector)) {
+        if (selected.length === 1) return current;
+        return { ...current, [key]: selected.filter((value) => value !== detector) };
+      }
+      return {
+        ...current,
+        [key]: [...selected, detector].sort((a, b) => a - b),
+        [otherKey]: current[otherKey].filter((value) => value !== detector),
+      };
+    });
+  };
   const f = frames.length ? frames[Math.min(index, frames.length - 1)] : null;
   const m = f ? f.metadata : null;
 
@@ -348,7 +416,9 @@ export default function BlinkPage() {
         ? meta && meta.ref === 'excess'
           ? `${m.band_focus.replace('SPHEREx-', '')} excess (vs ${m.reference}${refTag})`
           : `${m.band_focus.replace('SPHEREx-', '')} + ${m.reference} ref${refTag}`
-        : 'COLOR'
+        : meta?.channel_recipe?.custom
+          ? `CUSTOM COLOR · ${fmtDets(m.short_channel?.detectors)} / ${fmtDets(m.long_channel?.detectors)}`
+          : 'COLOR'
       : soloDetectors && soloDetectors.length === 1
         ? `D${soloDetectors[0]} \u00b7 grayscale`
         : m.channels === 'short-only'
@@ -367,13 +437,24 @@ export default function BlinkPage() {
         .filter(Boolean)
         .join(' / ')
     : '';
+  const scienceNote = m
+    ? m.channels !== 'color'
+      ? 'grayscale = calibrated flux from the selected detector channel; no color ratio is implied'
+      : m.channel_recipe?.custom
+        ? 'color = calibrated orange/blue display-channel flux ratio (Lupton asinh, chroma gated 2–5σ); interpret hue using the detector assignments shown above'
+        : meta?.ref === 'excess'
+          ? 'excess view = grayscale reference field plus a single-hue focus-band overlay where focus-minus-reference exceeds 2.5σ'
+        : 'color = calibrated long/short flux ratio (Lupton asinh, chroma gated 2–5σ) · an ORANGE source that also MOVES between epochs is a cold, fast-mover candidate'
+    : '';
 
   return (
     <div className="app blink-app">
       <header>
         <h1>SPHERExView {'\u2014'} Epoch blink</h1>
         <p className="subtitle">
-          {form.band && form.band !== 'all'
+          {form.band === 'custom'
+            ? `One custom COLOR coadd per sky-pass visit · ${fmtDets(form.shortDetectors)} → blue display channel · ${fmtDets(form.longDetectors)} → orange display channel`
+            : form.band && form.band !== 'all'
             ? form.ref === 'none'
               ? `One ${form.band.replace('SPHEREx-', '')}-only coadd per sky-pass visit, blinked chronologically \u2014 an explicitly grayscale wavelength slice (a lone band carries no color information)`
               : form.ref === 'excess'
@@ -390,7 +471,7 @@ export default function BlinkPage() {
             build(form);
           }}
         >
-          <fieldset>
+          <fieldset disabled={loading}>
             <legend>Target</legend>
             <label>
               Coordinates (RA Dec, deg)
@@ -409,7 +490,11 @@ export default function BlinkPage() {
             </label>
             <label>
               Detector band
-              <select value={form.band} onChange={setF('band')}>
+              <select
+                value={form.band}
+                onChange={setF('band')}
+                data-testid="select-blink-band"
+              >
                 {BAND_OPTIONS.map((b) => (
                   <option key={b.value} value={b.value}>
                     {b.label}
@@ -417,10 +502,10 @@ export default function BlinkPage() {
                 ))}
               </select>
             </label>
-            {form.band !== 'all' && (
+            {/^SPHEREx-D[1-6]$/.test(form.band) && (
               <label>
                 Reference channel
-                <select value={form.ref} onChange={setF('ref')}>
+                <select value={form.ref} onChange={setF('ref')} data-testid="select-blink-ref">
                   {REF_OPTIONS.map((r) => (
                     <option key={r.value} value={r.value}>
                       {r.label}
@@ -430,24 +515,140 @@ export default function BlinkPage() {
               </label>
             )}
             <p className="hint">
-              {form.band !== 'all'
+              {form.band === 'custom'
+                ? `Assign any two non-overlapping detector groups to blue and orange display channels. The defaults preserve wavelength order and maximize depth using D1\u2013D4 versus D5+D6; D4 in blue versus D6 in orange recreates the W1/W2-analogue layout.`
+                : form.band !== 'all'
                 ? `Hues are anchored to wavelength exactly as in WiseView: the SHORTER band is always blue, the LONGER always orange, everywhere in the app \u2014 a source can never change color because a band was omitted. D6 focus + D4 reference is the detector-level W2/W1 analogue (D4 contains the 3.3 \u00b5m CH4 absorption, D6 the 4.6\u20135 \u00b5m window), so very cold objects glow orange while ordinary stars stay white or bluish.`
-                : `A single detector focuses every epoch coadd on one wavelength slice \u2014 D6 (4.42\u20135.00 \u00b5m) is the closest match to WISE W2 (4.6 \u00b5m).`}
+                : `The maximum-depth recipe combines all six detectors. Select a focused detector for one wavelength slice or Custom for complete channel control.`}
             </p>
           </fieldset>
 
-          <fieldset>
+          <fieldset disabled={loading}>
+            <legend>Coadd recipe</legend>
+            {form.band === 'custom' && (
+              <>
+                <span className="band-group-title">Blue display channel</span>
+                <div className="detector-grid">
+                  {[1, 2, 3, 4, 5, 6].map((detector) => (
+                    <label className="check" key={`blink-short-${detector}`}>
+                      <input
+                        type="checkbox"
+                        checked={form.shortDetectors.includes(detector)}
+                        disabled={form.longDetectors.includes(detector)}
+                        onChange={toggleDetector('short', detector)}
+                        data-testid={`checkbox-blink-short-d${detector}`}
+                      />
+                      D{detector}
+                    </label>
+                  ))}
+                </div>
+                <span className="band-group-title">Orange display channel</span>
+                <div className="detector-grid">
+                  {[1, 2, 3, 4, 5, 6].map((detector) => (
+                    <label className="check" key={`blink-long-${detector}`}>
+                      <input
+                        type="checkbox"
+                        checked={form.longDetectors.includes(detector)}
+                        disabled={form.shortDetectors.includes(detector)}
+                        onChange={toggleDetector('long', detector)}
+                        data-testid={`checkbox-blink-long-d${detector}`}
+                      />
+                      D{detector}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+            <label>
+              Minimum exposures per channel
+              <input
+                type="number"
+                min="1"
+                max="100"
+                step="1"
+                value={form.minChannelExposures}
+                onChange={setF('minChannelExposures')}
+                data-testid="input-blink-min-exposures"
+              />
+            </label>
+            <label>
+              Background treatment
+              <select
+                value={form.background}
+                onChange={setF('background')}
+                data-testid="select-blink-background"
+              >
+                <option value="zodi">Subtract zodiacal-light model</option>
+                <option value="none">Keep pipeline background</option>
+              </select>
+            </label>
+            <label>
+              Sigma clipping ({Number(form.sigma) === 0 ? 'off' : `${form.sigma}\u03c3`})
+              <input
+                type="range"
+                min="0"
+                max="10"
+                step="0.5"
+                value={form.sigma}
+                onChange={setF('sigma')}
+                data-testid="range-blink-sigma"
+              />
+            </label>
+            <label>
+              Clipping iterations
+              <input
+                type="number"
+                min="0"
+                max="10"
+                step="1"
+                value={form.maxiters}
+                onChange={setF('maxiters')}
+                data-testid="input-blink-maxiters"
+              />
+            </label>
+            <label>
+              Output pixel scale
+              <select
+                value={form.pixscale}
+                onChange={setF('pixscale')}
+                data-testid="select-blink-pixscale"
+              >
+                <option value="3.1">3.1 arcsec (2x display sampling)</option>
+                <option value="6.2">6.2 arcsec (native sampling)</option>
+              </select>
+            </label>
+            <label>
+              Resampling
+              <select
+                value={form.resampling}
+                onChange={setF('resampling')}
+                data-testid="select-blink-resampling"
+              >
+                <option value="bilinear">Bilinear (clearer display)</option>
+                <option value="nearest">Nearest (pixel preserving)</option>
+              </select>
+            </label>
+            <p className="hint">
+              3.1″ bilinear output reduces blockiness and uses sub-pixel visit
+              offsets with validity-aware variance propagation. It does not
+              create angular resolution beyond SPHEREx. Use 6.2″ nearest for
+              the conservative pixel-preserving recipe.
+            </p>
+          </fieldset>
+
+          <fieldset disabled={loading}>
             <legend>Epoch binning</legend>
             <label>
-              Coadd window
-              <select value={form.months} onChange={setF('months')}>
-                {MONTH_OPTIONS.map((mo) => (
-                  <option key={mo} value={mo}>
-                    {mo} month{mo > 1 ? 's' : ''}
-                    {mo === 6 ? ' (one sky pass)' : ''}
-                  </option>
-                ))}
-              </select>
+              Maximum epoch span ({form.months} months)
+              <input
+                type="range"
+                min="0.25"
+                max="25"
+                step="0.25"
+                value={form.months}
+                onChange={setF('months')}
+                data-testid="range-blink-months"
+              />
             </label>
             <label>
               Max exposures
@@ -456,8 +657,9 @@ export default function BlinkPage() {
                 value={form.maxframes}
                 onChange={setF('maxframes')}
                 min="1"
-                max="2000"
+                max="10000"
                 step="1"
+                data-testid="input-blink-maxframes"
               />
             </label>
             <p className="hint">
@@ -666,9 +868,7 @@ export default function BlinkPage() {
               {meta && (
                 <p className="hint blink-note">
                   {`Grid: ${f.width}\u00d7${f.height}px at ${m.pixscale_arcsec}\u2033/px, north up \u00b7 `}
-                  {'color = calibrated long/short flux ratio (Lupton asinh, chroma gated 2\u20135\u03c3) \u00b7 '}
-                  {'an ORANGE source (bright long-\u03bb, faint short-\u03bb) that MOVES between '}
-                  {'epochs is a cold, fast mover \u2014 the WISE 0855\u22120714 signature'}
+                  {scienceNote}
                 </p>
               )}
             </section>

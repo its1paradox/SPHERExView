@@ -59,6 +59,10 @@ header h1 {
   scrollbar-color: #3c4043 transparent;
 }
 
+.blink-app .sidebar {
+  flex-basis: 300px;
+}
+
 .sidebar::-webkit-scrollbar {
   width: 7px;
 }

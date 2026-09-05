@@ -135,7 +135,13 @@ DR3 markers in image-pixel coordinates, proper-motion propagated from epoch
   ephemeris; the NEP deep field resolves into 15 consecutive monthly color
   epochs. Dedicated window with its own playback/display controls, hover
   RA/Dec, pins with one-click spectra, per-epoch provenance panel, and
-  shareable URL hash.
+  shareable URL hash. The Epoch blink screen also exposes the complete
+  scientific recipe: custom non-overlapping detector groups, minimum
+  channel depth, zodiacal-background treatment, sigma clipping and
+  iteration count, output pixel scale, resampling method, epoch span, and
+  exposure cap. These settings are included in the page URL, while the
+  Build button keeps expensive coadd jobs explicit instead of firing one
+  request per slider movement.
 
 - **Band-focused epoch blinks stay two-color**: a *Detector band* select on
   the blink page focuses every epoch coadd on one detector (D1…D6) — but
