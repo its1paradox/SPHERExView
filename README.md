@@ -89,3 +89,14 @@ Backend tests use pytest. Run these commands from the repository root:
 python -m pip install pytest httpx
 python -m pytest -q backend/tests
 ```
+
+
+## Data sources
+
+- SPHEREx QR2 spectral images via [IRSA SIA2](https://irsa.ipac.caltech.edu/docs/program_interface/sia.html)
+  (`spherex_qr2`, `spherex_qr2_deep`)
+- Cutouts via IRSA's dataset-level cutout service (`?center=&size=` on the image `access_url`)
+- WISE images: time-resolved unWISE epoch coadds via
+  [WiseView](http://byw.tools/wiseview) (`byw.tools/tiles`, `byw.tools/cutout`,
+  2.75″/px) — thanks to Dan Caselden's WiseView.
+- Star markers: [Gaia DR3](https://gea.esac.esa.int/archive/) via astroquery TAP
