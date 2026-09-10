@@ -49,8 +49,11 @@
 .timeline-app button:hover:not(:disabled) { background: #243b50; border-color: #6598bf; }
 .timeline-app button:disabled { opacity: .5; cursor: default; }
 .timeline-app :is(button, input, select, summary, a):focus-visible { outline: 2px solid #9bdcff; outline-offset: 3px; }
-.panel-switch { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 12px; background: #111d29; border: 1px solid #2b3d50; border-radius: 6px; }
-.panel-switch > span { margin-right: 8px; color: #b8c9d8; font-size: 12px; }
+.timeline-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px; padding: 12px; background: #111d29; border: 1px solid #2b3d50; border-radius: 6px; }
+.panel-switch, .timeline-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.timeline-tools { margin-left: auto; }
+.panel-switch > span, .timeline-tools > span { margin-right: 8px; color: #b8c9d8; font-size: 12px; }
+.timeline-app .timeline-tools .spectrum-btn { width: auto; }
 .panel-switch label { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border: 1px solid #344659; border-radius: 5px; background: #172637; color: #b8c9d8; font-size: 12px; cursor: pointer; }
 .panel-switch label:hover { border-color: #6598bf; }
 .panel-switch label.active { background: #2a607e; border-color: #80bcde; color: #fff; }
@@ -112,7 +115,10 @@
 .display-subgroup h3 { font-size: 12px; color: #d2e5f4; margin: 0 0 10px; }
 .timeline-app .field-error { margin: 0; }
 @media (min-width: 1550px) { .timeline-app .layout { grid-template-columns: minmax(0, 1fr) 335px; } }
-@media (max-width: 1100px) { .timeline-app .layout { grid-template-columns: minmax(0, 1fr) 280px; gap: 14px; padding: 16px; } }
+@media (max-width: 1100px) {
+  .timeline-app .layout { grid-template-columns: minmax(0, 1fr) 280px; gap: 14px; padding: 16px; }
+  .timeline-tools { margin-left: 0; }
+}
 @media (max-width: 850px) {
   .timeline-app .layout { display: flex; flex-direction: column; }
   .timeline-app .viewers { width: 100%; }
@@ -122,8 +128,8 @@
 }
 @media (max-width: 430px) {
   .timeline-tag { display: none; }
-  .panel-switch > span { width: 100%; }
-  .panel-switch label { flex: 1 1 auto; }
+  .panel-switch > span, .timeline-tools > span { width: 100%; }
+  .panel-switch label, .timeline-tools button { flex: 1 1 auto; }
   .timeline-app .controls { padding: 8px; }
   .timeline-app .controls button { padding: 8px; }
 }

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import ControlPanel from './components/ControlPanel.jsx';
+import ControlPanel, { parseCoords } from './components/ControlPanel.jsx';
 import FrameViewer from './components/FrameViewer.jsx';
 import CombinedViewer from './components/CombinedViewer.jsx';
 import { decodeB64Float32, sortPixels } from './lib/render.js';
 import { DEFAULT_DISPLAY, buildHash, parseHash } from './lib/urlstate.js';
+import { comparisonUrl } from './lib/comparison.js';
 
 export { DEFAULT_DISPLAY };
 
@@ -148,6 +149,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState(initial.form);
+  const [coordsError, setCoordsError] = useState(null);
   const [view, setView] = useState(initial.view);
   // Sky position under the cursor on either panel -> crosshair on the other.
   const [hoverSky, setHoverSky] = useState(null);
@@ -433,23 +435,66 @@ export default function App() {
       </header>
       <div className="layout">
         <main className="viewers">
-          <section className="panel-switch" aria-label="Visible panels">
-            <span>Panels</span>
-            {[
-              ['showCombined', 'Combined timeline'],
-              ['showWise', 'WISE panel'],
-              ['showSpherex', 'SPHEREx panel'],
-            ].map(([key, label]) => (
-              <label className={view[key] ? 'active' : ''} key={key}>
-                <input
-                  type="checkbox"
-                  checked={view[key]}
-                  onChange={(event) => setView((current) => ({ ...current, [key]: event.target.checked }))}
-                />
-                {label}
-              </label>
-            ))}
-          </section>
+          <div className="timeline-toolbar">
+            <section className="panel-switch" aria-label="Visible panels">
+              <span>Panels</span>
+              {[
+                ['showCombined', 'Combined timeline'],
+                ['showWise', 'WISE panel'],
+                ['showSpherex', 'SPHEREx panel'],
+              ].map(([key, label]) => (
+                <label className={view[key] ? 'active' : ''} key={key}>
+                  <input
+                    type="checkbox"
+                    checked={view[key]}
+                    onChange={(event) => setView((current) => ({ ...current, [key]: event.target.checked }))}
+                  />
+                  {label}
+                </label>
+              ))}
+            </section>
+            <div className="timeline-tools" role="group" aria-label="Tools for this target">
+              <span>Tools</span>
+              <button
+                type="button"
+                className="spectrum-btn"
+                onClick={() => {
+                  const coords = parseCoords(form.coords);
+                  if (!coords) {
+                    setCoordsError('Enter RA and Dec in decimal degrees, e.g. 11.889632 28.089606');
+                    return;
+                  }
+                  openSpectrumTab(coords.ra, coords.dec);
+                }}
+              >
+                Generate spectrum at target
+              </button>
+              <button
+                type="button"
+                className="spectrum-btn"
+                onClick={() => {
+                  const coords = parseCoords(form.coords);
+                  if (!coords) {
+                    setCoordsError('Enter RA and Dec in decimal degrees, e.g. 11.889632 28.089606');
+                    return;
+                  }
+                  openBlinkTab(coords.ra, coords.dec, form.fov, form.survey, form.limit);
+                }}
+              >
+                Epoch blink sequence
+              </button>
+              <button type="button" className="spectrum-btn" onClick={() => {
+                const coords = parseCoords(form.coords);
+                if (!coords) {
+                  setCoordsError('Enter RA and Dec in decimal degrees, e.g. 11.889632 28.089606');
+                  return;
+                }
+                window.open(comparisonUrl(coords.ra, coords.dec, form.fov, form.survey), '_blank', 'noopener');
+              }}>
+                Six-detector comparison
+              </button>
+            </div>
+          </div>
           <div className="timeline-status" role="status">
             {loading && <span className="timeline-spinner" aria-hidden="true" />}
             {status || 'Choose a sky position and fetch images to begin.'}
@@ -552,6 +597,8 @@ export default function App() {
           setView={setView}
           form={form}
           setForm={setForm}
+          coordsError={coordsError}
+          setCoordsError={setCoordsError}
         />
       </div>
     </div>

@@ -1,6 +1,3 @@
-import { useState } from 'react';
-import { openBlinkTab, openSpectrumTab } from '../App.jsx';
-import { comparisonUrl } from '../lib/comparison.js';
 import { DEFAULT_DISPLAY } from '../lib/urlstate.js';
 
 const SPHEREX_BANDS = [
@@ -17,7 +14,7 @@ const SPHEREX_BANDS = [
  * per-panel controls shown only when their corresponding panel is enabled.
  */
 // Accepts "133.786 -7.245", "133.786, -7.245", etc. (decimal degrees).
-function parseCoords(text) {
+export function parseCoords(text) {
   const parts = text.trim().split(/[\s,;]+/);
   if (parts.length !== 2) return null;
   const ra = parseFloat(parts[0]);
@@ -158,8 +155,7 @@ function WiseDisplayControls({ view, setV }) {
   </>;
 }
 
-export default function ControlPanel({ onSearch, loading, view, setView, form, setForm }) {
-  const [coordsError, setCoordsError] = useState(null);
+export default function ControlPanel({ onSearch, loading, view, setView, form, setForm, coordsError, setCoordsError }) {
   const set = (key) => (e) => {
     setForm({ ...form, [key]: e.target.value });
     if (key === 'coords') setCoordsError(null);
@@ -528,47 +524,6 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
           </label>
         </fieldset>
       )}
-      <fieldset className="timeline-tools">
-        <legend>Tools for this target</legend>
-        <button
-          type="button"
-          className="spectrum-btn"
-          onClick={() => {
-            const coords = parseCoords(form.coords);
-            if (!coords) {
-              setCoordsError('Enter RA and Dec in decimal degrees, e.g. 11.889632 28.089606');
-              return;
-            }
-            openSpectrumTab(coords.ra, coords.dec);
-          }}
-        >
-          Generate spectrum at target
-        </button>
-        <button
-          type="button"
-          className="spectrum-btn"
-          onClick={() => {
-            const coords = parseCoords(form.coords);
-            if (!coords) {
-              setCoordsError('Enter RA and Dec in decimal degrees, e.g. 11.889632 28.089606');
-              return;
-            }
-            openBlinkTab(coords.ra, coords.dec, form.fov, form.survey, form.limit);
-          }}
-        >
-          Epoch blink sequence
-        </button>
-        <button type="button" className="spectrum-btn" onClick={() => {
-          const coords = parseCoords(form.coords);
-          if (!coords) {
-            setCoordsError('Enter RA and Dec in decimal degrees, e.g. 11.889632 28.089606');
-            return;
-          }
-          window.open(comparisonUrl(coords.ra, coords.dec, form.fov, form.survey), '_blank', 'noopener');
-        }}>
-          Six-detector comparison
-        </button>
-      </fieldset>
     </aside>
   );
 }
