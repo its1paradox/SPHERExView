@@ -559,7 +559,8 @@ def get_epoch_coadds(
     a natural SPHEREx visit in two, producing shallow fragment coadds (e.g.
     3 + 35 exposures) on either side of an arbitrary boundary.  Here:
 
-    - exposures are sorted by MJD and split where the gap between
+    - exposures are partitioned by calibration release, then each release
+      is sorted by MJD and split where the gap between
       consecutive exposures exceeds ``G = min(30 d, bin_months*30.4375/4)``
       (SPHEREx builds a full spectrum over ~1-2 weeks and revisits ~every
       6 months, so 30 d separates intra-visit from inter-visit timescales);
@@ -684,12 +685,19 @@ def get_epoch_coadds(
     # --- Visit-gap epoch clustering (see docstring) ---------------------
     bin_days = bin_months * 30.4375  # requested nominal/maximum epoch span
     gap_days = min(30.0, 0.25 * bin_days)
-    exposures.sort(key=lambda e: e.mjd)
-    components: list[list] = [[exposures[0]]]
-    for prev, cur in zip(exposures, exposures[1:]):
-        if cur.mjd - prev.mjd > gap_days or cur.extras["data_release"] != prev.extras["data_release"]:
-            components.append([])
-        components[-1].append(cur)
+    # A different release can neither fragment nor bridge this release's
+    # visits. Partition before temporal clustering, even when dates interleave.
+    components: list[list] = []
+    for data_release in sorted({e.extras["data_release"] for e in exposures}):
+        subset = sorted(
+            (e for e in exposures if e.extras["data_release"] == data_release),
+            key=lambda e: (e.mjd, e.obs_id, e.detector),
+        )
+        components.append([subset[0]])
+        for prev, cur in zip(subset, subset[1:]):
+            if cur.mjd - prev.mjd > gap_days:
+                components.append([])
+            components[-1].append(cur)
 
     epochs: list[tuple[list, str]] = []
     for comp in components:
@@ -710,6 +718,9 @@ def get_epoch_coadds(
                 subs[i].append(e)
             epochs.extend((s, "window") for s in subs if s)
 
+    # Release-specific epochs may overlap in time. Assign frame IDs only after
+    # restoring chronological order, with a stable tie-break for equal starts.
+    epochs.sort(key=lambda epoch: (epoch[0][0].mjd, epoch[0][0].extras["data_release"]))
     frames = []
     for k, (grp, grouping) in enumerate(epochs):
         groups = {

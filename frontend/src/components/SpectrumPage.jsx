@@ -207,6 +207,18 @@ export default function SpectrumPage() {
     [points, bandsOn, hideFlagged, logFlux, release],
   );
 
+  // A release is one independent trace. Sorting the combined measurements
+  // first would let an interleaved release interrupt every possible segment.
+  // Build from the filtered view so a remaining singleton stays visible.
+  const traceSeries = useMemo(() => {
+    const byRelease = new Map();
+    for (const point of shown) {
+      if (!byRelease.has(point.release)) byRelease.set(point.release, []);
+      byRelease.get(point.release).push(point);
+    }
+    return [...byRelease.values()].map(series => series.sort((a, b) => a.wl - b.wl));
+  }, [shown]);
+
   // ---- responsive width ------------------------------------------------
   useEffect(() => {
     const el = wrapRef.current;
@@ -353,41 +365,42 @@ export default function SpectrumPage() {
       }
     }
 
-    // Connecting trace (IRSA "connected points" / "lines" styles): one
-    // polyline through all shown measurements in wavelength order, each
-    // segment coloured by the band of its bluer endpoint.
-    if (traceStyle !== 'points' && shown.length > 1) {
-      const ordered = [...shown].sort((a, b) => a.wl - b.wl);
+    // Connect each release independently in wavelength order. Segments are
+    // visual guides between measured values, without resampling or averaging.
+    if (traceStyle !== 'points') {
       ctx.lineWidth = traceStyle === 'lines' ? 1.6 : 1.2;
-      for (let k = 1; k < ordered.length; k++) {
-        const a = ordered[k - 1];
-        const b = ordered[k];
-        if (a.release !== b.release) continue;
-        ctx.strokeStyle = (BAND_COLORS[a.band] || '#666') + (traceStyle === 'lines' ? 'ff' : 'aa');
-        ctx.beginPath();
-        ctx.moveTo(X(a.wl), Y(a.flux));
-        ctx.lineTo(X(b.wl), Y(b.flux));
-        ctx.stroke();
+      for (const series of traceSeries) {
+        for (let k = 1; k < series.length; k++) {
+          const a = series[k - 1];
+          const b = series[k];
+          ctx.strokeStyle = (BAND_COLORS[a.band] || '#666') + (traceStyle === 'lines' ? 'ff' : 'aa');
+          ctx.beginPath();
+          ctx.moveTo(X(a.wl), Y(a.flux));
+          ctx.lineTo(X(b.wl), Y(b.flux));
+          ctx.stroke();
+        }
       }
     }
 
-    // Point markers (flagged points get a hollow ring).
-    if (traceStyle !== 'lines') {
-      for (const p of shown) {
-        const color = BAND_COLORS[p.band] || '#666';
-        const px = X(p.wl);
-        const py = Y(p.flux);
-        const flagged = hasQualityFlags(p.flags);
-        ctx.beginPath();
-        ctx.arc(px, py, 3, 0, 2 * Math.PI);
-        if (flagged) {
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 1.4;
-          ctx.stroke();
-        } else {
-          ctx.fillStyle = color;
-          ctx.fill();
-        }
+    // Singletons cannot form a line, so retain their markers in Lines mode.
+    // Flagged measurements keep the same hollow-ring treatment in every mode.
+    const markerPoints = traceStyle === 'lines'
+      ? traceSeries.filter(series => series.length === 1).map(series => series[0])
+      : shown;
+    for (const p of markerPoints) {
+      const color = BAND_COLORS[p.band] || '#666';
+      const px = X(p.wl);
+      const py = Y(p.flux);
+      const flagged = hasQualityFlags(p.flags);
+      ctx.beginPath();
+      ctx.arc(px, py, 3, 0, 2 * Math.PI);
+      if (flagged) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = color;
+        ctx.fill();
       }
     }
 
@@ -409,7 +422,7 @@ export default function SpectrumPage() {
       ctx.lineWidth = 1.6;
       ctx.stroke();
     }
-  }, [shown, geom, viewMode, hoverPt, showErrors, logFlux, plotW, fluxUnit, traceStyle]);
+  }, [shown, traceSeries, geom, viewMode, hoverPt, showErrors, logFlux, plotW, fluxUnit, traceStyle]);
 
   // ---- hover ------------------------------------------------------------
   const onMove = useCallback(

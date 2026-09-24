@@ -33,6 +33,11 @@ splits an epoch. Fixed date bins in the six-detector tool can therefore produce
 separate QR2 and QR3 epochs with the same date boundaries. Static detector
 coadds likewise contain separate products for each release.
 
+Timeline and blink grouping first partition exposures by release, then find
+visits and subdivide long visits independently. An interleaved observation from
+another release cannot split a valid visit or bridge a genuine time gap.
+Completed epochs are returned chronologically, with release labels retained.
+
 This is a deliberate response to the gain and spectral calibration changes
 described in Explanatory Supplement v2.0, §2.1. Observation date alone does not
 identify a calibration: early survey-3 observations were initially processed
@@ -99,12 +104,27 @@ affect the displayed plot/table only. Signed fluxes, uncertainties and units
 are preserved in the downloaded data. Quality checks use JavaScript BigInt so
 photometry bits 32 and 33 are not truncated.
 
+Lines and Connected points draw an independent wavelength-ordered series for
+each release, including a separate series for unknown provenance. A series
+with one remaining measurement is drawn as a point even in Lines mode. Series
+are rebuilt after band, quality, release and log-display filters. Connecting
+lines are display guides; they do not average fluxes or create measurements.
+
 ## Validation and limits
 
 The regression suite exercises both release collections, discovery failures,
 deduplication, both mask schemas, signed intensities, variances, full-resolution
 wavelengths, overlapping epoch bins, FITS provenance, filtered spectrum exports,
 high flag bits, bookmarks and real React flows with synthetic responses.
+
+Review regressions additionally exercise alternating/equal release times,
+channel exposure floors of one and two, genuine visit gaps, exact gap thresholds,
+long-visit window boundaries and chronological ordering. They verify that each
+input contributes once and that querying both releases preserves the per-release
+pixels and metadata obtained by querying each alone. Spectrum regressions inspect
+the actual React canvas commands: line endpoints must join same-release
+measurements, with error bars on/off and equal/unequal wavelengths. They also
+check singleton markers after filtering and the canvas used for PNG export.
 
 The [live validation record](validation/qr3-2026-09-24.json) contains checks of
 QR3 D1/D4/D6 and QR2 D4 public cutouts, with the production calibration loader.
