@@ -19,7 +19,7 @@ import hashlib
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional
+from typing import Optional, Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,8 +27,10 @@ from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from astropy.time import Time
+from astropy.io import fits
 
 from . import coadd as cx
+from . import releases
 from . import imaging
 from . import spectra_client as spx
 from . import spherex_client as sx
@@ -69,20 +71,23 @@ def _build_stack(
     survey: str,
     band: Optional[str],
     limit: int,
+    release: str = "all",
 ):
-    collection = sx.COLLECTIONS.get(survey)
-    if collection is None:
-        raise HTTPException(400, f"Unknown survey '{survey}'; use one of {list(sx.COLLECTIONS)}")
+    try:
+        releases.collections(survey, release)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
     radius_deg = radius_arcsec / 3600.0
     try:
-        images = sx.query_sia2(ra, dec, radius_deg=radius_deg, collection=collection, band=band)
+        images = sx.query_releases(ra, dec, radius_deg=radius_deg, survey=survey, release=release, band=band)
     except Exception as exc:  # network / service errors
         log.exception("SIA2 query failed")
         raise HTTPException(502, f"SIA2 query failed: {exc}") from exc
 
     # Time-sort for blinking; images with no timestamp go last.
     images.sort(key=lambda im: (im.mjd_mid is None, im.mjd_mid or 0.0))
+    images = sx.preview_order(images, limit)
 
     size_arcsec = 2 * radius_arcsec
 
@@ -100,6 +105,8 @@ def _build_stack(
         cutout_url = sx.get_cutout_url(im.access_url, ra, dec, size_arcsec * 1.45)
         try:
             fits_path = sx.download_cutout(cutout_url)
+            with fits.open(fits_path) as hdul:
+                release_meta = releases.fits_provenance(hdul, releases.product_release(im.access_url, im.survey))
         except sx.CutoutNoOverlapError:
             # Footprint matched the cone search but does not contain the
             # exact position (SPHEREx footprints are elongated/rotated).
@@ -124,6 +131,7 @@ def _build_stack(
 
         meta = im.to_dict()
         meta.update(header_meta)
+        meta.update(release_meta)
         if meta.get("mjd_mid") is not None:
             meta["datetime_utc"] = Time(meta["mjd_mid"], format="mjd").isot
         else:
@@ -153,12 +161,17 @@ def _build_stack(
                 elif len(cutouts) < limit:
                     cutouts.append(res)
 
+    cutouts.sort(key=lambda c: (c["metadata"].get("mjd_mid") is None, c["metadata"].get("mjd_mid") or 0))
     return {
         "ra": ra,
         "dec": dec,
         "radius_arcsec": radius_arcsec,
         "survey": survey,
+        "release": release,
+        "release_policy": releases.RELEASE_POLICY,
         "count": len(cutouts),
+        "n_inventory": len(images),
+        "preview_subset": len(cutouts) < len(images),
         "skipped_no_overlap": skipped,
         "cutouts": cutouts,
     }
@@ -170,10 +183,11 @@ def get_cutouts(
     dec: float,
     radius_arcsec: float = Query(60.0, gt=0, le=3600),
     survey: str = "wide",
+    release: Literal["all", "qr2", "qr3"] = "all",
     band: Optional[str] = None,
     limit: int = Query(20, gt=0),
 ):
-    return _build_stack(ra, dec, radius_arcsec, survey, band, limit)
+    return _build_stack(ra, dec, radius_arcsec, survey, band, limit, release)
 
 
 @app.get("/api/wise-stack")
@@ -299,6 +313,7 @@ def get_epoch_stack(
     dec: float,
     radius_arcsec: float = Query(60.0, gt=0, le=3600),
     survey: str = "wide",
+    release: Literal["all", "qr2", "qr3"] = "all",
     band: Optional[str] = None,
     limit: int = Query(50, gt=0),
 ):
@@ -307,22 +322,22 @@ def get_epoch_stack(
     ``limit`` is uncapped: fetching hundreds of frames simply takes longer
     (IRSA cutouts download in parallel and are cached on disk).
     """
-    return _build_stack(ra, dec, radius_arcsec, survey, band, limit)
+    return _build_stack(ra, dec, radius_arcsec, survey, band, limit, release)
 
 
-def _query_sorted_images(ra, dec, radius_arcsec, survey, band, limit):
-    """SIA2 query -> exposures sorted by time, truncated to ``limit``."""
-    collection = sx.COLLECTIONS.get(survey)
-    if collection is None:
-        raise HTTPException(400, f"Unknown survey '{survey}'; use one of {list(sx.COLLECTIONS)}")
+def _query_sorted_images(ra, dec, radius_arcsec, survey, band, limit, release="all"):
+    """Discover every selected release before applying a display input limit."""
     try:
-        images = sx.query_sia2(ra, dec, radius_deg=radius_arcsec / 3600.0,
-                               collection=collection, band=band)
+        releases.collections(survey, release)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    try:
+        images = sx.query_releases(ra, dec, radius_deg=radius_arcsec / 3600.0,
+                                   survey=survey, release=release, band=band)
     except Exception as exc:
         log.exception("SIA2 query failed")
         raise HTTPException(502, f"SIA2 query failed: {exc}") from exc
-    images.sort(key=lambda im: (im.mjd_mid is None, im.mjd_mid or 0.0))
-    return images[:limit]
+    return sorted(sx.preview_order(images, limit)[:limit], key=lambda im: (im.mjd_mid is None, im.mjd_mid or 0))
 
 
 def _fetch_aligned(
@@ -352,6 +367,7 @@ def _fetch_aligned(
                 background=background,
                 pixscale_arcsec=pixscale_arcsec,
                 resampling=resampling,
+                expected_release=releases.product_release(im.access_url, im.survey),
             )
         except sx.CutoutNoOverlapError:
             return None
@@ -362,6 +378,11 @@ def _fetch_aligned(
         exp.did = str(im.extra.get("obs_publisher_did", "") or "")
         if exp.mjd is None:
             exp.mjd = im.mjd_mid
+        elif im.mjd_mid is not None and abs(exp.mjd - im.mjd_mid) > 1 / 86400:
+            log.warning("FITS and archive exposure time disagree: %s", im.obs_id)
+            return None
+        exp.extras["access_url"] = im.access_url
+        exp.extras["superseded_products"] = im.extra.get("superseded_products", [])
         if exp.detector is None:  # header stripped -> fall back to band name
             try:
                 exp.detector = int(str(im.band).rsplit("D", 1)[-1])
@@ -397,6 +418,7 @@ def get_coadd(
     dec: float,
     radius_arcsec: float = Query(60.0, gt=0, le=3600),
     survey: str = "wide",
+    release: Literal["all", "qr2", "qr3"] = "all",
     band: Optional[str] = None,
     limit: int = Query(200, gt=0),
     background: str = Query("zodi", pattern="^(zodi|none)$"),
@@ -416,7 +438,7 @@ def get_coadd(
     broadband-like image; the response reports the actual wavelength range
     sampled at the target.  See backend/app/coadd.py for the full rationale.
     """
-    images = _query_sorted_images(ra, dec, radius_arcsec, survey, band, limit)
+    images = _query_sorted_images(ra, dec, radius_arcsec, survey, band, limit, release)
     size_arcsec = 2 * radius_arcsec
     n_px, wcs_out = cx.output_grid(ra, dec, size_arcsec, pixscale_arcsec)
     _validate_coadd_workload(n_px, len(images))
@@ -436,8 +458,8 @@ def get_coadd(
     import numpy as np
 
     coadds = []
-    for det in sorted({e.detector for e in exposures}):
-        group = [e for e in exposures if e.detector == det]
+    for rel, det in sorted({(e.extras["data_release"], e.detector) for e in exposures}):
+        group = [e for e in exposures if e.detector == det and e.extras["data_release"] == rel]
         try:
             img, var, coverage, n_rej, lam = cx.combine(
                 group, sigma=clip_sigma, maxiters=maxiters
@@ -455,6 +477,9 @@ def get_coadd(
         mjds = [e.mjd for e in group if e.mjd is not None]
         meta = {
             "detector": det,
+            "data_release": rel,
+            "release_policy": releases.RELEASE_POLICY,
+            "input_calibrations": [e.extras for e in group],
             "band": f"SPHEREx-D{det}",
             "n_exposures_used": len(group),
             "n_rejected_pixels": n_rej,
@@ -477,7 +502,7 @@ def get_coadd(
             meta["datetime_min_utc"] = Time(meta["mjd_min"], format="mjd").isot
             meta["datetime_max_utc"] = Time(meta["mjd_max"], format="mjd").isot
         coadds.append({
-            "id": f"coadd-D{det}",
+            "id": f"coadd-{rel}-D{det}",
             "data_b64": imaging.array_to_b64(disp),
             "coverage_b64": imaging.array_to_b64(np.flipud(coverage).astype(np.float32)),
             "width": n_px,
@@ -491,6 +516,8 @@ def get_coadd(
         "dec": dec,
         "radius_arcsec": radius_arcsec,
         "survey": survey,
+        "release": release,
+        "release_policy": releases.RELEASE_POLICY,
         "background": background,
         "pixscale_arcsec": pixscale_arcsec,
         "resampling": resampling,
@@ -507,6 +534,7 @@ def get_epoch_coadds(
     dec: float,
     radius_arcsec: float = Query(120.0, gt=0, le=3600),
     survey: str = "wide",
+    release: Literal["all", "qr2", "qr3"] = "all",
     limit: int = Query(500, gt=0),
     bin_months: float = Query(6.0, ge=0.25, le=25),
     background: str = Query("zodi", pattern="^(zodi|none)$"),
@@ -627,7 +655,7 @@ def get_epoch_coadds(
     # (plain head-truncation would keep only the earliest days and collapse
     # the sequence to one bin — deep fields have thousands of exposures).
     query_band = band if (band and ref == "none") else None
-    images = _query_sorted_images(ra, dec, radius_arcsec, survey, query_band, 10 ** 9)
+    images = _query_sorted_images(ra, dec, radius_arcsec, survey, query_band, 10 ** 9, release)
     images = [im for im in images if str(im.band) in wanted_bands]
     if not images:
         raise HTTPException(404, "No SPHEREx exposures in the requested bands cover this position")
@@ -659,7 +687,7 @@ def get_epoch_coadds(
     exposures.sort(key=lambda e: e.mjd)
     components: list[list] = [[exposures[0]]]
     for prev, cur in zip(exposures, exposures[1:]):
-        if cur.mjd - prev.mjd > gap_days:
+        if cur.mjd - prev.mjd > gap_days or cur.extras["data_release"] != prev.extras["data_release"]:
             components.append([])
         components[-1].append(cur)
 
@@ -727,6 +755,9 @@ def get_epoch_coadds(
         kind = "color" if len(channels) == 2 else f"{next(iter(channels))}-only"
         meta = {
             "epoch_index": k,
+            "data_release": grp[0].extras["data_release"],
+            "release_policy": releases.RELEASE_POLICY,
+            "input_calibrations": [dict(e.extras, obs_id=e.obs_id, did=e.did) for e in grp],
             "grouping": grouping,  # "visit" (natural sky pass) | "window" (continuous-coverage fallback)
             "channels": kind,
             "mjd_min": min(mjds),
@@ -789,6 +820,8 @@ def get_epoch_coadds(
         "dec": dec,
         "radius_arcsec": radius_arcsec,
         "survey": survey,
+        "release": release,
+        "release_policy": releases.RELEASE_POLICY,
         "band": band,
         "ref": ref if band else None,
         "channel_recipe": {
@@ -852,7 +885,7 @@ def spectra_table(job_id: str):
     """Flattened per-exposure spectrum as JSON (one row per exposure)."""
     try:
         content = spx.fetch_result_votable(job_id)
-        table = spx.flatten_votable(content)
+        table = spx.filter_release(spx.flatten_votable(content))
     except spx.SpectraError as exc:
         raise HTTPException(502, str(exc)) from exc
     except Exception as exc:
@@ -867,6 +900,7 @@ def spectra_table(job_id: str):
 def spectra_download(
     job_id: str,
     fmt: str = Query("votable", pattern="^(votable|csv|json)$"),
+    release: Literal["all", "qr2", "qr3"] = "all",
 ):
     """Download the spectrum: original VOTable, or flattened CSV / JSON."""
     try:
@@ -876,6 +910,8 @@ def spectra_download(
 
     stem = f"spherex_spectrum_{job_id[:8]}"
     if fmt == "votable":
+        if release != "all":
+            raise HTTPException(400, "Original VOTable contains all job results; use CSV or JSON for a release-filtered export")
         return Response(
             content,
             media_type="application/x-votable+xml",
@@ -883,11 +919,12 @@ def spectra_download(
         )
 
     try:
-        table = spx.flatten_votable(content)
+        table = spx.filter_release(spx.flatten_votable(content), release)
     except Exception as exc:
         log.exception("Spectrum table parse failed")
         raise HTTPException(500, f"Could not parse the spectrum table: {exc}") from exc
 
+    stem += f"_{release}"
     if fmt == "json":
         import json as _json
 

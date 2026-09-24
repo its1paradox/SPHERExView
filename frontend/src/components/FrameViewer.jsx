@@ -279,6 +279,7 @@ export default function FrameViewer({
       <h2>{title}</h2>
       <div className="frame-label">
         <span className="band">{f.label}</span>
+        {f.metadata?.data_release && <span className="band">{f.metadata.data_release.toUpperCase()}</span>}
         <span className="datetime">{f.sublabel}</span>
       </div>
       <canvas ref={canvasRef} onMouseMove={onMove} onMouseLeave={onLeave} onClick={onClick} />

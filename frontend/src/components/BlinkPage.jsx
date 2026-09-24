@@ -1,3 +1,5 @@
+import ReleaseSelect from './ReleaseSelect.jsx';
+import { releaseValue } from '../lib/releases.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   decodeB64Float32,
@@ -77,6 +79,7 @@ function parseBlinkHash() {
     coords: p.get('ra') && p.get('dec') ? `${p.get('ra')} ${p.get('dec')}` : '',
     size: p.get('size') || '240',
     survey: p.get('survey') || 'wide',
+    release: releaseValue(p.get('release')),
     months: p.get('months') || '6',
     maxframes: p.get('maxframes') || '500',
     band: p.get('band') || (p.get('short') || p.get('long') ? 'custom' : 'all'),
@@ -165,6 +168,7 @@ export default function BlinkPage() {
       dec: coords.dec,
       radius_arcsec: parseFloat(f.size) / 2,
       survey: f.survey,
+      release: f.release,
       bin_months: f.months,
       limit: f.maxframes,
       background: f.background,
@@ -217,6 +221,7 @@ export default function BlinkPage() {
         dec: coords.dec,
         size: f.size,
         survey: f.survey,
+        release: f.release,
         months: f.months,
         maxframes: f.maxframes,
         ...(f.band === 'custom'
@@ -433,10 +438,11 @@ export default function BlinkPage() {
             <label>
               Survey
               <select value={form.survey} onChange={setF('survey')}>
-                <option value="wide">Wide (QR2)</option>
-                <option value="deep">Deep (QR2)</option>
+                <option value="wide">Wide</option>
+                <option value="deep">Deep</option>
               </select>
             </label>
+            <ReleaseSelect value={form.release} onChange={setF('release')} />
             <label>
               Detector band
               <select value={form.band} onChange={setF('band')}>
@@ -676,6 +682,7 @@ export default function BlinkPage() {
                   {m.datetime_min_utc.slice(0, 10)} {'\u2192'} {m.datetime_max_utc.slice(0, 10)}
                   {' \u00b7 '}
                   {m.n_exposures} exp{chanSummary ? ` (${chanSummary})` : ''}
+                  {m.data_release ? ` · ${m.data_release.toUpperCase()}` : ''}
                   {m.grouping ? ` \u00b7 ${m.grouping === 'visit' ? 'sky-pass visit' : 'time window'}` : ''}
                   {m.shallow ? ' \u00b7 shallow (<5 exp)' : ''}
                 </span>
@@ -717,7 +724,7 @@ export default function BlinkPage() {
                     type="button"
                     onClick={() =>
                       window.open(
-                        `spectrum.html#ra=${pin.ra.toFixed(6)}&dec=${pin.dec.toFixed(6)}`,
+                        `spectrum.html#ra=${pin.ra.toFixed(6)}&dec=${pin.dec.toFixed(6)}&release=${form.release}`,
                         '_blank',
                         'noopener',
                       )

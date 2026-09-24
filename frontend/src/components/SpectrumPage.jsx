@@ -1,3 +1,5 @@
+import ReleaseSelect from './ReleaseSelect.jsx';
+import { releaseValue, releaseLabel, spectrumRelease, hasQualityFlags } from '../lib/releases.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 // SPHEREx spectrum viewer (opened in its own tab).
@@ -32,11 +34,12 @@ function parseHashParams() {
     dec: num('dec'),
     bkg: num('bkg') || 15,
     job: params.get('job') || null,
+    release: releaseValue(params.get('release')),
   };
 }
 
-function writeHash({ ra, dec, bkg, job }) {
-  const parts = [`ra=${ra}`, `dec=${dec}`, `bkg=${bkg}`];
+function writeHash({ ra, dec, bkg, job, release = 'all' }) {
+  const parts = [`ra=${ra}`, `dec=${dec}`, `bkg=${bkg}`, `release=${release}`];
   if (job) parts.push(`job=${job}`);
   window.history.replaceState(null, '', '#' + parts.join('&'));
 }
@@ -69,6 +72,7 @@ export default function SpectrumPage() {
   const [traceStyle, setTraceStyle] = useState('points');
   const [hideFlagged, setHideFlagged] = useState(false);
   const [bandsOn, setBandsOn] = useState(() => Object.fromEntries(BANDS.map((b) => [b, true])));
+  const [release, setRelease] = useState(params.release);
   const [viewMode, setViewMode] = useState('plot'); // 'plot' | 'table'
   const [hoverPt, setHoverPt] = useState(null);
   const canvasRef = useRef(null);
@@ -179,6 +183,7 @@ export default function SpectrumPage() {
     return table.rows
       .map((row, i) => ({
         i,
+        release: spectrumRelease(row),
         wl: row[wlCol],
         flux: row[fluxCol],
         err: errCol ? row[errCol] : null,
@@ -194,11 +199,12 @@ export default function SpectrumPage() {
     () =>
       points.filter(
         (p) =>
+          (release === 'all' || p.release === release) &&
           (p.band === null || bandsOn[p.band]) &&
-          (!hideFlagged || !p.flags || Number(p.flags) === 0) &&
+          (!hideFlagged || !hasQualityFlags(p.flags)) &&
           (!logFlux || p.flux > 0),
       ),
-    [points, bandsOn, hideFlagged, logFlux],
+    [points, bandsOn, hideFlagged, logFlux, release],
   );
 
   // ---- responsive width ------------------------------------------------
@@ -356,6 +362,7 @@ export default function SpectrumPage() {
       for (let k = 1; k < ordered.length; k++) {
         const a = ordered[k - 1];
         const b = ordered[k];
+        if (a.release !== b.release) continue;
         ctx.strokeStyle = (BAND_COLORS[a.band] || '#666') + (traceStyle === 'lines' ? 'ff' : 'aa');
         ctx.beginPath();
         ctx.moveTo(X(a.wl), Y(a.flux));
@@ -370,7 +377,7 @@ export default function SpectrumPage() {
         const color = BAND_COLORS[p.band] || '#666';
         const px = X(p.wl);
         const py = Y(p.flux);
-        const flagged = p.flags && Number(p.flags) !== 0;
+        const flagged = hasQualityFlags(p.flags);
         ctx.beginPath();
         ctx.arc(px, py, 3, 0, 2 * Math.PI);
         if (flagged) {
@@ -429,14 +436,14 @@ export default function SpectrumPage() {
 
   const downloadPng = () => {
     const link = document.createElement('a');
-    link.download = `spherex_spectrum_${(jobId || 'plot').slice(0, 8)}.png`;
+    link.download = `spherex_spectrum_${(jobId || 'plot').slice(0, 8)}_${release}.png`;
     link.href = canvasRef.current.toDataURL('image/png');
     link.click();
   };
 
   // ---- render -----------------------------------------------------------
   const running = !badTarget && !error && phase !== 'COMPLETED';
-  const nFlagged = points.filter((p) => p.flags && Number(p.flags) !== 0).length;
+  const nFlagged = points.filter((p) => hasQualityFlags(p.flags)).length;
 
   return (
     <div className="app spectrum-app">
@@ -497,7 +504,9 @@ export default function SpectrumPage() {
 
       {table && (
         <div className="spectrum-main" ref={wrapRef}>
+          <p className="hint">IRSA supplies the calibrated fluxes. The release filter selects returned measurements; it does not restrict the submitted job. Saved older jobs retain their original processing.</p>
           <div className="spectrum-toolbar">
+            <ReleaseSelect value={release} onChange={e => { setRelease(e.target.value); setHoverPt(null); writeHash({ ...params, job: jobId, release: e.target.value }); }} label="Show release" />
             <div className="spectrum-bands">
               {BANDS.map((b) => (
                 <label
@@ -572,7 +581,7 @@ export default function SpectrumPage() {
                 {hoverPt ? (
                   <>
                     <span style={{ color: BAND_COLORS[hoverPt.band] || '#333', fontWeight: 600 }}>
-                      {hoverPt.band || 'band ?'}
+                      {hoverPt.band || 'band ?'} · {releaseLabel(hoverPt.release)}
                     </span>
                     {' \u00b7 \u03bb '}{fmt(hoverPt.wl)}{' \u00b5m'}
                     {' \u00b7 flux '}{fmt(hoverPt.flux)}
@@ -603,7 +612,7 @@ export default function SpectrumPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {table.rows.map((row, i) => (
+                  {shown.map(({ row, i }) => (
                     <tr key={i}>
                       {cols.map((c) => (
                         <td key={c}>
@@ -625,9 +634,9 @@ export default function SpectrumPage() {
 
           <div className="spectrum-downloads">
             <span>Download:</span>
-            <a href={`/api/spectra/download/${jobId}?fmt=votable`}>VOTable (XML)</a>
-            <a href={`/api/spectra/download/${jobId}?fmt=csv`}>CSV</a>
-            <a href={`/api/spectra/download/${jobId}?fmt=json`}>JSON</a>
+            <a href={`/api/spectra/download/${jobId}?fmt=votable`}>Original VOTable (all releases)</a>
+            <a href={`/api/spectra/download/${jobId}?fmt=csv&release=${release}`}>CSV</a>
+            <a href={`/api/spectra/download/${jobId}?fmt=json&release=${release}`}>JSON</a>
             {viewMode === 'plot' && (
               <button type="button" className="pin-btn" onClick={downloadPng}>
                 PNG of plot
@@ -635,7 +644,7 @@ export default function SpectrumPage() {
             )}
             <span className="hint-inline">
               VOTable is the original IRSA product (re-uploadable to IRSA tools); CSV/JSON are the
-              flattened per-exposure table ({table.count} rows).
+              flattened per-exposure table for the selected release. Band and quality filters apply to the on-screen view only.
             </span>
           </div>
         </div>

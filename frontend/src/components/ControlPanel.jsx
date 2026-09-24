@@ -1,3 +1,4 @@
+import ReleaseSelect from './ReleaseSelect.jsx';
 import { DEFAULT_DISPLAY } from '../lib/urlstate.js';
 
 const SPHEREX_BANDS = [
@@ -200,6 +201,7 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
       dec: coords.dec,
       fov: parseFloat(form.fov),
       survey: form.survey,
+      release: form.release,
       band: form.bands.join(','),
       limit: parseInt(form.limit, 10),
       wiseBand: form.wiseBand,
@@ -228,10 +230,12 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
           <label>
             Survey
             <select value={form.survey} onChange={set('survey')}>
-              <option value="wide">Wide (QR2)</option>
-              <option value="deep">Deep (QR2)</option>
+              <option value="wide">Wide</option>
+              <option value="deep">Deep</option>
             </select>
           </label>
+          <ReleaseSelect value={form.release} onChange={set('release')} />
+          <small>QR2 and QR3 retain their native calibrations in separate coadds.</small>
           <details className="input-options">
             <summary>Input image options</summary>
           <div className="band-group">
