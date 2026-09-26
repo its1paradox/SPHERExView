@@ -61,6 +61,9 @@ import numpy as np
 from astropy.io import fits
 from astropy.stats import mad_std, sigma_clip
 from astropy.wcs import WCS
+from astropy.time import Time
+import astropy.units as u
+from . import releases
 from reproject import reproject_interp
 
 from .imaging import _north_up_wcs, wcs_to_dict
@@ -72,7 +75,7 @@ log = logging.getLogger("spherex-wiseview")
 COADD_PIXSCALE_ARCSEC = 6.2
 
 # FLAGS bits that invalidate a pixel (bit numbers resolved per-file from the
-# FLAGS header's MP_* keywords; these names are the fallback contract).
+# FLAGS header's MP_* or MSKN/MSKM dictionary; never guessed from position).
 # MP_SOURCE (=real astronomical sources!) and MP_FULLSAMPLE are benign.
 FATAL_FLAG_NAMES = (
     "MP_TRANSIENT", "MP_OVERFLOW", "MP_SUR_ERROR", "MP_PHANTOM",
@@ -80,7 +83,11 @@ FATAL_FLAG_NAMES = (
     "MP_HOT", "MP_COLD", "MP_PHANMISS", "MP_NONLINEAR", "MP_PERSIST",
     "MP_OUTLIER",
 )
-# Fallback bit numbers (QR2 convention) if a FLAGS header lacks MP_* cards.
+# Documented legacy positions, retained for synthetic fixtures. Production
+# masking always resolves the dictionary in the actual file.
+ARTIFACT_FLAG_NAMES = ("MP_CROSSTALK", "MP_GHOST", "MP_GHOST_FPA", "MP_GHOST_EXT",
+                       "MP_STREAK", "MP_BLOOM", "MP_SNOWBALL", "MP_HALO", "MP_SATELLITE_HALO")
+
 FATAL_FLAG_FALLBACK_BITS = (0, 1, 2, 4, 5, 6, 7, 9, 10, 11, 14, 15, 17, 19)
 
 
@@ -111,18 +118,64 @@ def output_grid(
     return n, _north_up_wcs(ra, dec, pixscale_arcsec / 3600.0, n)
 
 
-def _fatal_mask_value(flags_header) -> int:
-    """Build the fatal-bit mask from a FLAGS header's MP_* keywords."""
-    mask = 0
-    found = False
+def flag_bits(flags_header):
+    """Read both legacy MP_* and R7 MSKNnnnn/MSKMnnnn mask dictionaries."""
+    definitions = {}
+    for key, value in flags_header.items():
+        if key.startswith("MP_"):
+            if key in definitions and definitions[key] != value:
+                raise ValueError(f"Conflicting bitmask definition: {key}")
+            definitions[key] = value
+        elif key.startswith("MSKN") and key[4:].isdigit():
+            bit = int(key[4:])
+            if not 0 <= bit <= 31 or flags_header.get("MSKM" + key[4:]) != 1 << bit:
+                raise ValueError(f"Inconsistent bitmask definition: {key}")
+            name = "MP_" + str(value).strip()
+            if name in definitions and definitions[name] != bit:
+                raise ValueError(f"Conflicting bitmask definition: {name}")
+            definitions[name] = bit
+    # Validate any legacy/modern duplicates regardless of header card ordering.
+    for key, value in flags_header.items():
+        if key.startswith("MP_") and definitions.get(key) != value:
+            raise ValueError(f"Conflicting bitmask definition: {key}")
+    bits = {}
     for name in FATAL_FLAG_NAMES:
-        if name in flags_header:
-            mask |= 1 << int(flags_header[name])
-            found = True
-    if not found:  # header stripped by the cutout service -> QR2 fallback
-        for bit in FATAL_FLAG_FALLBACK_BITS:
-            mask |= 1 << bit
-    return mask
+        # Reference/phantom pixels are outside the delivered active detector.
+        if name in ("MP_PHANTOM", "MP_REFERENCE") and name not in definitions:
+            continue
+        bit = definitions.get(name)
+        if not isinstance(bit, int) or not 0 <= bit <= 31:
+            raise ValueError(f"Missing or invalid flag definition: {name}")
+        bits[name] = bit
+    for name in ARTIFACT_FLAG_NAMES:
+        if name in definitions:
+            bit = definitions[name]
+            if not isinstance(bit, int) or not 0 <= bit <= 31:
+                raise ValueError(f"Invalid flag definition: {name}")
+            bits[name] = bit
+    if len(set(bits.values())) != len(bits):
+        raise ValueError("Flag definitions overlap")
+    return bits
+
+
+def source_flag_bit(flags_header):
+    if "MP_SOURCE" in flags_header:
+        bit = flags_header["MP_SOURCE"]
+    else:
+        matches = [int(k[4:]) for k, v in flags_header.items()
+                   if k.startswith("MSKN") and k[4:].isdigit() and str(v).strip() == "SOURCE"]
+        if len(matches) != 1:
+            raise ValueError("Missing or ambiguous SOURCE flag definition")
+        bit = matches[0]
+        if flags_header.get(f"MSKM{bit:04d}") != 1 << bit:
+            raise ValueError("Invalid SOURCE bitmask")
+    if not isinstance(bit, int) or not 0 <= bit <= 31 or bit in flag_bits(flags_header).values():
+        raise ValueError("Invalid SOURCE flag definition")
+    return bit
+
+
+def _fatal_mask_value(flags_header) -> int:
+    return sum(1 << bit for bit in flag_bits(flags_header).values())
 
 
 def _strip_sip(header: fits.Header) -> fits.Header:
@@ -197,6 +250,7 @@ def load_aligned_exposure(
     background: str = "zodi",
     pixscale_arcsec: float = COADD_PIXSCALE_ARCSEC,
     resampling: str = "nearest",
+    expected_release: str | None = None,
 ) -> AlignedExposure:
     """Read one SPHEREx QR cutout and resample it onto the shared grid.
 
@@ -207,6 +261,7 @@ def load_aligned_exposure(
     shape_out = (n, n)
 
     with fits.open(fits_path) as hdul:
+        provenance = releases.fits_provenance(hdul, expected_release)
         try:
             img_hdu = hdul["IMAGE"]
             var = np.asarray(hdul["VARIANCE"].data, dtype=np.float64)
@@ -217,10 +272,28 @@ def load_aligned_exposure(
 
         header = img_hdu.header
         sci = np.asarray(img_hdu.data, dtype=np.float64)
+        if sci.ndim != 2 or sci.shape != var.shape or sci.shape != flags.shape or flags.dtype.kind not in "iu":
+            raise ValueError("IMAGE, VARIANCE and integer FLAGS must share a 2-D shape")
+        sci = sci * u.Unit(header["BUNIT"]).to(u.MJy / u.sr)
+        var = var * u.Unit(hdul["VARIANCE"].header["BUNIT"]).to((u.MJy / u.sr) ** 2)
+        if header.get("FINAST") != 0:
+            raise ValueError("Fine astrometric solution is absent or flagged")
+        scale = str(header.get("TIMESYS", "")).lower()
+        if scale not in Time.SCALES or "MJD-AVG" not in header:
+            raise ValueError("Explicit TIMESYS and MJD-AVG are required")
+        mjd = float(Time(header["MJD-AVG"], format="mjd", scale=scale).utc.mjd)
+        if not np.isfinite(mjd):
+            raise ValueError("Exposure midpoint must be finite")
+        provenance["calibration_history"] = [str(c.value) for c in header.cards if c.keyword == "HISTORY" and "[CALIB]" in str(c.value)]
+        provenance["mask_bits"] = flag_bits(flags_header)
+        provenance["wavelength_method"] = "WCS-WAVE approximate target lookup for visualization only"
 
         if background == "zodi":
             try:
-                sci = sci - np.asarray(hdul["ZODI"].data, dtype=np.float64)
+                zodi = np.asarray(hdul["ZODI"].data, dtype=np.float64)
+                if zodi.shape != sci.shape:
+                    raise ValueError("ZODI shape mismatch")
+                sci = sci - zodi * u.Unit(hdul["ZODI"].header["BUNIT"]).to(u.MJy / u.sr)
             except KeyError as exc:
                 raise ValueError("cutout lacks ZODI extension") from exc
 
@@ -280,7 +353,8 @@ def load_aligned_exposure(
         sci=np.where(valid, sci_out, 0.0),
         var=np.where(valid, var_out, np.inf),
         valid=valid,
-        mjd=header.get("MJD-OBS"),
+        mjd=mjd,
+        extras=provenance,
         wavelength_um=wavelength,
         bandwidth_um=bandwidth,
         detector=int(detector) if detector is not None else None,
@@ -305,6 +379,9 @@ def combine(
     Returns (coadd, coadd_var, coverage, n_rejected_px, lambda_stats).
     ``coadd`` contains NaN where no exposure has valid data.
     """
+    release_set = {e.extras.get("data_release", "unknown") for e in exposures}
+    if len(release_set) > 1:
+        raise ValueError("Cannot coadd different or unknown release calibrations")
     x = np.stack([e.sci for e in exposures])       # (N, H, W)
     v = np.stack([e.var for e in exposures])
     keep = np.stack([e.valid for e in exposures])

@@ -26,8 +26,10 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 import threading
 import time
+import warnings
 from dataclasses import dataclass, asdict, field as dataclass_field
 from typing import List, Optional
 
@@ -35,6 +37,7 @@ import astropy.units as u
 import requests
 from astropy.coordinates import SkyCoord
 from astroquery.ipac.irsa import Irsa
+from . import releases
 
 log = logging.getLogger("spherex-wiseview")
 
@@ -91,6 +94,7 @@ class SpherexImage:
         d = asdict(self)
         extra = d.pop("extra", {}) or {}
         d["mjd_mid"] = self.mjd_mid
+        d["data_release"] = releases.product_release(self.access_url, self.survey)
         # Merge the full SIA record without clobbering the typed fields.
         for k, v in extra.items():
             d.setdefault(k, v)
@@ -163,7 +167,11 @@ def query_sia2(
         "SIA2 query: ra=%.5f dec=%.5f r=%.4f deg collection=%s",
         ra, dec, radius_deg, collection,
     )
-    table = Irsa.query_sia(pos=(coord, radius_deg * u.deg), collection=collection)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        table = Irsa.query_sia(pos=(coord, radius_deg * u.deg), collection=collection)
+    if any("overflow" in str(w.message).lower() for w in caught):
+        raise ValueError("IRSA truncated the observation inventory; narrow the search")
 
     images: List[SpherexImage] = []
     for row in table:
@@ -173,6 +181,10 @@ def query_sia2(
         access_url = _get(row, "access_url")
         if not access_url:
             continue
+        actual_collection = str(_get(row, "obs_collection", "") or "")
+        if actual_collection != collection:
+            raise ValueError("IRSA returned an unexpected collection; refusing to mix datasets")
+        releases.product_release(str(access_url), actual_collection)
         band_name = str(_get(row, "energy_bandpassname", "") or "")
         if wanted and not any(b in band_name.lower() for b in wanted):
             continue
@@ -202,6 +214,56 @@ def query_sia2(
         )
     log.info("SIA2 returned %d FITS images after filtering", len(images))
     return images
+
+
+def query_releases(ra, dec, radius_deg=0.01, survey="wide", release="all", band=None,
+                   query=None):
+    """Fresh discovery for every request; a failed release query is not empty coverage.
+
+    Query both releases before any time sorting or preview sampling. Select one
+    processing per physical observation/detector, preferring QR3 if reprocessed
+    copies overlap, and retain the choice in exported provenance.
+    """
+    query = query or query_sia2
+    images = []
+    for collection in releases.collections(survey, release):
+        images.extend(query(ra, dec, radius_deg=radius_deg, collection=collection, band=band))
+    chosen = {}
+    for im in images:
+        rel = releases.product_release(im.access_url, im.survey)
+        if release != "all" and rel != release:
+            raise ValueError("Archive product does not match the requested release")
+        version = re.search(r"l2b-v(\d+)-(\d{4})-(\d{3})", im.access_url)
+        if not version or not im.obs_id or not im.band:
+            raise ValueError("Archive product lacks a reproducible exposure identity/version")
+        rank = (int(rel[-1]), *map(int, version.groups()))
+        key = (im.obs_id, im.band)
+        old = chosen.get(key)
+        if old and rank == old[0] and im.access_url != old[1].access_url:
+            raise ValueError("Conflicting products have the same exposure and processing version")
+        if old:
+            winner, loser = (im, old[1]) if rank > old[0] else (old[1], im)
+            if loser.access_url != winner.access_url:
+                winner.extra.setdefault("superseded_products", []).extend(
+                    [loser.access_url, *loser.extra.get("superseded_products", [])])
+        if old is None or rank > old[0]:
+            chosen[key] = (rank, im)
+    return sorted((v[1] for v in chosen.values()), key=lambda im: (
+        im.mjd_mid is None, im.mjd_mid or 0, im.obs_id, im.band))
+
+
+def preview_order(images, limit):
+    """Prioritize a time-spanning preview so early QR2 data cannot hide QR3.
+
+    Remaining candidates allow callers to replace failed cutouts. This is
+    display sampling only; the six-detector science path uses its full inventory.
+    """
+    if len(images) <= limit:
+        return list(images)
+    import numpy as np
+    indices = [len(images) - 1] if limit == 1 else np.linspace(0, len(images) - 1, limit).round().astype(int).tolist()
+    chosen = set(indices)
+    return [images[i] for i in indices] + [im for i, im in enumerate(images) if i not in chosen]
 
 
 def get_cutout_url(access_url: str, ra: float, dec: float, size_arcsec: float) -> str:

@@ -300,6 +300,7 @@ export default function CombinedViewer({
           {entry.mission}
         </span>
         <span className="band">{entry.f.label}</span>
+        {entry.f.metadata?.data_release && <span className="band">{entry.f.metadata.data_release.toUpperCase()}</span>}
         <span className="datetime">{fmtDate(entry.f)}</span>
       </div>
       <canvas ref={canvasRef} onClick={onClick} aria-label="Combined timeline image" />

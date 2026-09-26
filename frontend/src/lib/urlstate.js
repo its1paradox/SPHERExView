@@ -1,3 +1,4 @@
+import { releaseValue } from './releases.js';
 // WiseView-style URL state: every query + display attribute lives in the
 // hash fragment (e.g. #ra=133.786&dec=-7.245&size=240&zoom=450&invert=1),
 // so any view can be bookmarked, shared, and restored exactly.
@@ -30,6 +31,7 @@ export const DEFAULT_FORM = {
   coords: '133.786 -7.245',
   fov: '240',
   survey: 'wide',
+  release: 'all',
   bands: [], // empty = all bands
   limit: '1000',
   wiseBand: 'w1w2',
@@ -89,6 +91,7 @@ export function parseHash(hashText) {
     hasTarget = true;
   }
   if (num(get('size')) !== undefined) form.fov = String(num(get('size')));
+  form.release = releaseValue(get('release'));
   if (get('survey') === 'wide' || get('survey') === 'deep') form.survey = get('survey');
   if (get('bands') !== undefined) form.bands = bandsFromHash(get('bands'));
   if (num(get('maxframes')) !== undefined) form.limit = String(Math.round(num(get('maxframes'))));
@@ -164,6 +167,7 @@ export function buildHash(form, view) {
   }
   push('size', form.fov);
   push('survey', form.survey);
+  push('release', form.release || 'all');
   if (form.bands.length > 0) push('bands', bandsToHash(form.bands));
   push('maxframes', form.limit);
   push('wiseband', form.wiseBand);

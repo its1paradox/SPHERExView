@@ -16,6 +16,7 @@ import threading
 import warnings
 from dataclasses import dataclass
 from collections import deque
+from contextlib import ExitStack
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from pathlib import Path
@@ -30,9 +31,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from . import coadd as cx
 from . import imaging
+from . import releases
 from . import spherex_client as sx
 
-ALGORITHM = "six-detector-1.0"
+ALGORITHM = "six-detector-1.1-qr3"
 CALIBRATION_VERSION = "cal-wcs-v4-2025-254"
 IRSA_ROOT = "https://irsa.ipac.caltech.edu/ibe/data/spherex/qr2"
 CAL_LOCK = threading.Lock()
@@ -48,6 +50,7 @@ LIMITATIONS = [
     "Native, wavelength-dependent PSFs are retained. Peak brightness is not a total source flux.",
     "Variance propagates input statistical variance only; calibration, foreground-model and input-pixel covariance errors are not included.",
     "Changing wavelength or time sampling can mimic source variability; inspect the sampling maps and input table.",
+    releases.RELEASE_POLICY,
     "No additional sigma clipping is applied: real spectral features must not be clipped as temporal outliers.",
     "SIA2 inventory can lag newly ingested archive data. All-input depth refers to this query's returned inventory.",
 ]
@@ -59,6 +62,7 @@ class Recipe(BaseModel):
     dec: float = Field(ge=-90, le=90)
     size_arcsec: float = Field(default=240, ge=24, le=1800)
     survey: Literal["wide", "deep"] = "wide"
+    release: Literal["all", "qr2", "qr3"] = "all"
     bin_months: float = Field(default=6, ge=0.1, le=12)
     grouping: Literal["visit", "fixed"] = "visit"
     epoch_origin_mjd: float = Field(default=60000, ge=0, le=100000)
@@ -126,12 +130,16 @@ def inventory(images, recipe):
                 continue
             if recipe.mjd_end is not None and t >= recipe.mjd_end:
                 continue
-            if not image.access_url.startswith(IRSA_ROOT + "/level2/"):
-                raise InputError("release_mismatch", "Only on-premises QR2 Level 2 products are supported")
+            try:
+                release = releases.product_release(image.access_url, image.survey)
+            except ValueError as exc:
+                raise InputError("release_mismatch", str(exc)) from exc
+            if recipe.release != "all" and release != recipe.release:
+                raise InputError("release_mismatch", "Product does not match selected release")
             version = re.search(r"l2b-v(\d+)-(\d{4})-(\d{3})", image.access_url)
             if not version:
                 raise InputError("version_unknown", "Cannot identify the archive processing version")
-            rank = tuple(map(int, version.groups()))
+            rank = (int(release[-1]), *map(int, version.groups()))
             key = (image.obs_id, detector)
             if key in chosen:
                 old, old_rank = chosen[key]
@@ -150,6 +158,15 @@ def inventory(images, recipe):
 
 
 def group_epochs(images, recipe):
+    """Each epoch has one calibration release, even if time bins overlap."""
+    groups = []
+    for release in releases.RELEASES:
+        subset = sorted((im for im in images if releases.product_release(im.access_url, im.survey) == release), key=lambda im: im.mjd_mid)
+        groups.extend(_group_epochs_one_release(subset, recipe))
+    return sorted(groups, key=lambda g: (g[2], g[0][0].mjd_mid))
+
+
+def _group_epochs_one_release(images, recipe):
     """Common time membership is determined from inventory, before failed downloads."""
     if not images:
         return []
@@ -184,11 +201,15 @@ def group_epochs(images, recipe):
     return groups
 
 
-@lru_cache(maxsize=6)
-def calibration_file(detector):
-    # Freeze a named QR2 calibration, never a moving "latest" URL. The
-    # exposure's spectral WCS is checked against it before it can contribute.
-    url = f"{IRSA_ROOT}/spectral_wcs/{CALIBRATION_VERSION}/{detector}/spectral_wcs_D{detector}_spx_{CALIBRATION_VERSION}.fits"
+@lru_cache(maxsize=48)
+def calibration_file(detector, release="qr2", version=None):
+    # Versioned by release; the full-resolution product is verified against
+    # each exposure below. A missing/mismatched calibration excludes the input.
+    version = version or releases.RELEASES[release]["spectral_calibration"]
+    if release not in releases.RELEASES or not re.fullmatch(r"cal-(?:wcs|swcs)-v\d+-\d{4}-\d{3}", version):
+        raise ValueError("Unsupported spectral calibration")
+    root = f"https://irsa.ipac.caltech.edu/ibe/data/spherex/{release}"
+    url = f"{root}/spectral_wcs/{version}/{detector}/spectral_wcs_D{detector}_spx_{version}.fits"
     with CAL_LOCK:
         path = sx.download_cutout(url)
     with fits.open(path) as hdul:
@@ -231,13 +252,18 @@ class Samples:
     metadata: dict
 
 
-def load_samples(path, image, recipe, wcs_out, n, calibration_loader=calibration_file):
+def load_samples(path, image, recipe, wcs_out, n, calibration_loader=None):
     detector = detector_of(image)
-    try:
-        cal_path, cal_url, cal_hash = calibration_loader(detector)
-    except Exception as exc:
-        raise InputError("calibration_unavailable", str(exc)) from exc
-    with fits.open(path) as hdul, fits.open(cal_path) as calibration:
+    release = releases.product_release(image.access_url, image.survey)
+    with fits.open(path) as hdul, ExitStack() as stack:
+        try:
+            provenance = releases.fits_provenance(hdul, release)
+            cal_version = releases.spectral_calibration_version(hdul["IMAGE"].header, release)
+            cal_path, cal_url, cal_hash = (calibration_loader(detector) if calibration_loader
+                                         else calibration_file(detector, release, cal_version))
+            calibration = stack.enter_context(fits.open(cal_path))
+        except Exception as exc:
+            raise InputError("calibration_unavailable", str(exc)) from exc
         try:
             header = hdul["IMAGE"].header
             sci = np.asarray(hdul["IMAGE"].data, dtype=np.float64)
@@ -255,9 +281,7 @@ def load_samples(path, image, recipe, wcs_out, n, calibration_loader=calibration
         except (KeyError, ValueError) as exc:
             raise InputError("units_invalid", "Calibrated IMAGE/VARIANCE units are required") from exc
         version = str(hdul[0].header.get("VERSION", ""))
-        numbers = re.match(r"(\d+)\.(\d+)(?:\.(\d+))?", version)
-        if not numbers or tuple(int(x or 0) for x in numbers.groups()) < (6, 4, 0):
-            raise InputError("pipeline_unsupported", "Expected a QR2 pipeline version >= 6.4")
+        version_number = releases.pipeline_version(version)
         if header.get("FINAST") != 0:
             raise InputError("astrometry_flagged", "Fine astrometric solution is absent or flagged")
         if recipe.background == "zodi":
@@ -269,15 +293,12 @@ def load_samples(path, image, recipe, wcs_out, n, calibration_loader=calibration
             except (KeyError, ValueError) as exc:
                 raise InputError("zodi_invalid", str(exc)) from exc
         flag_header = hdul["FLAGS"].header
-        bit_map = {}
-        for name in (*cx.FATAL_FLAG_NAMES, "MP_SOURCE"):
-            bit = flag_header.get(name)
-            if not isinstance(bit, int) or bit < 0 or bit > 31:
-                raise InputError("flags_unsupported", f"Missing or invalid flag definition: {name}")
-            bit_map[name] = bit
-        if len(set(bit_map.values())) != len(bit_map):
-            raise InputError("flags_unsupported", "Flag definitions overlap")
-        fatal = sum(1 << bit_map[name] for name in cx.FATAL_FLAG_NAMES)
+        try:
+            fatal_bits = cx.flag_bits(flag_header)
+            bit_map = {**fatal_bits, "MP_SOURCE": cx.source_flag_bit(flag_header)}
+        except ValueError as exc:
+            raise InputError("flags_unsupported", str(exc)) from exc
+        fatal = sum(1 << bit for bit in fatal_bits.values())
         valid = np.isfinite(sci) & np.isfinite(variance) & (variance > 0) & ((flags & fatal) == 0)
         # Scalar sky weights use SOURCE only for the weight estimate, never
         # for removing sources from the science image. No guessed fallback.
@@ -290,7 +311,7 @@ def load_samples(path, image, recipe, wcs_out, n, calibration_loader=calibration
         xcal, ycal = calibration_pixels(header, sci.shape, calibration)
         wavelength = np.asarray(calibration["CWAVE"].data[ycal, xcal], dtype=float)
         bandwidth = np.asarray(calibration["CBAND"].data[ycal, xcal], dtype=float)
-        # Both maps are in microns by the QR2 product specification. If a
+        # Both maps are in microns by the release product specification. If a
         # unit is supplied, require it to be compatible rather than ignore it.
         for name, values in (("CWAVE", wavelength), ("CBAND", bandwidth)):
             unit = calibration[name].header.get("BUNIT", "um")
@@ -345,6 +366,7 @@ def load_samples(path, image, recipe, wcs_out, n, calibration_loader=calibration
             raise InputError("no_valid_samples", "No valid pixels in this field and wavelength selection")
         history = [str(c.value) for c in header.cards if c.keyword == "HISTORY" and "[CALIB]" in str(c.value)]
         metadata = {
+            **provenance, "spectral_calibration_version": cal_version,
             "pipeline_version": version, "calibration_url": cal_url,
             "calibration_sha256": cal_hash, "calibration_history": history,
             "cutout_sha256": sha256_file(path), "mask_bits": bit_map,
@@ -354,7 +376,7 @@ def load_samples(path, image, recipe, wcs_out, n, calibration_loader=calibration
             "native_time_scale": str(header.get("TIMESYS")),
             "native_mjd_start": header.get("MJD-BEG"),
             "native_mjd_end": header.get("MJD-END"),
-            "psf_header_status": "corrected_or_unaffected" if "+psffix1" in version or tuple(int(x or 0) for x in numbers.groups()) >= (6, 5, 6) else "affected_or_unverified",
+            "psf_header_status": "corrected_or_unaffected" if "+psffix1" in version or version_number >= (6, 5, 6) else "affected_or_unverified",
             "field_sample_median_wavelength_um": float(np.median(selected[2])),
             "sample_wavelength_min_um": float(np.min(selected[2])),
             "sample_wavelength_max_um": float(np.max(selected[2])),
@@ -421,6 +443,8 @@ def save_epoch(path, epoch, products, wcs, recipe, provenance):
     primary.header["MJD-END"] = epoch["mjd_end"]
     primary.header["DATATYPE"] = "MIXED-LAMBDA"
     primary.header["PSFMATCH"] = False
+    primary.header["RELEASE"] = epoch.get("data_release", recipe.release)
+    primary.header["GAINCONV"] = False
     hdus = [primary]
     for detector, maps in products.items():
         for key, values in maps.items():
@@ -467,16 +491,16 @@ def prefetch_downloads(images, recipe, downloader, cancelled):
 def build(recipe: Recipe, output_dir: Path, progress: Callable, cancelled: threading.Event,
           query=sx.query_sia2, downloader=sx.download_cutout, loader=load_samples):
     """Query once, retain provenance, stream each input once, publish six slots atomically."""
-    progress("Querying the QR2 archive", 0, 0)
+    progress(f"Querying SPHEREx {recipe.release.upper()} releases", 0, 0)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        images = query(recipe.ra, recipe.dec, radius_deg=recipe.size_arcsec / 7200, collection=sx.COLLECTIONS[recipe.survey])
+        images = sx.query_releases(recipe.ra, recipe.dec, radius_deg=recipe.size_arcsec / 7200, survey=recipe.survey, release=recipe.release, query=query)
     if any("overflow" in str(w.message).lower() for w in caught):
         raise ValueError("Archive inventory was truncated; reduce the field or time range")
     rows, excluded = inventory(images, recipe)
     groups = group_epochs(rows, recipe)
     if not groups:
-        raise ValueError("No supported QR2 observations in this field/time range")
+        raise ValueError("No supported SPHEREx observations in this field/time range")
     n, wcs = cx.output_grid(recipe.ra, recipe.dec, recipe.size_arcsec, recipe.pixscale_arcsec)
     if 6 * len(groups) * n * n > MAX_OUTPUT_CELLS:
         raise ValueError("Comparison is too large; shorten the time range, reduce the field, or use coarser pixels")
@@ -495,14 +519,14 @@ def build(recipe: Recipe, output_dir: Path, progress: Callable, cancelled: threa
             selected_total += len(sub)
         selected.append(per_detector)
     for k, (rows_in_epoch, grouping, start, end) in enumerate(groups):
-        epoch = {"index": k, "grouping": grouping, "mjd_start": float(start), "mjd_end": float(end), "datetime_start": Time(start, format="mjd").isot, "datetime_end": Time(end, format="mjd").isot, "tiles": []}
+        epoch = {"data_release": releases.product_release(rows_in_epoch[0].access_url, rows_in_epoch[0].survey), "index": k, "grouping": grouping, "mjd_start": float(start), "mjd_end": float(end), "datetime_start": Time(start, format="mjd").isot, "datetime_end": Time(end, format="mjd").isot, "tiles": []}
         products, epoch_inputs = {}, []
         for detector, sub in enumerate(selected[k], start=1):
             accumulator, accepted, failures = Accumulator(n), [], []
             for im, url, download in prefetch_downloads(sub, recipe, downloader, cancelled):
                 if cancelled.is_set():
                     raise Cancelled()
-                record = {"epoch": k, "detector": detector, "obs_id": im.obs_id, "did": str(im.extra.get("obs_publisher_did", "")), "url": im.access_url, "cutout_url": url, "archive_mjd_mid": float(im.mjd_mid), "archive_mjd_start": im.t_min, "archive_mjd_end": im.t_max}
+                record = {"data_release": releases.product_release(im.access_url, im.survey), "superseded_products": im.extra.get("superseded_products", []), "epoch": k, "detector": detector, "obs_id": im.obs_id, "did": str(im.extra.get("obs_publisher_did", "")), "url": im.access_url, "cutout_url": url, "archive_mjd_mid": float(im.mjd_mid), "archive_mjd_start": im.t_min, "archive_mjd_end": im.t_max}
                 try:
                     path = download.result()
                     samples = loader(path, im, recipe, wcs, n)
@@ -535,9 +559,10 @@ def build(recipe: Recipe, output_dir: Path, progress: Callable, cancelled: threa
     if cancelled.is_set():
         raise Cancelled()
     deps = {name: importlib.metadata.version(name) for name in ("numpy", "astropy", "astroquery")}
-    source_hashes = {name: sha256_file(Path(__file__).with_name(name)) for name in ("detector_comparison.py", "coadd.py", "imaging.py", "spherex_client.py")}
+    source_hashes = {name: sha256_file(Path(__file__).with_name(name)) for name in ("detector_comparison.py", "coadd.py", "imaging.py", "spherex_client.py", "releases.py")}
     manifest = {"algorithm": ALGORITHM, "created_utc": Time.now().isot, "recipe": recipe.model_dump(mode="json"), "dependencies": deps, "wcs": imaging.wcs_to_dict(wcs, n), "width": n, "height": n, "units": MAP_UNITS, "array_orientation": "API row 0 is north/top; FITS is unflipped", "variance_scope": LIMITATIONS[2], "limitations": LIMITATIONS + (["Nearest-neighbor outputs can reuse native pixels; output pixels are correlated."] if recipe.resampling == "nearest" else []), "n_archive_rows": len(images), "n_unique_inventory": len(rows), "n_selected": selected_total, "preview_subset": any(r["status"] == "preview_excluded" for r in excluded), "excluded": excluded, "inputs": provenance, "epochs": [{**e, "tiles": [{key: value for key, value in tile.items() if key != "maps"} for tile in e["tiles"]]} for e in epochs]}
     manifest["source_sha256"] = source_hashes
+    manifest["release_policy"] = releases.RELEASE_POLICY
     manifest["time_assignment"] = "Archive exposure midpoint, MJD UTC; fixed bins and requested time bounds are half-open"
     manifest["weight_units"] = "dimensionless" if recipe.weighting == "equal" else "sr2 MJy-2"
     (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, allow_nan=False))

@@ -117,6 +117,22 @@ test('a fresh launch shows the timeline tile with mission panels and their contr
   } finally { app.dom.window.close(); }
 });
 
+test('QR3 selection reaches image queries and all auxiliary tools', async () => {
+  const app = await mount('#ra=10&dec=-5&release=qr3');
+  try {
+    await settle(() => app.q('.combined-viewer canvas'));
+    const queries = app.requests.map(u => new URL(u, 'http://localhost'));
+    for (const path of ['/api/epoch-stack', '/api/epoch-coadds']) {
+      assert.equal(queries.find(u => u.pathname === path).searchParams.get('release'), 'qr3');
+    }
+    for (const name of ['Generate spectrum at target', 'Epoch blink sequence', 'Six-detector comparison']) {
+      app.button(name).click();
+      assert.equal(new URLSearchParams(app.opened.at(-1)[0].split('#')[1]).get('release'), 'qr3');
+    }
+    assert.deepEqual(app.errors, []);
+  } finally { app.dom.window.close(); }
+});
+
 test('hidden panels still supply the timeline; toggles retain playback, settings and shared pins', async () => {
   const app = await mount('#ra=10&dec=-5&cmode=exposures&speed=1200');
   try {

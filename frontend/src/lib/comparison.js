@@ -1,3 +1,4 @@
+import { releaseValue } from './releases.js';
 // Science arrays are never stretched or normalized in place.
 export const DETECTORS = [1, 2, 3, 4, 5, 6];
 export const NOMINAL_RANGES = ['0.75–1.09', '1.10–1.62', '1.63–2.41', '2.42–3.82', '3.83–4.41', '4.42–5.00'];
@@ -8,8 +9,8 @@ export const LAYERS = {
   spread: ['Wavelength span', 'µm'], bandwidth: ['Mean pixel bandwidth', 'µm'],
 };
 
-export function comparisonUrl(ra, dec, size, survey) {
-  return `compare.html#${new URLSearchParams({ ra, dec, size, survey })}`;
+export function comparisonUrl(ra, dec, size, survey, release = 'all') {
+  return `compare.html#${new URLSearchParams({ ra, dec, size, survey, release })}`;
 }
 
 export function readState(hash = '') {
@@ -18,7 +19,7 @@ export function readState(hash = '') {
   try { ranges = JSON.parse(p.get('ranges') || '{}'); } catch { /* validated at build */ }
   const form = {
     coords: p.has('ra') && p.has('dec') ? `${p.get('ra')} ${p.get('dec')}` : '',
-    size_arcsec: p.get('size') || '240', survey: p.get('survey') || 'wide',
+    size_arcsec: p.get('size') || '240', survey: p.get('survey') || 'wide', release: releaseValue(p.get('release')),
     bin_months: p.get('months') || '6', grouping: p.get('grouping') || 'visit',
     epoch_origin_mjd: p.get('origin') || '60000', mjd_start: p.get('start') || '', mjd_end: p.get('end') || '',
     max_per_tile: p.get('cap') || '0', pixscale_arcsec: p.get('pixels') || '6.2',
@@ -53,7 +54,7 @@ export function recipeFromForm(f) {
     if (String(f[key]).trim() === '' || !Number.isFinite(Number(f[key]))) throw new Error(`Invalid ${key.replaceAll('_', ' ')}.`);
     return Number(f[key]);
   };
-  const r = { ra: coords[0], dec: coords[1], survey: f.survey, grouping: f.grouping, background: f.background, resampling: f.resampling, weighting: f.weighting, wavelength_ranges: {} };
+  const r = { ra: coords[0], dec: coords[1], survey: f.survey, release: releaseValue(f.release), grouping: f.grouping, background: f.background, resampling: f.resampling, weighting: f.weighting, wavelength_ranges: {} };
   for (const key of ['size_arcsec', 'bin_months', 'epoch_origin_mjd', 'max_per_tile', 'pixscale_arcsec', 'min_exposures']) r[key] = numeric(key);
   for (const key of ['mjd_start', 'mjd_end']) r[key] = f[key] === '' ? null : numeric(key);
   for (const d of DETECTORS) {
@@ -69,7 +70,7 @@ export function stateHash(form, display, epoch, pin) {
   const p = new URLSearchParams();
   const coords = form.coords.trim().split(/[\s,;]+/);
   if (coords.length === 2) { p.set('ra', coords[0]); p.set('dec', coords[1]); }
-  for (const [key, field] of Object.entries({ size: 'size_arcsec', survey: 'survey', months: 'bin_months', grouping: 'grouping', origin: 'epoch_origin_mjd', start: 'mjd_start', end: 'mjd_end', cap: 'max_per_tile', pixels: 'pixscale_arcsec', resampling: 'resampling', background: 'background', weighting: 'weighting', minexp: 'min_exposures' })) if (form[field] !== '') p.set(key, form[field]);
+  for (const [key, field] of Object.entries({ size: 'size_arcsec', survey: 'survey', release: 'release', months: 'bin_months', grouping: 'grouping', origin: 'epoch_origin_mjd', start: 'mjd_start', end: 'mjd_end', cap: 'max_per_tile', pixels: 'pixscale_arcsec', resampling: 'resampling', background: 'background', weighting: 'weighting', minexp: 'min_exposures' })) if (form[field] !== '') p.set(key, form[field]);
   p.set('ranges', JSON.stringify(form.ranges));
   for (const key of ['layer', 'stretch', 'zoom', 'vmin', 'vmax', 'mode', 'reference']) if (display[key] !== '') p.set(key, display[key]);
   for (const [key, field] of Object.entries({ refgain: 'referenceGain', colorsigma: 'colorSigma', colorstrength: 'colorStrength', colorwhite: 'colorWhite', wavestrength: 'wavelengthStrength', wavewhite: 'wavelengthWhite' })) if (display[field] !== '' && display[field] !== undefined) p.set(key, display[field]);

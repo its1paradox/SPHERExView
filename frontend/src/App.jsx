@@ -114,19 +114,20 @@ function attachLuptonScale(frames, { sat = 1.25, whitePct = 99.5 } = {}) {
 }
 
 // Opens the spectrum viewer in a new tab for a sky position.
-export function openSpectrumTab(ra, dec) {
-  const params = `ra=${ra.toFixed(6)}&dec=${dec.toFixed(6)}`;
+export function openSpectrumTab(ra, dec, release = 'all') {
+  const params = `ra=${ra.toFixed(6)}&dec=${dec.toFixed(6)}&release=${release}`;
   window.open(`spectrum.html#${params}`, '_blank', 'noopener');
 }
 
 // Opens the time-resolved COLOR epoch blink (unWISE-style epoch coadds) in
 // a new tab for the current target/field.
-export function openBlinkTab(ra, dec, fov, survey, limit) {
+export function openBlinkTab(ra, dec, fov, survey, limit, release = 'all') {
   const params = new URLSearchParams({
     ra: ra.toFixed(6),
     dec: dec.toFixed(6),
     size: fov,
     survey,
+    release,
     months: 6,
     maxframes: limit,
   });
@@ -206,6 +207,7 @@ export default function App() {
       dec: queried.dec,
       radius_arcsec: queried.fov / 2,
       survey: queried.survey,
+      release: queried.release,
       bin_months: view.combinedMonths,
       limit: view.combinedLimit,
       background: view.combinedBackground,
@@ -307,7 +309,7 @@ export default function App() {
     return () => controller.abort();
   }, [queried, loading, view.showCombined, view.combinedMode]);
 
-  const search = async ({ ra, dec, fov, survey, band, limit, wiseBand }) => {
+  const search = async ({ ra, dec, fov, survey, release = 'all', band, limit, wiseBand }) => {
     setLoading(true);
     setError(null);
     setStatus('Querying SPHEREx + WiseView\u2026 first fetch of a field can take a minute.');
@@ -324,6 +326,7 @@ export default function App() {
       dec: parseFloat(dec),
       fov: parseFloat(fov),
       survey,
+      release,
       band: band || '',
       limit,
     });
@@ -333,6 +336,7 @@ export default function App() {
       dec,
       radius_arcsec: fov / 2,
       survey,
+      release,
       limit,
     });
     if (band) sxParams.set('band', band);
@@ -416,6 +420,7 @@ export default function App() {
       dec,
       fov: parseFloat(initial.form.fov),
       survey: initial.form.survey,
+      release: initial.form.release,
       band: initial.form.bands.join(','),
       limit: parseInt(initial.form.limit, 10),
       wiseBand: initial.form.wiseBand,
@@ -431,7 +436,7 @@ export default function App() {
           <h1>WISE → SPHEREx</h1>
           <p className="subtitle">One sky field. Two missions. A continuous timeline.</p>
         </div>
-        <span className="timeline-tag">QR2 · ICRS</span>
+        <span className="timeline-tag">QR2 + QR3 · ICRS</span>
       </header>
       <div className="layout">
         <main className="viewers">
@@ -464,7 +469,7 @@ export default function App() {
                     setCoordsError('Enter RA and Dec in decimal degrees, e.g. 11.889632 28.089606');
                     return;
                   }
-                  openSpectrumTab(coords.ra, coords.dec);
+                  openSpectrumTab(coords.ra, coords.dec, form.release);
                 }}
               >
                 Generate spectrum at target
@@ -478,7 +483,7 @@ export default function App() {
                     setCoordsError('Enter RA and Dec in decimal degrees, e.g. 11.889632 28.089606');
                     return;
                   }
-                  openBlinkTab(coords.ra, coords.dec, form.fov, form.survey, form.limit);
+                  openBlinkTab(coords.ra, coords.dec, form.fov, form.survey, form.limit, form.release);
                 }}
               >
                 Epoch blink sequence
@@ -489,7 +494,7 @@ export default function App() {
                   setCoordsError('Enter RA and Dec in decimal degrees, e.g. 11.889632 28.089606');
                   return;
                 }
-                window.open(comparisonUrl(coords.ra, coords.dec, form.fov, form.survey), '_blank', 'noopener');
+                window.open(comparisonUrl(coords.ra, coords.dec, form.fov, form.survey, form.release), '_blank', 'noopener');
               }}>
                 Six-detector comparison
               </button>
@@ -518,7 +523,7 @@ export default function App() {
                     speedMs={view.speedMs}
                     pin={pin}
                     onPin={setPin}
-                    onSpectrum={openSpectrumTab}
+                    onSpectrum={(ra, dec) => openSpectrumTab(ra, dec, form.release)}
                   />
                 ) : (
                   <section className="panel viewer combined-viewer timeline-empty">
@@ -560,7 +565,7 @@ export default function App() {
                 allowPin
                 pin={pin}
                 onPin={setPin}
-                onSpectrum={openSpectrumTab}
+                onSpectrum={(ra, dec) => openSpectrumTab(ra, dec, form.release)}
                 outerOnly={view.sxOuter}
                 outerControls
               />
@@ -585,7 +590,7 @@ export default function App() {
                 allowPin
                 pin={pin}
                 onPin={setPin}
-                onSpectrum={openSpectrumTab}
+                onSpectrum={(ra, dec) => openSpectrumTab(ra, dec, form.release)}
               />
             )}
           </div>
