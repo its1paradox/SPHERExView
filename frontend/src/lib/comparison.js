@@ -24,6 +24,7 @@ export function readState(hash = '') {
     epoch_origin_mjd: p.get('origin') || '60000', mjd_start: p.get('start') || '', mjd_end: p.get('end') || '',
     max_per_tile: p.get('cap') || '0', pixscale_arcsec: p.get('pixels') || '6.2',
     resampling: p.get('resampling') || 'bin', background: p.get('background') || 'zodi',
+    aperture_radius_arcsec: p.get('aperture') || '12.4',
     weighting: p.get('weighting') || 'equal', min_exposures: p.get('minexp') || '1', ranges,
   };
   const bounded = (key, fallback, lo, hi) => {
@@ -31,6 +32,7 @@ export function readState(hash = '') {
     return p.has(key) && Number.isFinite(x) ? Math.max(lo, Math.min(hi, x)) : fallback;
   };
   return { form, display: {
+    spectrumFrequency: p.get('specfreq') === '1', spectrumLocalSky: p.get('specsky') === '1',
     mode: ['color', 'wavelength'].includes(p.get('mode')) ? p.get('mode') : 'gray',
     wavelengthStrength: bounded('wavestrength', 1, 0, 1),
     wavelengthWhite: p.get('wavewhite') || '',
@@ -55,7 +57,7 @@ export function recipeFromForm(f) {
     return Number(f[key]);
   };
   const r = { ra: coords[0], dec: coords[1], survey: f.survey, release: releaseValue(f.release), grouping: f.grouping, background: f.background, resampling: f.resampling, weighting: f.weighting, wavelength_ranges: {} };
-  for (const key of ['size_arcsec', 'bin_months', 'epoch_origin_mjd', 'max_per_tile', 'pixscale_arcsec', 'min_exposures']) r[key] = numeric(key);
+  for (const key of ['size_arcsec', 'bin_months', 'epoch_origin_mjd', 'max_per_tile', 'pixscale_arcsec', 'min_exposures', 'aperture_radius_arcsec']) r[key] = numeric(key);
   for (const key of ['mjd_start', 'mjd_end']) r[key] = f[key] === '' ? null : numeric(key);
   for (const d of DETECTORS) {
     const [lo = '', hi = ''] = f.ranges[d] || [];
@@ -72,9 +74,11 @@ export function stateHash(form, display, epoch, pin) {
   if (coords.length === 2) { p.set('ra', coords[0]); p.set('dec', coords[1]); }
   for (const [key, field] of Object.entries({ size: 'size_arcsec', survey: 'survey', release: 'release', months: 'bin_months', grouping: 'grouping', origin: 'epoch_origin_mjd', start: 'mjd_start', end: 'mjd_end', cap: 'max_per_tile', pixels: 'pixscale_arcsec', resampling: 'resampling', background: 'background', weighting: 'weighting', minexp: 'min_exposures' })) if (form[field] !== '') p.set(key, form[field]);
   p.set('ranges', JSON.stringify(form.ranges));
+  p.set('aperture', form.aperture_radius_arcsec);
   for (const key of ['layer', 'stretch', 'zoom', 'vmin', 'vmax', 'mode', 'reference']) if (display[key] !== '') p.set(key, display[key]);
   for (const [key, field] of Object.entries({ refgain: 'referenceGain', colorsigma: 'colorSigma', colorstrength: 'colorStrength', colorwhite: 'colorWhite', wavestrength: 'wavelengthStrength', wavewhite: 'wavelengthWhite' })) if (display[field] !== '' && display[field] !== undefined) p.set(key, display[field]);
   p.set('invert', display.invert ? '1' : '0'); p.set('smooth', display.smooth ? '1' : '0');
+  p.set('specfreq', display.spectrumFrequency ? '1' : '0'); p.set('specsky', display.spectrumLocalSky ? '1' : '0');
   p.set('panx', display.panX); p.set('pany', display.panY); p.set('epoch', epoch);
   if (pin) { p.set('pinra', pin.ra); p.set('pindec', pin.dec); }
   return `#${p}`;
@@ -93,7 +97,8 @@ export function decodeMap(map, count) {
 
 export function decodeResult(result) {
   if (!result.epochs?.every(e => e.tiles.length === 6 && e.tiles.every((t, i) => t.detector === i + 1))) throw new Error('Comparison must contain six ordered detector slots in every epoch.');
-  return { ...result, epochs: result.epochs.map(e => ({ ...e, tiles: e.tiles.map(t => ({ ...t, arrays: t.maps ? Object.fromEntries(Object.entries(t.maps).map(([key, map]) => [key, decodeMap(map, result.width * result.height)])) : null })) })) };
+  const decode = ({ maps, ...t }) => ({ ...t, arrays: maps ? Object.fromEntries(Object.entries(maps).map(([key, map]) => [key, decodeMap(map, result.width * result.height)])) : null });
+  return { ...result, epochs: result.epochs.map(e => ({ ...e, tiles: e.tiles.map(decode), spectra: (e.spectra || []).map(decode) })) };
 }
 
 export function layerArray(tile, layer) {

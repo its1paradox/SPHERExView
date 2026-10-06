@@ -115,3 +115,11 @@ def comparison_fits(job_id: str, epoch: int):
     if epoch < 0 or not path.is_file():
         raise HTTPException(404, "Epoch not found")
     return FileResponse(path, media_type="application/fits", filename=f"spherex-{job_id[:8]}-epoch-{epoch + 1}.fits")
+
+
+@router.get("/{job_id}/spectra/{epoch}.fits")
+def comparison_spectrum_fits(job_id: str, epoch: int):
+    path = _completed(job_id) / f"spectrum-{epoch}.fits"
+    if epoch < 0 or not path.is_file():
+        raise HTTPException(404, "Spectrum epoch not found")
+    return FileResponse(path, media_type="application/fits", filename=f"spherex-{job_id[:8]}-spectrum-{epoch + 1}.fits")

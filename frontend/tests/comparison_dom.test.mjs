@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { build } from 'esbuild';
 import { JSDOM } from 'jsdom';
+import { pixelToWorld } from '../src/lib/render.js';
 
 const encode = values => ({ dtype: '<f4', data_b64: Buffer.from(new Float32Array(values).buffer).toString('base64') });
 const fixture = {
@@ -15,12 +16,19 @@ const fixture = {
       maps: epoch === 1 && d === 6 ? undefined : Object.fromEntries(['intensity','variance','coverage','hits','wavelength','lambda_min','lambda_max','bandwidth','mjd','mjd_min','mjd_max'].map(key => [key, encode(Array.from({length:16}, (_, i) => key === 'intensity' ? i + d : key === 'variance' ? 4 : key.startsWith('mjd') ? 61000 + epoch : key === 'bandwidth' ? .03 : 1))])) })) }))
 };
 
+fixture.recipe.aperture_radius_arcsec = 12.4;
+for (const e of fixture.epochs) {
+  e.data_release = 'qr3';
+  e.spectra = Array.from({length:12}, (_, j) => ({detector:j%6+1, obs_id:`sample${j}`, mjd:61000+j, data_release:'qr3',
+    maps: Object.fromEntries(['flux','variance','wavelength','bandwidth','lambda_min','lambda_max','aperture_coverage','sky_coverage'].map(key=>[key, encode(Array.from({length:16}, (_,i)=>key==='flux'?100*j+i: key==='variance'?4:key==='wavelength'?1+j*.3:key==='lambda_min'?.99+j*.3:key==='lambda_max'?1.01+j*.3:key==='bandwidth'?.03:1))]))}));
+}
+
 async function settle(check) {
   for (let i = 0; i < 100; i++) { if (check()) return; await new Promise(r => setTimeout(r, 10)); }
   assert.fail('DOM did not reach the expected state');
 }
 
-test('real React entry builds six tiles, links pins and epochs, and keeps pending recipes separate', async () => {
+test('real React entry builds seven tiles with a local spectrum, links pins and epochs, and keeps pending recipes separate', async () => {
   const bundle = await build({ entryPoints: ['src/compare.jsx'], bundle: true, format: 'iife', jsx: 'automatic', write: false, loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' } });
   const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'http://localhost/compare.html#ra=10&dec=-5', runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window, requests = [], errors = [];
@@ -35,7 +43,7 @@ test('real React entry builds six tiles, links pins and epochs, and keeps pendin
   const click = selector => w.document.querySelector(selector).click();
   try {
     vm.runInContext(bundle.outputFiles[0].text, dom.getInternalVMContext());
-    await settle(() => w.document.querySelectorAll('canvas').length === 6);
+    await settle(() => w.document.querySelectorAll('canvas').length === 7);
     assert.equal(requests.filter(([, o]) => o?.method === 'POST').length, 1);
     assert.equal(JSON.parse(requests[0][1].body).max_per_tile, 0);
     assert.equal(w.document.querySelectorAll('.detector-key .active').length, 6);
@@ -43,7 +51,18 @@ test('real React entry builds six tiles, links pins and epochs, and keeps pendin
     canvas.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await settle(() => w.document.querySelector('.source-title').textContent.includes('Pinned source'));
     assert.equal(w.document.querySelectorAll('tbody tr').length, 6);
-    assert.ok(w.location.hash.includes('pinra=10'));
+    assert.ok(w.location.hash.includes('pinra='));
+    assert.ok(!w.document.body.textContent.includes('Generate spectrum'));
+    assert.ok(w.document.querySelector('[aria-label="Live aperture spectrum"]').textContent.includes('12 valid exposure samples'));
+    const callsBeforeHover = requests.length;
+    const rgb = w.document.querySelector('canvas[aria-label^="RGB"]');
+    rgb.getBoundingClientRect = () => ({left:0,top:0,width:600,height:600});
+    rgb.dispatchEvent(new w.MouseEvent('pointermove', {clientX:80,clientY:80,bubbles:true}));
+    await settle(() => w.document.querySelector('.spectrum-heading').textContent.includes('HOVER'));
+    rgb.dispatchEvent(new w.MouseEvent('pointerout', {bubbles:true}));
+    await settle(() => w.document.querySelector('.spectrum-heading').textContent.includes('PINNED'));
+    rgb.dispatchEvent(new w.KeyboardEvent('keydown', {key:'Enter',bubbles:true}));
+    assert.equal(requests.length, callsBeforeHover, 'Hover and pins never request another spectrum');
     click('button[aria-label="Next epoch"]');
     await settle(() => w.document.querySelector('.epoch-slider').textContent.includes('2 / 2'));
     assert.ok(w.document.body.textContent.includes('No observations in this epoch'));
@@ -86,7 +105,7 @@ test('expanded detector navigation, three color modes, wheel navigation and expo
   const params = () => new URLSearchParams(w.location.hash.slice(1));
   try {
     vm.runInContext(bundle.outputFiles[0].text, dom.getInternalVMContext());
-    await settle(() => w.document.querySelectorAll('canvas').length === 6);
+    await settle(() => w.document.querySelectorAll('canvas').length === 7);
     assert.equal(w.document.querySelector('[aria-label="Zoom in"]'), null, 'No duplicate zoom toolbar');
     w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: '+', bubbles: true }));
     await settle(() => Number(params().get('zoom')) > 1);
@@ -107,7 +126,7 @@ test('expanded detector navigation, three color modes, wheel navigation and expo
     await settle(() => !!w.document.querySelector('dialog[open]'));
     assert.ok(w.document.querySelector('#expanded-title').textContent.startsWith('D3'));
     assert.equal(w.document.querySelector('.expanded-tile canvas').width, 1200);
-    assert.equal(w.document.querySelectorAll('.detector-grid canvas').length, 6);
+    assert.equal(w.document.querySelectorAll('.detector-grid canvas').length, 7);
     const savedEpoch = params().get('epoch');
     w.document.querySelector('[aria-label="Next detector"]').click();
     await settle(() => w.document.querySelector('#expanded-title').textContent.startsWith('D4'));
@@ -116,14 +135,16 @@ test('expanded detector navigation, three color modes, wheel navigation and expo
     w.document.querySelector('[aria-label="View D6"]').click();
     await settle(() => w.document.querySelector('#expanded-title').textContent.startsWith('D6'));
     w.document.querySelector('.expanded-tile canvas').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    await settle(() => w.document.querySelector('#expanded-title').textContent.startsWith('RGB'));
+    w.document.querySelector('[aria-label="Next detector"]').click();
     await settle(() => w.document.querySelector('#expanded-title').textContent.startsWith('D1'));
     assert.equal(params().get('epoch'), savedEpoch, 'Expanded arrows change detector, never epoch');
     assert.equal(params().get('zoom'), '1', 'Expansion never changes magnification');
     const bigCanvas = w.document.querySelector('.expanded-tile canvas');
     bigCanvas.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await settle(() => params().has('pinra'));
-    assert.ok(Math.abs(Number(params().get('pinra')) - 10) < 1e-8);
-    assert.ok(Math.abs(Number(params().get('pindec')) + 5) < 1e-8);
+    assert.ok(Math.abs(Number(params().get('pinra')) - pixelToWorld(fixture.wcs, 2.5, 2.5)[0]) < 1e-8);
+    assert.ok(Math.abs(Number(params().get('pindec')) - pixelToWorld(fixture.wcs, 2.5, 2.5)[1]) < 1e-8);
     bigCanvas.dispatchEvent(new w.WheelEvent('wheel', { deltaY: -100, clientX: 450, clientY: 150, bubbles: true, cancelable: true }));
     await settle(() => Number(params().get('zoom')) > 1);
     const savedView = ['zoom', 'panx', 'pany'].map(k => params().get(k));
@@ -136,7 +157,7 @@ test('expanded detector navigation, three color modes, wheel navigation and expo
     assert.equal(w.document.body.style.overflow, '');
     pixels.length = 0;
     button('Color comparison').click();
-    await settle(() => w.document.querySelectorAll('.tile-color-key').length === 6);
+    await settle(() => w.document.querySelectorAll('.tile-color-key').length === 7);
     assert.equal(w.document.querySelector('[aria-label="Color meaning"]').textContent.includes('formal σ'), true);
     assert.ok(pixels.some(p => p[0] !== p[2]), 'Color rendering must differ from grayscale on the synthetic contrast');
     const reference = w.document.querySelector('.color-options select');
@@ -144,10 +165,10 @@ test('expanded detector navigation, three color modes, wheel navigation and expo
     await settle(() => params().get('reference') === '6');
     w.document.querySelector('[aria-label="Next epoch"]').click();
     await settle(() => w.document.body.textContent.includes('Reference D6 unavailable'));
-    assert.equal(w.document.querySelectorAll('.detector-empty').length, 6);
+    assert.equal(w.document.querySelectorAll('.detector-empty').length, 7);
     reference.value = '4'; reference.dispatchEvent(new w.Event('change', { bubbles: true }));
-    await settle(() => w.document.querySelectorAll('.detector-empty').length === 1);
-    button('Export six-panel PNG + settings').click();
+    await settle(() => w.document.querySelectorAll('.detector-empty').length === 2);
+    button('Export tiles PNG + settings').click();
     await settle(() => blobs.some(b => b.type === 'application/json'));
     const exported = JSON.parse(await blobs.find(b => b.type === 'application/json').text());
     assert.equal(exported.display.mode, 'color'); assert.equal(exported.display.reference, 4);
@@ -159,13 +180,13 @@ test('expanded detector navigation, three color modes, wheel navigation and expo
     await settle(() => params().get('mode') === 'wavelength');
     assert.ok(w.document.querySelector('[aria-label="Wavelength color meaning"]').textContent.includes('CWAVE'));
     assert.ok(pixels.some(p => p[0] !== p[2]), 'Calibrated wavelength renders hue');
-    assert.equal(w.document.querySelectorAll('.detector-empty').length, 1, 'Missing reference does not affect wavelength mode');
+    assert.equal(w.document.querySelectorAll('.detector-empty').length, 2, 'Missing reference does not affect wavelength mode');
     w.document.querySelector('[aria-label="Expand D6"]').click();
     await settle(() => !!w.document.querySelector('dialog'));
     assert.ok(w.document.querySelector('.expanded-tile').textContent.includes('No observations in this epoch'), 'Keep a missing detector empty in expanded view');
     w.document.querySelector('dialog').dispatchEvent(new w.Event('cancel', { cancelable: true }));
     await settle(() => !w.document.querySelector('dialog'));
-    button('Export six-panel PNG + settings').click();
+    button('Export tiles PNG + settings').click();
     await settle(() => blobs.some(b => b.type === 'application/json'));
     const waveExport = JSON.parse(await blobs.find(b => b.type === 'application/json').text());
     assert.equal(waveExport.display.wavelength_color.method, 'cwave-mean-equal-luminance-v1');

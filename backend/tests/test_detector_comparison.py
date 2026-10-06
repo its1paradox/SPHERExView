@@ -96,8 +96,11 @@ def wave_table(n):
 
 
 @pytest.fixture
-def calibrated_cutout(tmp_path):
+def calibrated_cutout(tmp_path, monkeypatch):
     n = 12
+    # Unit fixtures must never fetch an archive calibration. Dedicated aperture
+    # tests below exercise pixel-area conversion and photometry independently.
+    monkeypatch.setattr(dc.spectrum, 'solid_angles', lambda header, detector, release, x, y: (np.full(x.shape, (6.2 / 206264.80624709636) ** 2), {'solid_angle_version': 'synthetic'}))
     yy, xx = np.indices((n, n))
     # True CWAVE is intentionally different from the approximate table.
     lam = (1 + .01 * xx + .02 * yy + .0004 * np.sin(xx)).astype(np.float32)

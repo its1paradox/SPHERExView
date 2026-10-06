@@ -45,8 +45,11 @@ and the other viewers. See [QR3 support and scientific validation](docs/QR3_SUPP
   coadds, or a custom detector combination.
 - **Epoch blink:** inspect SPHEREx coadds grouped by observing visit.
 - **SpherexMultiView:** compare D1–D6 at one epoch using grayscale,
-  detector-to-reference color, or wavelength color. Expand a tile and use
-  Previous/Next to move between detectors.
+  detector-to-reference color, or wavelength color, alongside a seventh RGB
+  composite. Hover or pin any tile for an instant, precomputed aperture
+  spectrum with wavelength/frequency axes and flux density in µJy. Expand a
+  tile and use Previous/Next to move between all seven views. See the
+  [measurement method and limitations](docs/LIVE_APERTURE_SPECTRA.md).
 - **Spectrum:** click an image to pin a position, then request an IRSA
   forced-photometry spectrum. Spectrum jobs can take several minutes.
 

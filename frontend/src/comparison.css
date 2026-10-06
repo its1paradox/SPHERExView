@@ -140,3 +140,55 @@ body { margin: 0; }
   .detector-tabs button { padding: 6px 8px; }
   .expanded-stage { --expanded-side: max(160px, min(calc(100vw - 28px), calc(100dvh - 390px))); }
 }
+
+/* Keep the images compact so spectral information shares the viewport. */
+.compare-layout { gap: 16px; padding-top: 12px; }
+.compare-header { padding-top: 10px; padding-bottom: 10px; }
+.compare-header h1 { font-size: 22px; }
+.compare-toolbar { padding: 8px 10px; }
+.detector-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.detector-grid .detector-image { width: min(100%, 180px); margin: auto; }
+.detector-grid .detector-heading { padding: 6px; }
+.detector-grid .detector-key { display: none; }
+.detector-grid .detector-heading small { display: block; margin: 0; font-size: 9px; }
+.detector-grid .detector-heading strong { font-size: 14px; }
+.detector-grid .expand-tile span { display: none; }
+.detector-grid .detector-tile footer { padding: 5px 6px; font-size: 9px; gap: 2px; }
+.detector-grid .detector-empty { inset: 8% 4%; font-size: 11px; padding: 7px; }
+.detector-grid .detector-empty span { font-size: 10px; }
+.compare-help { margin-bottom: 10px; line-height: 1.5; }
+.rgb-key span:nth-child(1) { color: #f3a8ac; }
+.rgb-key span:nth-child(2) { color: #a6dcac; }
+.rgb-key span:nth-child(3) { color: #8cc9ff; }
+.live-spectrum { width: 100%; min-width: 0; border: 1px solid #39506a; background: #101b27; border-radius: 7px; padding: 12px; margin: 12px 0; }
+.spectrum-heading { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+.spectrum-heading h2 { margin: 0; font-size: 16px; }
+.spectrum-heading h2 span { margin-left: 8px; font-size: 9px; letter-spacing: .08em; color: #8bd6e9; border: 1px solid #335b69; padding: 3px 5px; border-radius: 3px; vertical-align: middle; }
+.spectrum-heading p, .spectrum-note { color: #a3b9cc; font-size: 11px; line-height: 1.5; margin: 6px 0 0; }
+.spectrum-actions { display: flex; gap: 5px; flex-wrap: wrap; }
+.compare-page .spectrum-actions button { font-size: 10px; padding: 6px 8px; }
+.spectrum-actions { align-items: end; }
+.compare-page .spectrum-actions label { font-size: 9px; gap: 3px; }
+.compare-page .spectrum-actions select { padding: 5px; font-size: 11px; }
+.spectrum-plot { position: relative; }
+.spectrum-plot svg { display: block; width: 100%; height: 290px; margin: 6px auto; }
+.spectrum-empty { position: absolute; left: 18%; right: 7%; top: 35%; padding: 15px; text-align: center; font-size: 13px; color: #bbccdb; background: #101b27e8; pointer-events: none; }
+.spectrum-summary { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 11px; }
+.spectrum-summary strong { color: #f2d191; font-weight: 500; }
+.spectrum-detectors { display: flex; flex-wrap: wrap; gap: 10px; }
+.spectral-point { font-size: 11px; color: #cbe1f2; }
+.spectral-warning { color: #efc887; font-size: 11px; }
+.expanded-stage > .live-spectrum { max-width: 960px; flex-shrink: 0; }
+.empty-grid .compare-placeholder { min-height: 130px; }
+@media (min-width: 1650px) { .detector-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); } .detector-grid .detector-image { width: min(100%, 200px); } }
+@media (max-width: 1050px) { .detector-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 600px) {
+  .detector-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .compare-layout { padding: 10px; }
+  .spectrum-empty { font-size: 11px; padding: 5px; top: 23%; }
+  .spectrum-plot { overflow-x: auto; }
+  .spectrum-plot svg { min-width: 300px; }
+  .live-spectrum { padding: 9px; }
+  .spectrum-actions { gap: 4px; }
+  .detector-tabs { flex-wrap: wrap; }
+}

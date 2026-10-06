@@ -33,8 +33,9 @@ from . import coadd as cx
 from . import imaging
 from . import releases
 from . import spherex_client as sx
+from . import aperture_spectrum as spectrum
 
-ALGORITHM = "six-detector-1.1-qr3"
+ALGORITHM = "six-detector-1.2-aperture"
 CALIBRATION_VERSION = "cal-wcs-v4-2025-254"
 IRSA_ROOT = "https://irsa.ipac.caltech.edu/ibe/data/spherex/qr2"
 CAL_LOCK = threading.Lock()
@@ -74,6 +75,7 @@ class Recipe(BaseModel):
     background: Literal["zodi", "none"] = "zodi"
     weighting: Literal["equal", "sky"] = "equal"
     min_exposures: int = Field(default=1, ge=1, le=10000)
+    aperture_radius_arcsec: float = Field(default=12.4, ge=6.2, le=31)
     # Half-open selection of calibrated INPUT pixel central wavelengths.
     wavelength_ranges: dict[int, tuple[float, float]] = Field(default_factory=dict)
 
@@ -250,6 +252,7 @@ class Samples:
     weight: float
     mjd: float
     metadata: dict
+    spectrum: dict | None = None
 
 
 def load_samples(path, image, recipe, wcs_out, n, calibration_loader=None):
@@ -381,7 +384,17 @@ def load_samples(path, image, recipe, wcs_out, n, calibration_loader=None):
             "sample_wavelength_min_um": float(np.min(selected[2])),
             "sample_wavelength_max_um": float(np.max(selected[2])),
         }
-        return Samples(index, *selected, weight, mjd, metadata)
+        # An unavailable flux calibration must never turn a coadd intensity into
+        # a fabricated flux. Keep the valid coadd and report the spectrum failure.
+        spectral_maps = None
+        try:
+            omega, area_metadata = spectrum.solid_angles(header, detector, release, xcal, ycal)
+            spectral_maps = spectrum.aperture_maps(sci, variance, wavelength, bandwidth, valid,
+                (flags & (1 << bit_map["MP_SOURCE"])) == 0, omega, sky_wcs, wcs_out, n, recipe.aperture_radius_arcsec)
+            metadata.update(area_metadata, spectrum_status="ready", spectrum_valid_positions=int(np.isfinite(spectral_maps["flux"]).sum()))
+        except Exception as exc:
+            metadata.update(spectrum_status="unavailable", spectrum_reason=str(exc))
+        return Samples(index, *selected, weight, mjd, metadata, spectral_maps)
 
 
 class Accumulator:
@@ -475,7 +488,9 @@ def prefetch_downloads(images, recipe, downloader, cancelled):
             im = next(remaining, None)
             if im is None:
                 break
-            url = sx.get_cutout_url(im.access_url, recipe.ra, recipe.dec, recipe.size_arcsec * 1.45)
+            # Include annulus and native-pixel margin even for the smallest field.
+            cutout_size = recipe.size_arcsec * 1.45 + 5 * recipe.aperture_radius_arcsec + 24.8
+            url = sx.get_cutout_url(im.access_url, recipe.ra, recipe.dec, cutout_size)
             queue.append((im, url, pool.submit(downloader, url)))
     try:
         fill()
@@ -494,7 +509,7 @@ def build(recipe: Recipe, output_dir: Path, progress: Callable, cancelled: threa
     progress(f"Querying SPHEREx {recipe.release.upper()} releases", 0, 0)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        images = sx.query_releases(recipe.ra, recipe.dec, radius_deg=recipe.size_arcsec / 7200, survey=recipe.survey, release=recipe.release, query=query)
+        images = sx.query_releases(recipe.ra, recipe.dec, radius_deg=(recipe.size_arcsec * math.sqrt(2) / 2 + 2.5 * recipe.aperture_radius_arcsec) / 3600, survey=recipe.survey, release=recipe.release, query=query)
     if any("overflow" in str(w.message).lower() for w in caught):
         raise ValueError("Archive inventory was truncated; reduce the field or time range")
     rows, excluded = inventory(images, recipe)
@@ -518,9 +533,11 @@ def build(recipe: Recipe, output_dir: Path, progress: Callable, cancelled: threa
             per_detector.append(sub)
             selected_total += len(sub)
         selected.append(per_detector)
+    if selected_total * n * n > spectrum.MAX_SPECTRAL_CELLS:
+        raise ValueError("Precomputed spectra exceed 1,000,000 exposure/pixel samples; reduce the field or time range, use coarser pixels, or select an explicit preview cap")
     for k, (rows_in_epoch, grouping, start, end) in enumerate(groups):
         epoch = {"data_release": releases.product_release(rows_in_epoch[0].access_url, rows_in_epoch[0].survey), "index": k, "grouping": grouping, "mjd_start": float(start), "mjd_end": float(end), "datetime_start": Time(start, format="mjd").isot, "datetime_end": Time(end, format="mjd").isot, "tiles": []}
-        products, epoch_inputs = {}, []
+        products, epoch_inputs, spectral_samples = {}, [], []
         for detector, sub in enumerate(selected[k], start=1):
             accumulator, accepted, failures = Accumulator(n), [], []
             for im, url, download in prefetch_downloads(sub, recipe, downloader, cancelled):
@@ -533,6 +550,9 @@ def build(recipe: Recipe, output_dir: Path, progress: Callable, cancelled: threa
                     accumulator.add(samples)
                     accepted.append(samples.mjd)
                     record.update(samples.metadata, status="accepted")
+                    if samples.spectrum is not None:
+                        spectral_samples.append({"detector": detector, "obs_id": im.obs_id, "mjd": samples.mjd,
+                            "data_release": epoch["data_release"], "input_index": len(provenance), "arrays": samples.spectrum})
                 except Cancelled:
                     raise
                 except Exception as exc:
@@ -555,13 +575,19 @@ def build(recipe: Recipe, output_dir: Path, progress: Callable, cancelled: threa
         # as the encoded arrays, before the display-only vertical flip.
         metadata_epoch = {**epoch, "tiles": [{key: value for key, value in tile.items() if key != "maps"} for tile in epoch["tiles"]]}
         save_epoch(output_dir / f"epoch-{k}.fits", metadata_epoch, products, wcs, recipe, epoch_inputs)
+        spectrum.save_spectra(output_dir / f"spectrum-{k}.fits", spectral_samples, wcs, recipe, epoch)
+        epoch["spectra"] = [{**{key: value for key, value in s.items() if key != "arrays"}, "maps": encode_maps(s["arrays"])} for s in spectral_samples]
         epochs.append(epoch)
     if cancelled.is_set():
         raise Cancelled()
-    deps = {name: importlib.metadata.version(name) for name in ("numpy", "astropy", "astroquery")}
-    source_hashes = {name: sha256_file(Path(__file__).with_name(name)) for name in ("detector_comparison.py", "coadd.py", "imaging.py", "spherex_client.py", "releases.py")}
+    deps = {name: importlib.metadata.version(name) for name in ("numpy", "astropy", "astroquery", "photutils")}
+    source_hashes = {name: sha256_file(Path(__file__).with_name(name)) for name in ("detector_comparison.py", "aperture_spectrum.py", "coadd.py", "imaging.py", "spherex_client.py", "releases.py")}
     manifest = {"algorithm": ALGORITHM, "created_utc": Time.now().isot, "recipe": recipe.model_dump(mode="json"), "dependencies": deps, "wcs": imaging.wcs_to_dict(wcs, n), "width": n, "height": n, "units": MAP_UNITS, "array_orientation": "API row 0 is north/top; FITS is unflipped", "variance_scope": LIMITATIONS[2], "limitations": LIMITATIONS + (["Nearest-neighbor outputs can reuse native pixels; output pixels are correlated."] if recipe.resampling == "nearest" else []), "n_archive_rows": len(images), "n_unique_inventory": len(rows), "n_selected": selected_total, "preview_subset": any(r["status"] == "preview_excluded" for r in excluded), "excluded": excluded, "inputs": provenance, "epochs": [{**e, "tiles": [{key: value for key, value in tile.items() if key != "maps"} for tile in e["tiles"]]} for e in epochs]}
     manifest["source_sha256"] = source_hashes
+    for e in manifest["epochs"]:
+        e["spectra"] = [{key: value for key, value in s.items() if key != "maps"} for s in e["spectra"]]
+    manifest["spectrum_method"] = spectrum.METHOD
+    manifest["spectrum_units"] = spectrum.UNITS
     manifest["release_policy"] = releases.RELEASE_POLICY
     manifest["time_assignment"] = "Archive exposure midpoint, MJD UTC; fixed bins and requested time bounds are half-open"
     manifest["weight_units"] = "dimensionless" if recipe.weighting == "equal" else "sr2 MJy-2"
