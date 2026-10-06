@@ -20,9 +20,11 @@ from . import spherex_client as sx
 AREA_VERSIONS = {"qr2": "cal-sapm-v2-2025-164", "qr3": "cal-sapm-v3-2026-191"}
 MAX_SPECTRAL_CELLS = 1_000_000
 UNITS = {"flux": "uJy", "variance": "uJy2", "sky_flux": "uJy", "sky_variance": "uJy2", "wavelength": "um", "bandwidth": "um",
+         "usable_flux": "uJy", "usable_variance": "uJy2", "usable_sky_flux": "uJy", "usable_sky_variance": "uJy2",
          "lambda_min": "um", "lambda_max": "um", "aperture_coverage": "", "sky_coverage": ""}
 METHOD = {
-    "version": "native-aperture-1",
+    "version": "native-aperture-2",
+    "usable_pixel_estimator": "Same linear aperture estimator over valid pixels only; no correction for missing area or flux. Strict flux fields additionally require complete aperture coverage.",
     "flux_estimator": "1e12 * sum(aperture_fraction * solid_angle_sr * I_nu_MJy_sr); supplied recipe background only",
     "sky_flux_estimator": "1e12 * sum((aperture_fraction * solid_angle_sr - aperture_solid_angle_sr * sky_weight) * I_nu_MJy_sr)",
     "sky_estimator": "Solid-angle-weighted mean in annulus, excluding SOURCE and fatal pixels; no sigma clipping",
@@ -37,7 +39,7 @@ METHOD = {
         "One point per usable exposure; finite LVF bandpasses and wavelengths across the aperture are retained, not monochromatic bins.",
         "Epoch samples are not simultaneous. A highest measured F_nu sample is not a fitted spectral-line peak or a peak in F_lambda.",
         "Default flux retains local sky after the selected supplied background model. Optional local-annulus subtraction can remove extended emission or include uncatalogued sources. Neighbours inside the aperture are not deblended.",
-        "Incomplete or flagged apertures are omitted, never area-corrected or zero-filled. Annulus must have at least 50% usable area and 10 effective pixels.",
+        "Usable-pixel flux can omit a stellar core; changing masks can distort its spectral shape. Coverage is area, not a fraction of recovered source flux. Strict fields omit incomplete apertures. Neither estimator rescales missing flux. Annulus requires 50% usable area and 10 effective pixels.",
         "Errors exclude calibration, background-model systematics, input covariance, aperture corrections and astrometric errors.",
     ],
 }
@@ -125,13 +127,17 @@ def aperture_maps(sci, variance, wavelength, bandwidth, valid, sky_valid, omega,
         sky_coverage = np.sum(sky * usable_sky) / (np.pi * a * b * (2.5**2 - 1.5**2))
         maps["aperture_coverage"].flat[i] = min(1, ap_coverage)
         maps["sky_coverage"].flat[i] = min(1, sky_coverage)
-        if ap_coverage < METHOD["minimum_aperture_coverage"]:
+        if ap_coverage <= 0:
             continue
+        complete = ap_coverage >= METHOD["minimum_aperture_coverage"]
         aw = aperture * omega[sl] * good
         intensity = np.where(good, sci[sl], 0)
         var = np.where(good, variance[sl], 0)
-        maps["flux"].flat[i] = np.sum(1e12 * aw * intensity)
-        maps["variance"].flat[i] = np.sum((1e12 * aw) ** 2 * var)
+        maps["usable_flux"].flat[i] = np.sum(1e12 * aw * intensity)
+        maps["usable_variance"].flat[i] = np.sum((1e12 * aw) ** 2 * var)
+        if complete:
+            maps["flux"].flat[i] = maps["usable_flux"].flat[i]
+            maps["variance"].flat[i] = maps["usable_variance"].flat[i]
         used = aw > 0
         maps["wavelength"].flat[i] = np.sum(aw[used] * wavelength[sl][used]) / aw.sum()
         maps["bandwidth"].flat[i] = np.sum(aw[used] * bandwidth[sl][used]) / aw.sum()
@@ -144,8 +150,11 @@ def aperture_maps(sci, variance, wavelength, bandwidth, valid, sky_valid, omega,
             continue
         sw /= sw.sum()
         coefficients = 1e12 * (aw - aw.sum() * sw)
-        maps["sky_flux"].flat[i] = np.sum(coefficients * intensity)
-        maps["sky_variance"].flat[i] = np.sum(coefficients ** 2 * var)
+        maps["usable_sky_flux"].flat[i] = np.sum(coefficients * intensity)
+        maps["usable_sky_variance"].flat[i] = np.sum(coefficients ** 2 * var)
+        if complete:
+            maps["sky_flux"].flat[i] = maps["usable_sky_flux"].flat[i]
+            maps["sky_variance"].flat[i] = maps["usable_sky_variance"].flat[i]
     return maps
 
 

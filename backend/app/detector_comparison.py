@@ -35,7 +35,7 @@ from . import releases
 from . import spherex_client as sx
 from . import aperture_spectrum as spectrum
 
-ALGORITHM = "six-detector-1.2-aperture"
+ALGORITHM = "six-detector-1.3-aperture"
 CALIBRATION_VERSION = "cal-wcs-v4-2025-254"
 IRSA_ROOT = "https://irsa.ipac.caltech.edu/ibe/data/spherex/qr2"
 CAL_LOCK = threading.Lock()
@@ -391,7 +391,8 @@ def load_samples(path, image, recipe, wcs_out, n, calibration_loader=None):
             omega, area_metadata = spectrum.solid_angles(header, detector, release, xcal, ycal)
             spectral_maps = spectrum.aperture_maps(sci, variance, wavelength, bandwidth, valid,
                 (flags & (1 << bit_map["MP_SOURCE"])) == 0, omega, sky_wcs, wcs_out, n, recipe.aperture_radius_arcsec)
-            metadata.update(area_metadata, spectrum_status="ready", spectrum_valid_positions=int(np.isfinite(spectral_maps["flux"]).sum()))
+            metadata.update(area_metadata, spectrum_status="ready", spectrum_valid_positions=int(np.isfinite(spectral_maps["flux"]).sum()),
+                spectrum_usable_positions=int(np.isfinite(spectral_maps["usable_flux"]).sum()))
         except Exception as exc:
             metadata.update(spectrum_status="unavailable", spectrum_reason=str(exc))
         return Samples(index, *selected, weight, mjd, metadata, spectral_maps)

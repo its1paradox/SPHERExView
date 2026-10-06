@@ -34,6 +34,7 @@ export function readState(hash = '') {
   return { form, display: {
     spectrumFrequency: p.get('specfreq') === '1', spectrumLocalSky: p.get('specsky') === '1',
     spectrumLines: p.get('speclines') !== '0', showAperture: p.get('apertureoverlay') === '1',
+    spectrumComplete: p.get('speccomplete') === '1',
     mode: ['color', 'wavelength'].includes(p.get('mode')) ? p.get('mode') : 'gray',
     wavelengthStrength: bounded('wavestrength', 1, 0, 1),
     wavelengthWhite: p.get('wavewhite') || '',
@@ -81,6 +82,7 @@ export function stateHash(form, display, epoch, pin) {
   p.set('invert', display.invert ? '1' : '0'); p.set('smooth', display.smooth ? '1' : '0');
   p.set('specfreq', display.spectrumFrequency ? '1' : '0'); p.set('specsky', display.spectrumLocalSky ? '1' : '0');
   p.set('speclines', display.spectrumLines ? '1' : '0'); p.set('apertureoverlay', display.showAperture ? '1' : '0');
+  p.set('speccomplete', display.spectrumComplete ? '1' : '0');
   p.set('panx', display.panX); p.set('pany', display.panY); p.set('epoch', epoch);
   if (pin) { p.set('pinra', pin.ra); p.set('pindec', pin.dec); }
   return `#${p}`;

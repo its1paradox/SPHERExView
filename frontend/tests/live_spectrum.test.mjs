@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rgbFrame, rgbPixel, spectrumAt, frequencyTHz, spectrumCsv, spectrumSegments, spectrumDiagnostics } from '../src/lib/liveSpectrum.js';
+import { rgbFrame, rgbPixel, spectrumAt, frequencyTHz, spectrumCsv, spectrumGuides, spectrumDiagnostics } from '../src/lib/liveSpectrum.js';
 import { decodeResult } from '../src/lib/comparison.js';
 
 test('RGB includes all six, preserves channel ratios and never invents missing coverage', () => {
@@ -37,14 +37,43 @@ test('decode spectral maps in the same orientation as detector maps and discard 
   assert.equal(r.epochs[0].spectra[0].maps, undefined);
 });
 
-test('straight guides preserve data and break at detector boundaries and wide wavelength gaps', () => {
-  const point = (detector, wavelength, bandwidth = .04) => ({detector, wavelength, bandwidth, mjd:61000, flux:-10});
-  const points = [point(1,1),point(1,1.04),point(2,1.06),point(1,1.3),point(1,1.34),point(1,1.36,NaN)];
-  const original = structuredClone(points);
-  const segments = spectrumSegments(points);
-  assert.deepEqual(segments.map(pair=>pair.map(p=>p.wavelength)), [[1,1.04],[1.3,1.34]]);
-  assert.deepEqual(points,original,'Guides must not alter fluxes or create interpolated samples');
-  assert.deepEqual(spectrumSegments([points[0]]),[]);
+test('robust guide uses median anchors, joins adjacent detectors and preserves measurements', () => {
+  const points = Array.from({length:32}, (_,i) => ({detector:1,wavelength:1+i*.005,bandwidth:.03,flux:i===1?10000:2,mjd:61000}));
+  points.push(...Array.from({length:8}, (_,i)=>({detector:2,wavelength:1.17+i*.01,bandwidth:.03,flux:2,mjd:61000})));
+  const original = structuredClone(points), guides = spectrumGuides(points);
+  assert.equal(guides.length,1);
+  assert.equal(guides[0].anchors.length,16);
+  assert.ok(guides[0].anchors.every(p=>p.flux===2),'Median anchors resist an isolated outlier');
+  assert.ok(guides[0].curve.every(p=>Math.abs(p.flux-2)<1e-10));
+  assert.deepEqual(points,original,'Spline must not edit, reject or insert measurements');
+  assert.deepEqual(spectrumGuides(points.slice(0,2)),[]);
+});
+
+test('natural cubic spline agrees with analytic midpoint and leaves large gaps open', () => {
+  const points = [0,1,0].map((flux,i)=>({detector:1,wavelength:1+i*.1,bandwidth:.03,flux}));
+  const [guide] = spectrumGuides(points);
+  assert.ok(Math.abs(guide.curve[6].flux-.6875)<1e-12);
+  assert.equal(guide.curve[0].flux,0); assert.equal(guide.curve.at(-1).flux,0);
+  const separated = [...points,...points.map(p=>({...p,detector:3,wavelength:p.wavelength+1}))];
+  assert.equal(spectrumGuides(separated).length,2);
+  const repeated = spectrumGuides([...points,...points]);
+  assert.equal(repeated[0].anchors.length,3);
+  assert.ok(repeated[0].curve.every(p=>Number.isFinite(p.flux)));
+});
+
+test('partial pixel flux is explicit, never rescaled, and complete filtering keeps its old meaning', () => {
+  const arrays = {flux:[NaN],variance:[NaN],usable_flux:[-7],usable_variance:[9],usable_sky_flux:[NaN],usable_sky_variance:[NaN],wavelength:[2],bandwidth:[.04],lambda_min:[1.99],lambda_max:[2.01],aperture_coverage:[.6],sky_coverage:[0]};
+  const epoch = {index:0,data_release:'qr2',spectra:[{arrays,detector:2,mjd:61000}]};
+  const points = spectrumAt(epoch,0);
+  assert.equal(points[0].flux,-7); assert.equal(points[0].error,3); assert.equal(points[0].partial,true);
+  assert.deepEqual(spectrumAt(epoch,0,false,true),[]);
+  assert.deepEqual(spectrumAt(epoch,0,true),[]);
+  assert.equal(spectrumDiagnostics(epoch,0).partial,1);
+  assert.equal(spectrumDiagnostics(epoch,0,true).sky,1);
+  const csv=spectrumCsv(points,{ra:1,dec:2},{aperture_radius_arcsec:12.4},epoch);
+  assert.ok(csv.includes('usable pixels, including partial apertures'));
+  assert.ok(csv.includes('no missing-area rescaling'));
+  assert.ok(csv.includes('"0.6"'));
 });
 
 test('availability explains bad apertures and missing clean sky without substituting flux', () => {
@@ -55,7 +84,7 @@ test('availability explains bad apertures and missing clean sky without substitu
     {arrays:{...arrays,sky_flux:[NaN]}},
     {arrays:{...arrays,flux:[NaN],sky_flux:[NaN],aperture_coverage:[NaN]}}
   ]};
-  assert.deepEqual(spectrumDiagnostics(epoch,0),{total:4,usable:2,aperture:1,sky:0,other:1});
-  assert.deepEqual(spectrumDiagnostics(epoch,0,true),{total:4,usable:1,aperture:1,sky:1,other:1});
+  assert.deepEqual(spectrumDiagnostics(epoch,0),{total:4,usable:2,partial:0,aperture:1,sky:0,other:1});
+  assert.deepEqual(spectrumDiagnostics(epoch,0,true),{total:4,usable:1,partial:0,aperture:1,sky:1,other:1});
   assert.equal(spectrumDiagnostics(epoch,null).total,0);
 });

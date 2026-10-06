@@ -14,7 +14,7 @@ test('target launch preserves sky and survey, with no inherited single-detector 
 test('recipe, display, epoch and sky pin survive a share-link round trip', () => {
   const state = readState('#ra=10&dec=-5');
   Object.assign(state.form, { ranges: { 6: ['4.6', '4.8'] }, grouping: 'fixed', mjd_start: '61000' });
-  Object.assign(state.display, { vmin: '-.2', vmax: '4', invert: true, smooth: true, panX: .2, panY: -.1, zoom: 3.5, spectrumFrequency: true, spectrumLocalSky: true, spectrumLines: false, showAperture: true });
+  Object.assign(state.display, { vmin: '-.2', vmax: '4', invert: true, smooth: true, panX: .2, panY: -.1, zoom: 3.5, spectrumFrequency: true, spectrumLocalSky: true, spectrumLines: false, showAperture: true, spectrumComplete: true });
   const pin = { ra: 9.9, dec: -4.8 };
   const restored = readState(stateHash(state.form, state.display, 2, pin));
   assert.deepEqual(restored.form, state.form); assert.deepEqual(restored.display, state.display);

@@ -14,18 +14,27 @@ does not change the measurements or make archive requests.
 
 Tiles use a small position marker by default. **Show measurement aperture**
 optionally displays the actual extraction radius and background annulus;
-hiding these rings does not change the photometry. **Connecting lines**
-defaults on and draws straight visual guides between nearby points within
-each detector. A gap wider than 1.5 times the larger of the two native CBAND
-values breaks a guide. This threshold is a display convention, not a fitted
-spectral model. Lines do not create samples, modify fluxes or change the
-reported highest measured sample. Both display choices survive bookmarks
-and are shared with expanded views.
+hiding these rings does not change the photometry. **Robust smooth guide**
+defaults on. As in [AstroToolBox](https://github.com/fkiwy/AstroToolBox/blob/6dab9013c558262e99768b88d34be8fa6aa78635/src/main/java/astro/tool/box/tab/SpherexViewerTab.java),
+up to eight equal-count wavelength bins per detector supply median wavelength
+and median flux anchors (at least three samples per detector/run). A natural
+cubic spline joins the anchors across adjacent detectors. Unlike the reference,
+we break the guide where adjacent measured wavelengths differ by more than
+`max(0.2 µm, 3 × larger CBAND)`. This is a display convention. Duplicate anchor
+wavelengths are merged by median flux. The spline is a broad-shape visual aid:
+it may overshoot, is not a physical spectral fit, creates no measured samples,
+and does not determine the reported maximum. Its values are not exported as
+CSV measurements. Both display choices survive bookmarks and expanded views.
+
+The **Aperture pixels** selector defaults to **Usable pixels (include partial)**.
+This retains measurable parts of flagged apertures, with open dots for partial
+measurements, usable-area percentages in tooltips and an explicit warning.
+**Complete apertures only** restores the stricter selection instantly.
 
 All available **selected, usable exposure wavelengths within the displayed
 epoch** are retained. There is no conversion of six broadband coadd values
-into a synthetic spectrum, interpolation across gaps, or forced 102-point
-sampling. The wavelength cuts, exposure cap, release and time selection still
+into a synthetic spectrum or forced 102-point sampling. Display-guide
+interpolation is kept separate from measured samples. The wavelength cuts, exposure cap, release and time selection still
 apply. Different epochs are not combined. QR2 and QR3 keep their native gain
 calibrations and remain separate.
 
@@ -66,7 +75,7 @@ intensity in MJy/sr after the selected supplied-ZODI subtraction (or none).
 The fatal-pixel mask is shared with the coadd. SOURCE flags only exclude
 pixels from background estimation; sources inside the aperture are retained.
 
-The default `flux` is `10^12 Σ(a_i Ω_i I_i)`, with variance
+The complete-aperture `flux` is `10^12 Σ(a_i Ω_i I_i)`, with variance
 `10^24 Σ((a_i Ω_i)² Var(I_i))`. This is aperture flux including local sky
 after any selected supplied-ZODI subtraction, and is labelled accordingly.
 
@@ -84,21 +93,45 @@ aperture and annulus share a native pixel. The variance assumes independent
 native pixels. It includes annulus noise, but excludes calibration, model,
 astrometric and native-pixel covariance systematics. Negative fluxes survive.
 
-A sample requires at least 99.9999% usable aperture area. The optional
-local-sky-subtracted sample additionally requires at least 50% usable
-annulus area and at least 10 effective annulus pixels. Missing or masked
-apertures are omitted without renormalizing them to an invented full flux.
-Source masking and these requirements can produce spectral gaps. With local
-annulus subtraction, a uniform background cancels, including with unequal
-native pixel solid angles. Without it, that background is intentionally retained.
+The strict `flux`, `variance`, `sky_flux`, and `sky_variance` arrays require
+at least 99.9999% usable aperture area. The additional `usable_*` arrays apply
+the same formulas over the remaining valid pixels whenever usable area is
+positive; the local-background subtraction uses only that usable aperture's
+solid angle. They never divide by coverage, infer a missing core, or insert
+zero-valued measurements when no pixels survive. CWAVE, wavelength range and
+CBAND describe the pixels actually used. With a complete aperture the two
+estimators are identical. The optional local-sky estimator requires at least
+50% usable annulus area and ten effective annulus pixels in either mode.
+A uniform sky therefore cancels even for a partial aperture with unequal
+pixel solid angles; without local subtraction it intentionally remains.
 
-The plot reports usable and omitted exposure counts at the current position,
-distinguishing incomplete/invalid apertures from insufficient clean annulus
-coverage. A bright coadd does not guarantee a full spectrum: the coadd can
-combine surviving pixels from many exposures while individual apertures
-intersect overflow, other quality flags or missing coverage. Discarding those
-pixels and rescaling the remaining area would not recover the flux of a
-bright, nonuniform stellar core.
+The plot distinguishes partial aperture measurements, omitted apertures and
+missing clean sky. Coverage is the **fraction of aperture area**, not the
+fraction of stellar light recovered. A high coverage fraction can still omit
+the bright core and lose most source flux. Wavelength-dependent masks can
+change the apparent spectral shape and maximum. The open dots measure flux
+from the surviving regions only; they do not reconstruct the source spectrum.
+
+### Comparison with AstroToolBox
+
+We inspected the public implementation at commit
+`6dab9013c558262e99768b88d34be8fa6aa78635`, specifically
+[`SpherexPipeline.aperture`](https://github.com/fkiwy/AstroToolBox/blob/6dab9013c558262e99768b88d34be8fa6aa78635/src/main/java/astro/tool/box/spherex/SpherexPipeline.java)
+and `SpherexViewerTab.createGuideData`. Its aperture sums surviving pixels
+rather than requiring a complete aperture. That explains why it can show
+many more points on a masked bright star. Our usable-pixel mode adopts that
+selection principle and our guide adopts its median-anchor approach.
+Attribution and the MIT license are in `THIRD_PARTY_NOTICES.md`.
+
+This is not numerical parity with its full pipeline. AstroToolBox defaults
+to radius two native pixels, a 2r–3r annulus, clipped median local background
+with a source-mask fallback, coarse-bin outlier rejection and optional channel
+binning. Here the aperture has a fixed sky radius, an explicit 1.5r–2.5r
+source-masked mean annulus, full-resolution CWAVE/CBAND, release-specific solid
+angles and propagated variance for the stated linear estimator. We retain
+all measured exposure points without outlier rejection. Epoch/release and
+background selection also matter. Equal-looking smooth curves would not
+establish equal or absolutely calibrated source photometry.
 
 Each exposure contributes one point. Its representative wavelength is the
 aperture-solid-angle-weighted CWAVE, independent of measured brightness.
@@ -109,8 +142,9 @@ tooltip, CSV and FITS. The frequency axis uses `ν [THz] = 299.792458 / λ [µm]
 the ordinate remains Fν in either view.
 
 The highlighted maximum is the **highest measured Fν sample**, not a fitted
-line, statistically established feature, or peak in Fλ. The plot deliberately
-does not smooth a spline through non-simultaneous finite-bandpass samples.
+line, statistically established feature, or peak in Fλ. When partial apertures
+are present it is labelled the largest plotted value instead of a source peak.
+The optional spline is only a visual aid for these non-simultaneous samples.
 Wavelength-dependent PSF losses, neighbour contamination and local-background
 subtraction can change the shape. Extended emission in the annulus is removed;
 uncatalogued neighbours are not automatically deblended.
@@ -145,7 +179,8 @@ CSV exports the current position's unrounded measurements, selected background e
 PNG includes source coordinates, epoch, release, units and aperture assumptions.
 The seven-tile PNG and JSON retain RGB mapping and display settings.
 
-Existing builds without spectral arrays must be rebuilt. Missing solid-angle
+Older builds must be rebuilt to obtain the usable-pixel arrays. Until then,
+the viewer can show only the complete-aperture fields available in that result. Missing solid-angle
 calibration preserves valid intensity coadds but produces an explicit spectrum
 failure in the input provenance and UI; it never invents a µJy conversion.
 
@@ -153,7 +188,8 @@ failure in the input provenance and UI; it never invents a µJy conversion.
 
 `backend/tests/test_aperture_spectrum.py` checks signed flux and the MJy/sr-to-µJy
 conversion, uniform-sky cancellation with unequal pixel areas, source-masked
-annuli, incomplete apertures, insufficient sky, fractional-weight uncertainty
+annuli, strict versus usable-pixel aperture selection, missing-core losses,
+insufficient sky, fractional-weight uncertainty
 against Monte Carlo draws, sky registration at RA wrap/high declination, native
 exposure separation, FITS/API orientation, and bounded precomputation.
 
@@ -161,4 +197,5 @@ exposure separation, FITS/API orientation, and bounded precomputation.
 RGB membership/coverage and hue preservation, signed spectral samples,
 frequency conversion, CSV quoting and context, decoding, seven-tile
 navigation, grid-centered pins, temporary hover previews without requests,
-epoch changes, display modes and export provenance.
+epoch changes, display modes and export provenance. Guide tests check robust
+median anchors, analytic cubic values, duplicate wavelengths and gap handling.

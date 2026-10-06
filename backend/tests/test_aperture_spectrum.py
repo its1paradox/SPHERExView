@@ -52,6 +52,33 @@ def test_no_partial_aperture_extrapolation_or_bad_background():
     assert result['aperture_coverage'][0, 0] < 1
 
 
+def test_usable_pixels_preserve_masked_core_loss_and_signed_flux():
+    a = scene()
+    a['sci'][15, 15] = 10000  # Bright flagged core must never be reconstructed.
+    a['valid'][15, 15] = False
+    ap = CircularAperture((15, 15), 2).to_mask(method='exact').to_image((31, 31))
+    coeff = 1e12 * ap * a['omega'] * a['valid']
+    result = sp.aperture_maps(**a)
+    assert result['usable_flux'][0, 0] == pytest.approx(np.sum(coeff * a['sci']), rel=1e-6)
+    assert result['usable_variance'][0, 0] == pytest.approx(np.sum(coeff**2 * a['variance']), rel=1e-6)
+    assert result['aperture_coverage'][0, 0] == pytest.approx(1 - 1/(4*np.pi), rel=1e-6)
+    assert abs(result['usable_sky_flux'][0, 0]) < 1e-5, 'Uniform background cancels over the usable area only'
+    assert np.isnan(result['flux'][0, 0]), 'Strict flux continues to reject incomplete apertures'
+    assert result['wavelength'][0, 0] == 2
+    a['sci'] *= -1
+    assert sp.aperture_maps(**a)['usable_flux'][0, 0] == pytest.approx(-result['usable_flux'][0, 0], rel=1e-6)
+    a['valid'][:] = False
+    empty = sp.aperture_maps(**a)
+    assert np.isnan(empty['usable_flux']).all()
+    assert np.isnan(empty['wavelength']).all()
+
+
+def test_complete_and_usable_estimators_agree_when_unmasked():
+    result = sp.aperture_maps(**scene())
+    for key in ('flux', 'variance', 'sky_flux', 'sky_variance'):
+        np.testing.assert_array_equal(result[key], result['usable_' + key])
+
+
 def test_fractional_weight_variance_against_monte_carlo_and_wavelength_range():
     a = scene()
     a['wavelength'] += np.indices((31, 31))[1] * .001
