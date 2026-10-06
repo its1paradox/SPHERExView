@@ -12,6 +12,16 @@ no automatic fallback between these physically different estimators.
 Changing display settings
 does not change the measurements or make archive requests.
 
+Tiles use a small position marker by default. **Show measurement aperture**
+optionally displays the actual extraction radius and background annulus;
+hiding these rings does not change the photometry. **Connecting lines**
+defaults on and draws straight visual guides between nearby points within
+each detector. A gap wider than 1.5 times the larger of the two native CBAND
+values breaks a guide. This threshold is a display convention, not a fitted
+spectral model. Lines do not create samples, modify fluxes or change the
+reported highest measured sample. Both display choices survive bookmarks
+and are shared with expanded views.
+
 All available **selected, usable exposure wavelengths within the displayed
 epoch** are retained. There is no conversion of six broadband coadd values
 into a synthetic spectrum, interpolation across gaps, or forced 102-point
@@ -81,6 +91,14 @@ apertures are omitted without renormalizing them to an invented full flux.
 Source masking and these requirements can produce spectral gaps. With local
 annulus subtraction, a uniform background cancels, including with unequal
 native pixel solid angles. Without it, that background is intentionally retained.
+
+The plot reports usable and omitted exposure counts at the current position,
+distinguishing incomplete/invalid apertures from insufficient clean annulus
+coverage. A bright coadd does not guarantee a full spectrum: the coadd can
+combine surviving pixels from many exposures while individual apertures
+intersect overflow, other quality flags or missing coverage. Discarding those
+pixels and rescaling the remaining area would not recover the flux of a
+bright, nonuniform stellar core.
 
 Each exposure contributes one point. Its representative wavelength is the
 aperture-solid-angle-weighted CWAVE, independent of measured brightness.

@@ -54,6 +54,12 @@ test('real React entry builds seven tiles with a local spectrum, links pins and 
     assert.ok(w.location.hash.includes('pinra='));
     assert.ok(!w.document.body.textContent.includes('Generate spectrum'));
     assert.ok(w.document.querySelector('[aria-label="Live aperture spectrum"]').textContent.includes('12 valid exposure samples'));
+    const options = [...w.document.querySelectorAll('.spectrum-options input')];
+    assert.equal(options[0].checked, true, 'Connecting guides default on');
+    assert.equal(options[1].checked, false, 'Measurement rings default off');
+    options[0].click(); options[1].click();
+    await settle(() => w.location.hash.includes('speclines=0') && w.location.hash.includes('apertureoverlay=1'));
+    assert.equal(w.document.querySelector('.spectrum-guides'), null);
     const callsBeforeHover = requests.length;
     const rgb = w.document.querySelector('canvas[aria-label^="RGB"]');
     rgb.getBoundingClientRect = () => ({left:0,top:0,width:600,height:600});

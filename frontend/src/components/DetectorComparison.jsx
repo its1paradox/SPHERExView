@@ -65,23 +65,26 @@ function renderTile(canvas, tile, values, result, display, limits, pin, hover, c
   const [left, top] = imageToScreen(0, 0, side, n, display);
   ctx.imageSmoothingEnabled = display.smooth;
   ctx.drawImage(off, left, top, extent, extent);
-  const marker = (sky, color, ring) => {
+  const marker = (sky, color, point) => {
     const xy = sky && worldToPixel(result.wcs, sky.ra, sky.dec);
     if (!xy) return;
     const [x, y] = imageToScreen(...xy, side, n, display);
-    ctx.strokeStyle = '#07101b'; ctx.lineWidth = 5;
+    // Keep a small marker legible even on compact tiles; its size is a display
+    // choice and has no effect on the aperture measurement.
+    const markerScale = side / Math.max(1, canvas.getBoundingClientRect().width || side);
+    ctx.strokeStyle = '#07101b'; ctx.lineWidth = 4 * markerScale;
     for (const stroke of [true, false]) {
-      if (!stroke) { ctx.strokeStyle = color; ctx.lineWidth = 2; }
+      if (!stroke) { ctx.strokeStyle = color; ctx.lineWidth = 2 * markerScale; }
       ctx.beginPath();
-      if (ring) ctx.arc(x, y, (result.recipe.aperture_radius_arcsec || 12.4) / result.recipe.pixscale_arcsec * side * display.zoom / n, 0, 2 * Math.PI);
-      else { ctx.moveTo(x - 12, y); ctx.lineTo(x + 12, y); ctx.moveTo(x, y - 12); ctx.lineTo(x, y + 12); }
+      if (point) ctx.arc(x, y, markerScale, 0, 2 * Math.PI);
+      else { const arm = 4 * markerScale; ctx.moveTo(x - arm, y); ctx.lineTo(x + arm, y); ctx.moveTo(x, y - arm); ctx.lineTo(x, y + arm); }
       ctx.stroke();
     }
   };
   marker(pin, '#ffd583', true); marker(hover, '#88d7f0', false);
   const apertureSky = hover || pin;
   const aperturePixel = apertureSky && worldToPixel(result.wcs, apertureSky.ra, apertureSky.dec);
-  if (aperturePixel) {
+  if (display.showAperture && aperturePixel) {
     const [x, y] = imageToScreen(...aperturePixel, side, n, display);
     const radius = (result.recipe.aperture_radius_arcsec || 12.4) / result.recipe.pixscale_arcsec * side * display.zoom / n;
     ctx.strokeStyle = '#88d7f0'; ctx.lineWidth = 1;

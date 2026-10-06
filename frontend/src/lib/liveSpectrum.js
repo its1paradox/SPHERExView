@@ -37,6 +37,35 @@ export function spectrumAt(epoch, index, subtractSky = false) {
 
 export const frequencyTHz = wavelength => 299.792458 / wavelength;
 
+// Display guides only: no fit, no cross-detector joins, no invented samples.
+// A gap wider than 1.5 times the larger native CBAND breaks the guide.
+export function spectrumSegments(points) {
+  const segments = [], previous = new Map();
+  for (const p of [...points].sort((a, b) => a.wavelength - b.wavelength || a.mjd - b.mjd)) {
+    const last = previous.get(p.detector);
+    if (last && last.bandwidth > 0 && p.bandwidth > 0 &&
+        p.wavelength - last.wavelength <= 1.5 * Math.max(last.bandwidth, p.bandwidth)) segments.push([last, p]);
+    previous.set(p.detector, p);
+  }
+  return segments;
+}
+
+export function spectrumDiagnostics(epoch, index, subtractSky = false) {
+  const summary = { total: 0, usable: 0, aperture: 0, sky: 0, other: 0 };
+  if (index === null || index === undefined) return summary;
+  const valid = (a, local) => Number.isFinite(a?.[local ? 'sky_flux' : 'flux']?.[index]) &&
+    Number.isFinite(a?.[local ? 'sky_variance' : 'variance']?.[index]) &&
+    a[local ? 'sky_variance' : 'variance'][index] >= 0 && a.wavelength?.[index] > 0;
+  for (const s of epoch?.spectra || []) {
+    const a = s.arrays; summary.total++;
+    if (valid(a, subtractSky)) summary.usable++;
+    else if (a?.aperture_coverage?.[index] < .999999) summary.aperture++;
+    else if (subtractSky && valid(a, false)) summary.sky++;
+    else summary.other++;
+  }
+  return summary;
+}
+
 export function spectrumCsv(points, sky, recipe, epoch, subtractSky = false) {
   const quote = v => `"${String(v ?? '').replaceAll('"', '""')}"`;
   const columns = ['detector', 'obs_id', 'mjd', 'release', 'wavelength', 'bandwidth', 'lambda_min', 'lambda_max', 'flux', 'error', 'aperture_coverage', 'sky_coverage'];

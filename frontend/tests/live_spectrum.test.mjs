@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rgbFrame, rgbPixel, spectrumAt, frequencyTHz, spectrumCsv } from '../src/lib/liveSpectrum.js';
+import { rgbFrame, rgbPixel, spectrumAt, frequencyTHz, spectrumCsv, spectrumSegments, spectrumDiagnostics } from '../src/lib/liveSpectrum.js';
 import { decodeResult } from '../src/lib/comparison.js';
 
 test('RGB includes all six, preserves channel ratios and never invents missing coverage', () => {
@@ -35,4 +35,27 @@ test('decode spectral maps in the same orientation as detector maps and discard 
   const r = decodeResult({width:2,height:2,epochs:[{tiles:[1,2,3,4,5,6].map(detector=>({detector})),spectra:[{detector:1,maps:{flux:map}}]}]});
   assert.deepEqual([...r.epochs[0].spectra[0].arrays.flux], [1,2,3,4]);
   assert.equal(r.epochs[0].spectra[0].maps, undefined);
+});
+
+test('straight guides preserve data and break at detector boundaries and wide wavelength gaps', () => {
+  const point = (detector, wavelength, bandwidth = .04) => ({detector, wavelength, bandwidth, mjd:61000, flux:-10});
+  const points = [point(1,1),point(1,1.04),point(2,1.06),point(1,1.3),point(1,1.34),point(1,1.36,NaN)];
+  const original = structuredClone(points);
+  const segments = spectrumSegments(points);
+  assert.deepEqual(segments.map(pair=>pair.map(p=>p.wavelength)), [[1,1.04],[1.3,1.34]]);
+  assert.deepEqual(points,original,'Guides must not alter fluxes or create interpolated samples');
+  assert.deepEqual(spectrumSegments([points[0]]),[]);
+});
+
+test('availability explains bad apertures and missing clean sky without substituting flux', () => {
+  const arrays = {flux:[2],variance:[1],sky_flux:[1],sky_variance:[2],wavelength:[1],aperture_coverage:[1]};
+  const epoch = {spectra:[
+    {arrays},
+    {arrays:{...arrays,flux:[NaN],sky_flux:[NaN],aperture_coverage:[.92]}},
+    {arrays:{...arrays,sky_flux:[NaN]}},
+    {arrays:{...arrays,flux:[NaN],sky_flux:[NaN],aperture_coverage:[NaN]}}
+  ]};
+  assert.deepEqual(spectrumDiagnostics(epoch,0),{total:4,usable:2,aperture:1,sky:0,other:1});
+  assert.deepEqual(spectrumDiagnostics(epoch,0,true),{total:4,usable:1,aperture:1,sky:1,other:1});
+  assert.equal(spectrumDiagnostics(epoch,null).total,0);
 });

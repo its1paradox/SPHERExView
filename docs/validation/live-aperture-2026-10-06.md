@@ -70,3 +70,23 @@ non-simultaneous observations, neighbouring sources and systematic errors
 remain relevant. The default estimator retains local sky after the selected
 supplied-background treatment. Samples are neither interpolated into missing
 wavelengths nor presented as a fitted spectral-line peak.
+
+## Follow-up: star core, markers and connecting lines
+
+The bright D1 coadd pixel at display row 10, column 9 corresponds to
+ICRS `76.9569983784°, 30.4004388851°`. Only 10 of the 111 aperture
+measurements are usable there; 101 have incomplete/invalid apertures.
+Inspection of the native FITS FLAGS within the exact local aperture found
+OVERFLOW in 93 omitted exposures, TRANSIENT in 76, SUR_ERROR in 63,
+PERSIST in 3, NONFUNC in 3 and COLD in 1. One aperture centre is outside
+its exposure's native footprint. Flag counts overlap; they are not additive.
+These data explain the sparse central spectrum without changing the mask
+or filling missing fluxes.
+
+The revised display defaults to a small point, with the aperture/annulus
+overlay optional. Straight connecting guides break between detectors and
+across wide wavelength gaps. The chart now explains the counts of omitted
+apertures and missing local-sky measurements. Frontend tests increased to
+41 passing tests, including guide-gap behavior, unchanged scientific arrays,
+availability diagnostics and bookmark/toggle behavior. The production build
+passed; no backend estimator changes were made for this follow-up.

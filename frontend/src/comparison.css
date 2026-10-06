@@ -178,6 +178,9 @@ body { margin: 0; }
 .spectrum-detectors { display: flex; flex-wrap: wrap; gap: 10px; }
 .spectral-point { font-size: 11px; color: #cbe1f2; }
 .spectral-warning { color: #efc887; font-size: 11px; }
+.spectrum-options { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; }
+.compare-page .spectrum-options label { font-size: 11px; }
+.spectrum-availability { color: #e4c58b; background: #24231f; border-left: 2px solid #a48650; padding: 8px 10px; margin-top: 10px; font-size: 11px; line-height: 1.5; }
 .expanded-stage > .live-spectrum { max-width: 960px; flex-shrink: 0; }
 .empty-grid .compare-placeholder { min-height: 130px; }
 @media (min-width: 1650px) { .detector-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); } .detector-grid .detector-image { width: min(100%, 200px); } }
