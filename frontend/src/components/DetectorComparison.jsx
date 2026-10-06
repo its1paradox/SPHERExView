@@ -65,7 +65,7 @@ function renderTile(canvas, tile, values, result, display, limits, pin, hover, c
   const [left, top] = imageToScreen(0, 0, side, n, display);
   ctx.imageSmoothingEnabled = display.smooth;
   ctx.drawImage(off, left, top, extent, extent);
-  const marker = (sky, color, point) => {
+  const marker = (sky, color, ring) => {
     const xy = sky && worldToPixel(result.wcs, sky.ra, sky.dec);
     if (!xy) return;
     const [x, y] = imageToScreen(...xy, side, n, display);
@@ -76,7 +76,7 @@ function renderTile(canvas, tile, values, result, display, limits, pin, hover, c
     for (const stroke of [true, false]) {
       if (!stroke) { ctx.strokeStyle = color; ctx.lineWidth = 2 * markerScale; }
       ctx.beginPath();
-      if (point) ctx.arc(x, y, markerScale, 0, 2 * Math.PI);
+      if (ring) ctx.arc(x, y, 6 * markerScale, 0, 2 * Math.PI);
       else { const arm = 4 * markerScale; ctx.moveTo(x - arm, y); ctx.lineTo(x + arm, y); ctx.moveTo(x, y - arm); ctx.lineTo(x, y + arm); }
       ctx.stroke();
     }

@@ -12,7 +12,7 @@ no automatic fallback between these physically different estimators.
 Changing display settings
 does not change the measurements or make archive requests.
 
-Tiles use a small position marker by default. **Show measurement aperture**
+Tiles use a small hollow ring for the pinned position. **Show measurement aperture**
 optionally displays the actual extraction radius and background annulus;
 hiding these rings does not change the photometry. **Robust smooth guide**
 defaults on. As in [AstroToolBox](https://github.com/fkiwy/AstroToolBox/blob/6dab9013c558262e99768b88d34be8fa6aa78635/src/main/java/astro/tool/box/tab/SpherexViewerTab.java),
