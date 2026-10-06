@@ -107,7 +107,16 @@ function renderTile(canvas, tile, values, result, display, limits, pin, hover, c
 function Tile({ tile, values, result, display, setDisplay, limits, pin, setPin, hover, setHover, selected, setSelected, color, colorWhite, referenceAvailable, onExpand, expanded = false, rgb = null }) {
   const canvas = useRef(null), drag = useRef(null);
   const side = expanded ? 1200 : 600;
-  useEffect(() => { if (canvas.current && result) renderTile(canvas.current, tile, values, result, display, limits, pin, hover, color, colorWhite, rgb); }, [tile, values, result, display, limits, pin, hover, color, colorWhite, rgb]);
+  useEffect(() => {
+    if (!canvas.current || !result) return;
+    const draw = () => renderTile(canvas.current, tile, values, result, display, limits, pin, hover, color, colorWhite, rgb);
+    draw();
+    // Keep the ring's screen size fixed when a tile expands or resizes.
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(draw);
+    observer.observe(canvas.current);
+    return () => observer.disconnect();
+  }, [tile, values, result, display, limits, pin, hover, color, colorWhite, rgb]);
   useEffect(() => {
     const node = canvas.current;
     const wheel = event => {
