@@ -1,6 +1,6 @@
 """Opt-in real DR1/QR3 aperture checks; never submits archive jobs.
 
-Uses the twelve public input URLs recorded by validate_dr1.py. Downloads and
+Uses twelve recorded public input URLs (or an explicit --inputs record). Downloads and
 caches native cutouts, spectral calibrations and solid-angle maps, then runs
 the production loader and FITS exporter. This verifies integration and stated
 estimator invariants, not absolute photometric accuracy or a survey-wide bound.
@@ -23,7 +23,8 @@ from backend.app import releases, spherex_client as sx
 
 def run(args):
     root = Path(__file__).resolve().parents[1]
-    evidence = json.loads((root / 'docs/validation/dr1-2026-11-14.json').read_text())
+    input_record = Path(args.inputs) if args.inputs else root / 'docs/validation/dr1-2026-11-14.json'
+    evidence = json.loads(input_record.read_text())
     rows = [r for r in evidence['inputs'] if r['detector'] in args.detectors]
     assert {(r['data_release'], r['detector']) for r in rows} == {(r, d) for r in releases.CURRENT_RELEASES for d in args.detectors}
     cache = Path(args.cache_dir or sx.CACHE_DIR).resolve()
@@ -42,6 +43,7 @@ def run(args):
     sx.download_cutout = download
     result = {'checked_utc': datetime.now(timezone.utc).isoformat(), 'algorithm': dc.ALGORITHM,
               'scope': 'Real native-image integration; not absolute-photometry validation',
+              'input_record': input_record.name, 'input_record_sha256': dc.sha256_file(input_record),
               'source_sha256': {f: dc.sha256_file(root / 'backend/app' / f) for f in
                                 ('aperture_spectrum.py', 'detector_comparison.py', 'releases.py')},
               'inputs': [], 'complete': False}
@@ -76,6 +78,8 @@ def run(args):
             samples = dc.load_samples(path, im, recipe, wcs, n)
             elapsed = time.perf_counter() - started
             assert samples.metadata['spectrum_status'] == 'ready', samples.metadata
+            assert samples.metadata['cutout_sha256'] == r['cutout_sha256']
+            assert samples.metadata['calibration_sha256'] == r['calibration_sha256']
             maps = samples.spectrum
             usable = np.isfinite(maps['usable_flux'])
             assert usable.any() and np.isfinite(maps['usable_variance'][usable]).all()
@@ -103,7 +107,8 @@ def run(args):
                 provenance = json.loads(hdul['PROVENANCE'].data.tobytes())
                 assert provenance['inputs'][0]['solid_angle_sha256'] == samples.metadata['solid_angle_sha256']
             result['inputs'].append({'release': rel, 'detector': d, 'url': r['url'], 'cutout_url': r['cutout_url'],
-                'ra': r['ra'], 'dec': r['dec'], 'grid_cells': n*n, 'usable_positions': int(usable.sum()),
+                'ra': r['ra'], 'dec': r['dec'], 'cutout_sha256': samples.metadata['cutout_sha256'],
+                'grid_cells': n*n, 'usable_positions': int(usable.sum()),
                 'complete_positions': int(complete.sum()), 'cached_load_and_extraction_seconds': elapsed,
                 'solid_angle_sha256': samples.metadata['solid_angle_sha256'],
                 'spectral_calibration_sha256': samples.metadata['calibration_sha256'],
@@ -125,6 +130,7 @@ def run(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output')
+    parser.add_argument('--inputs', help='JSON input record with one public product per release and detector')
     parser.add_argument('--cache-dir')
     parser.add_argument('--reuse-cache', action='append', default=[])
     parser.add_argument('--offline', action='store_true')

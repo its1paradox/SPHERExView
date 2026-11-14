@@ -221,21 +221,25 @@ historical results. These tests do not replace visual browser inspection.
 Run the live archive validation explicitly:
 
 ```bash
-python scripts/validate_aperture_dr1.py --output docs/validation/rgb-aperture-dr1-2026-11-14.json
+python scripts/validate_aperture_dr1.py --inputs docs/validation/rgb-aperture-inputs-2026-11-14.json --output docs/validation/rgb-aperture-dr1-2026-11-14.json
 # Repeat from cached files without network (use --reuse-cache for other cache directories):
-python scripts/validate_aperture_dr1.py --offline --output aperture-repeat.json
+python scripts/validate_aperture_dr1.py --offline --inputs docs/validation/rgb-aperture-inputs-2026-11-14.json --output aperture-repeat.json
 ```
 
-By default the script uses twelve recorded public DR1/QR3 cutouts, one per detector and
+The script uses twelve recorded public DR1/QR3 cutouts, one per detector and
 release, with full-resolution wavelength and solid-angle calibration files.
 It checks actual extraction, formal variances, complete/usable agreement,
 images-only native-sample equivalence, spectral FITS arrays/checksums and
 standalone provenance. The first run can download roughly 600 MB; caches are
 reused. The current [machine-readable validation record](validation/rgb-aperture-dr1-2026-11-14.json)
-covers D1 and D6 in both releases, run with `--offline --detectors 1 6` against
-previously downloaded public files. The attempted D2–D5 extension was blocked by
-IRSA HTTP 503 responses and download timeouts; those detectors are not claimed
-as real-data aperture checks in this record. Desktop/mobile production-page
+covers all six detectors in both releases: twelve exposures and 1,200 usable
+positions. The final check was repeated offline after downloading missing inputs;
+cutout and spectral-calibration hashes are checked against the pinned input record.
+The [input record](validation/rgb-aperture-inputs-2026-11-14.json) explicitly
+replaces the unavailable QR3 D4 exposure with an archive-listed 2026W23 exposure
+and records equivalent-size requests used to recover two byte-identical cutouts.
+Without `--inputs`, the script retains its original DR1 validation input list.
+Desktop/mobile production-page
 checks with synthetic data are in [the browser record](validation/rgb-browser-2026-11-14.json).
 These are integration and numerical checks, not an absolute calibration or a
 survey-wide accuracy guarantee.

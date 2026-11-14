@@ -13,8 +13,7 @@ RGB and native-exposure aperture spectra on the DR1/QR3 main branch.
 - [x] CSV, PNG, FITS and manifest exports; older results remain readable.
 - [x] Images-only builds skip aperture work and its budget entirely.
 - [x] Numerical, API, DOM and mixed-release regressions; production frontend rebuilt.
-- [x] Real DR1/QR3 D1/D6 checks and desktop/mobile browser smoke validation.
-- [ ] Extend the real-data aperture validation to D2–D5 when IRSA downloads recover.
+- [x] Real DR1/QR3 checks on all six detectors and desktop/mobile browser smoke validation.
 
 ## Validation record
 
@@ -24,13 +23,20 @@ seven tiles, pinning, independent release guides, frequency mode, CSV/PNG
 downloads, expanded RGB and the 390-pixel mobile layout. Display interactions
 make no archive requests and no JavaScript page errors were observed.
 
-The [real-data record](validation/rgb-aperture-dr1-2026-11-14.json) covers D1 and
-D6 in both DR1 and QR3: 400 usable grid positions, unchanged native coadd samples
-in images-only mode, calibrated variances and FITS/provenance round trips.
-The all-six-detector attempt stopped after the D2 cutout returned HTTP 503
-through all three retries; a separate D2 calibration download also timed out.
-D2–D5 are not claimed as validated by this new real-data run. The opt-in script
-defaults to all six so that check can be repeated without code changes.
+The [real-data record](validation/rgb-aperture-dr1-2026-11-14.json) covers all
+six detectors in both DR1 and QR3: twelve exposures and 1,200 usable grid
+positions, unchanged native coadd samples in images-only mode, calibrated
+variances and FITS/provenance round trips. Each cutout and spectral calibration
+matches the SHA-256 hash pinned in the [input record](validation/rgb-aperture-inputs-2026-11-14.json).
+The paired DR1/QR3 solid-angle hashes agree for all six detectors.
+
+The retry downloaded the missing D2–D5 products, then reran the complete check
+from cache. The original QR3 D4 exposure repeatedly returned HTTP 503, so its
+replacement is an explicitly recorded, archive-listed 2026W23 exposure. DR1 D4
+and QR3 D5 were recovered with the equivalent `180.0arcsec` size spelling;
+their bytes exactly match the original recorded cutout hashes. The input record
+retains these retrieval details and the replaced URL. Measurement code and
+acceptance thresholds were unchanged.
 
 Browser checks are recorded in [the browser record](validation/rgb-browser-2026-11-14.json).
 These checks do not establish absolute photometric accuracy or guarantee
