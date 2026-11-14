@@ -436,7 +436,7 @@ export default function App() {
           <h1>WISE → SPHEREx</h1>
           <p className="subtitle">One sky field. Two missions. A continuous timeline.</p>
         </div>
-        <span className="timeline-tag">QR2 + QR3 · ICRS</span>
+        <span className="timeline-tag">DR1 + QR3 · ICRS</span>
       </header>
       <div className="layout">
         <main className="viewers">

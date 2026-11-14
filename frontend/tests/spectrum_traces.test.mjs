@@ -70,44 +70,47 @@ const point = (wavelength, flux, release, flags = 0) => Object.freeze({
 });
 const edgeKey = points => points.flat().map(x => Number(x.toFixed(6))).join(',');
 
-for (const tiedWavelengths of [false, true]) {
-  for (const errorsOn of [false, true]) {
-    test(`interleaved releases draw independent traces (equal wavelengths=${tiedWavelengths}, errors=${errorsOn})`, async () => {
-      const sorted = Array.from({ length: 6 }, (_, i) => point(.8 + (tiedWavelengths ? Math.floor(i / 2) : i) * .01,
-        [-3, -1, 0, 1, 4, 2][i], i % 2 ? 'qr3' : 'qr2'));
-      const rows = Object.freeze([sorted[4], sorted[1], sorted[0], sorted[5], sorted[2], sorted[3]]);
-      const original = JSON.stringify(rows), app = await mount(rows);
-      try {
-        if (!errorsOn) await app.toggle('Error bars');
-        const coordinates = new Map(rows.map((row, i) => [row, app.markers()[i].path[0].slice(1, 3)]));
-        const expected = [[0, 2], [2, 4], [1, 3], [3, 5]].map(([a, b]) => edgeKey([coordinates.get(sorted[a]), coordinates.get(sorted[b])])).sort();
-        await app.select('.trace-style select', 'lines');
-        assert.equal(app.segments().length, 4, 'Two three-point releases must each draw two segments');
-        assert.equal(app.markers().length, 0);
-        assert.equal(app.errorBars().length, errorsOn ? 6 : 0);
-        assert.deepEqual(app.segments().map(s => edgeKey(s.path.map(p => p.slice(1, 3)))).sort(), expected,
-          'Each segment must connect the actual same-release measurements, without cross-release edges');
-        assert.match(app.readout(), /6 of 6 measurements shown/);
-        [...app.w.document.querySelectorAll('button')].find(b => b.textContent.trim() === 'PNG of plot').click();
-        assert.equal(app.downloads.length, 1);
-        assert.equal(app.downloads[0].filter(d => d.width === 1.6 && d.style === '#2f6fd4ff').length, 4);
-        await app.select('.trace-style select', 'connected');
-        assert.equal(app.segments().length, 4);
-        assert.equal(app.markers().length, 6);
-        await app.select('.trace-style select', 'points');
-        assert.equal(app.segments().length, 0);
-        assert.equal(app.markers().length, 6);
-        await app.select('.trace-style select', 'lines');
-        await app.select('.spectrum-toolbar label:first-child select', 'qr2');
-        assert.equal(app.segments().length, 2);
-        assert.match(app.readout(), /3 of 6 measurements shown/);
-        assert.ok(app.w.document.querySelector('a[href$="fmt=json&release=qr2"]'));
-        assert.equal(app.requests.length, 2);
-        assert.equal(JSON.stringify(rows), original, 'Rendering must not mutate fluxes, errors or row order');
-        assert.deepEqual(app.errors, []);
-      } finally { app.w.close(); }
-    });
+for (const earlierRelease of ['qr2', 'dr1']) {
+  for (const tiedWavelengths of [false, true]) {
+    for (const errorsOn of [false, true]) {
+      test(`interleaved ${earlierRelease}/qr3 releases draw independent traces (equal wavelengths=${tiedWavelengths}, errors=${errorsOn})`, async () => {
+        const sorted = Array.from({ length: 6 }, (_, i) => point(.8 + (tiedWavelengths ? Math.floor(i / 2) : i) * .01,
+          [-3, -1, 0, 1, 4, 2][i], i % 2 ? 'qr3' : earlierRelease));
+        const rows = Object.freeze([sorted[4], sorted[1], sorted[0], sorted[5], sorted[2], sorted[3]]);
+        const original = JSON.stringify(rows), app = await mount(rows);
+        try {
+          if (!errorsOn) await app.toggle('Error bars');
+          const coordinates = new Map(rows.map((row, i) => [row, app.markers()[i].path[0].slice(1, 3)]));
+          const expected = [[0, 2], [2, 4], [1, 3], [3, 5]].map(([a, b]) => edgeKey([coordinates.get(sorted[a]), coordinates.get(sorted[b])])).sort();
+          await app.select('.trace-style select', 'lines');
+          assert.equal(app.segments().length, 4, 'Two three-point releases must each draw two segments');
+          assert.equal(app.markers().length, 0);
+          assert.equal(app.errorBars().length, errorsOn ? 6 : 0);
+          assert.deepEqual(app.segments().map(s => edgeKey(s.path.map(p => p.slice(1, 3)))).sort(), expected,
+            'Each segment must connect the actual same-release measurements, without cross-release edges');
+          assert.match(app.readout(), /6 of 6 measurements shown/);
+          [...app.w.document.querySelectorAll('button')].find(b => b.textContent.trim() === 'PNG of plot').click();
+          assert.equal(app.downloads.length, 1);
+          assert.equal(app.downloads[0].filter(d => d.width === 1.6 && d.style === '#2f6fd4ff').length, 4);
+          await app.select('.trace-style select', 'connected');
+          assert.equal(app.segments().length, 4);
+          assert.equal(app.markers().length, 6);
+          await app.select('.trace-style select', 'points');
+          assert.equal(app.segments().length, 0);
+          assert.equal(app.markers().length, 6);
+          await app.select('.trace-style select', 'lines');
+          await app.select('.spectrum-toolbar label:first-child select', earlierRelease);
+          assert.equal(app.segments().length, 2);
+          assert.match(app.readout(), /3 of 6 measurements shown/);
+          assert.ok(app.w.document.querySelector(`a[href$="fmt=json&release=${earlierRelease}"]`));
+          assert.equal(app.requests.length, 2);
+          assert.equal(JSON.stringify(rows), original, 'Rendering must not mutate fluxes, errors or row order');
+          assert.deepEqual(app.errors, []);
+        } finally { app.w.close(); }
+      });
+    }
   }
+
 }
 
 test('Lines mode retains isolated and unknown-release measurements after filters', async () => {

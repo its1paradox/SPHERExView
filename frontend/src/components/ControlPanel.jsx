@@ -235,7 +235,7 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
             </select>
           </label>
           <ReleaseSelect value={form.release} onChange={set('release')} />
-          <small>QR2 and QR3 retain their native calibrations in separate coadds.</small>
+          <small>DR1 + QR3 combines the current survey coverage using compatible calibrations.</small>
           <details className="input-options">
             <summary>Input image options</summary>
           <div className="band-group">

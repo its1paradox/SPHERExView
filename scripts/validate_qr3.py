@@ -1,8 +1,10 @@
-"""Opt-in, read-only validation against public IRSA products (network required).
+"""Historical QR2/QR3 file checks (network required); use validate_dr1.py for new work.
 
 Run from the repository root with the backend environment. The first run
 downloads four cutouts and four full-resolution wavelength calibrations.
-An optional completed spectrum job is read, never submitted by this script.
+QR2 files can only be downloaded while IRSA retains them (through February
+2027); discovery now checks QR3 only. An optional completed spectrum job is
+read, never submitted by this script.
 Prints a JSON record; failures raise and exit nonzero.
 """
 import argparse
@@ -21,9 +23,9 @@ from backend.app import spectra_client as sp, spherex_client as sx
 
 def run(local_data=None, spectrum_job=None):
     ra, dec = 232.651627115, -10.7387224253
-    inventory = sx.query_releases(ra, dec, radius_deg=.0003, band='SPHEREx-D4')
-    counts = {r: sum(releases.product_release(im.access_url) == r for im in inventory) for r in releases.RELEASES}
-    assert all(counts.values()), counts
+    inventory = sx.query_releases(ra, dec, radius_deg=.0003, band='SPHEREx-D4', release='qr3')
+    counts = {'qr3': len(inventory)}
+    assert counts['qr3'] > 0, counts
     inputs = []
     # Samples span the wavelength range and both focal-plane orientations.
     for rel, d, x, y, mjd, period, version, obs in [

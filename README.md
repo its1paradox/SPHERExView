@@ -4,7 +4,7 @@ SPHERExView lets you explore WISE and SPHEREx images of the same patch of
 sky. Browse observations by date, blink between epochs, compare the six
 SPHEREx detectors, and request a spectrum at a selected position.
 
-The app runs locally in your browser. It retrieves SPHEREx QR2 and QR3 images and
+The app runs locally in your browser. It retrieves SPHEREx DR1 and QR3 images and
 spectra from NASA/IPAC IRSA, and time-resolved unWISE images through WiseView.
 
 ## Run the app
@@ -35,10 +35,13 @@ and click **Fetch images**. The default view combines WISE W1+W2 color epochs
 with SPHEREx D4+D6 color coadds. Max frames starts at 1000. Individual WISE
 and SPHEREx panels can be enabled from the panel controls.
 
-Choose **All available (QR2 + QR3)**, **QR2** or **QR3** with the Data release
-selector. Both releases appear on the same timeline, with separate coadds
-because their native calibrations differ. The selection follows shared links
-and the other viewers. See [QR3 support and scientific validation](docs/QR3_SUPPORT.md).
+Choose **DR1 + QR3** (the default), **DR1** or **QR3** with the Data release
+selector. DR1 covers reprocessed surveys 1–2; QR3 adds surveys 3–4 as released.
+Their compatible calibrations allow joint coadds within the chosen time bins,
+with each input's release retained in the provenance. The selection follows
+shared links and the other viewers. QR2 searches have been retired by IRSA;
+old QR2 image links show an explicit message, while saved results remain readable.
+See [DR1 support and scientific validation](docs/DR1_SUPPORT.md).
 
 - **Combined timeline:** play or scrub through both missions in date order.
   Choose raw SPHEREx exposures, D6 grayscale coadds, matched D4+D6 color
@@ -48,7 +51,9 @@ and the other viewers. See [QR3 support and scientific validation](docs/QR3_SUPP
   detector-to-reference color, or wavelength color. Expand a tile and use
   Previous/Next to move between detectors.
 - **Spectrum:** click an image to pin a position, then request an IRSA
-  forced-photometry spectrum. Spectrum jobs can take several minutes.
+  forced-photometry spectrum. Spectrum jobs can take several minutes. The
+  release selector filters returned measurements; it does not restrict the
+  remote job. Saved QR2 measurements remain available in legacy job results.
 
 Zoom, pan, brightness and contrast help inspect the images. The comparison
 view can export PNG figures, FITS maps and processing metadata; spectra can
@@ -98,8 +103,10 @@ python -m pytest -q backend/tests
 
 ## Data sources
 
-- SPHEREx QR2 and QR3 spectral images via [IRSA SIA2](https://irsa.ipac.caltech.edu/docs/program_interface/sia.html)
-  (`spherex_qr2`, `spherex_qr2_deep`, `spherex_qr3`, `spherex_qr3_deep`)
+- SPHEREx DR1 and QR3 spectral images via [IRSA SIA2](https://irsa.ipac.caltech.edu/docs/program_interface/sia.html)
+  (`spherex_dr1`, `spherex_dr1_deep`, `spherex_qr3`, `spherex_qr3_deep`).
+  This viewer uses individual spectral images; the DR1 all-sky cube requires
+  a separate data path and is not included in these coadds.
 - Cutouts via IRSA's dataset-level cutout service (`?center=&size=` on the image `access_url`)
 - WISE images: time-resolved unWISE epoch coadds via
   [WiseView](http://byw.tools/wiseview) (`byw.tools/tiles`, `byw.tools/cutout`,

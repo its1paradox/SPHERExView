@@ -519,7 +519,7 @@ export default function SpectrumPage() {
         <div className="spectrum-main" ref={wrapRef}>
           <p className="hint">IRSA supplies the calibrated fluxes. The release filter selects returned measurements; it does not restrict the submitted job. Saved older jobs retain their original processing.</p>
           <div className="spectrum-toolbar">
-            <ReleaseSelect value={release} onChange={e => { setRelease(e.target.value); setHoverPt(null); writeHash({ ...params, job: jobId, release: e.target.value }); }} label="Show release" />
+            <ReleaseSelect includeLegacy value={release} onChange={e => { setRelease(e.target.value); setHoverPt(null); writeHash({ ...params, job: jobId, release: e.target.value }); }} label="Show release" />
             <div className="spectrum-bands">
               {BANDS.map((b) => (
                 <label
