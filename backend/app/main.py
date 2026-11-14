@@ -46,7 +46,7 @@ STATIC_DIR = os.environ.get(
 )
 os.makedirs(os.path.join(STATIC_DIR, "cutouts"), exist_ok=True)
 
-app = FastAPI(title="SPHERExView", version="0.3.0")
+app = FastAPI(title="SPHERExView", version="0.4.0")
 app.include_router(comparison_router)
 
 app.add_middleware(
@@ -75,6 +75,8 @@ def _build_stack(
 ):
     try:
         releases.collections(survey, release)
+    except releases.RetiredReleaseError as exc:
+        raise HTTPException(410, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -183,7 +185,7 @@ def get_cutouts(
     dec: float,
     radius_arcsec: float = Query(60.0, gt=0, le=3600),
     survey: str = "wide",
-    release: Literal["all", "qr2", "qr3"] = "all",
+    release: releases.ReleaseSelection = "all",
     band: Optional[str] = None,
     limit: int = Query(20, gt=0),
 ):
@@ -313,7 +315,7 @@ def get_epoch_stack(
     dec: float,
     radius_arcsec: float = Query(60.0, gt=0, le=3600),
     survey: str = "wide",
-    release: Literal["all", "qr2", "qr3"] = "all",
+    release: releases.ReleaseSelection = "all",
     band: Optional[str] = None,
     limit: int = Query(50, gt=0),
 ):
@@ -329,6 +331,8 @@ def _query_sorted_images(ra, dec, radius_arcsec, survey, band, limit, release="a
     """Discover every selected release before applying a display input limit."""
     try:
         releases.collections(survey, release)
+    except releases.RetiredReleaseError as exc:
+        raise HTTPException(410, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     try:
@@ -418,7 +422,7 @@ def get_coadd(
     dec: float,
     radius_arcsec: float = Query(60.0, gt=0, le=3600),
     survey: str = "wide",
-    release: Literal["all", "qr2", "qr3"] = "all",
+    release: releases.ReleaseSelection = "all",
     band: Optional[str] = None,
     limit: int = Query(200, gt=0),
     background: str = Query("zodi", pattern="^(zodi|none)$"),
@@ -458,8 +462,8 @@ def get_coadd(
     import numpy as np
 
     coadds = []
-    for rel, det in sorted({(e.extras["data_release"], e.detector) for e in exposures}):
-        group = [e for e in exposures if e.detector == det and e.extras["data_release"] == rel]
+    for family, det in sorted({(releases.calibration_family(e.extras["data_release"]), e.detector) for e in exposures}):
+        group = [e for e in exposures if e.detector == det and releases.calibration_family(e.extras["data_release"]) == family]
         try:
             img, var, coverage, n_rej, lam = cx.combine(
                 group, sigma=clip_sigma, maxiters=maxiters
@@ -477,7 +481,7 @@ def get_coadd(
         mjds = [e.mjd for e in group if e.mjd is not None]
         meta = {
             "detector": det,
-            "data_release": rel,
+            **releases.release_summary(e.extras["data_release"] for e in group),
             "release_policy": releases.RELEASE_POLICY,
             "input_calibrations": [e.extras for e in group],
             "band": f"SPHEREx-D{det}",
@@ -502,7 +506,7 @@ def get_coadd(
             meta["datetime_min_utc"] = Time(meta["mjd_min"], format="mjd").isot
             meta["datetime_max_utc"] = Time(meta["mjd_max"], format="mjd").isot
         coadds.append({
-            "id": f"coadd-{rel}-D{det}",
+            "id": f"coadd-{meta['data_release']}-D{det}",
             "data_b64": imaging.array_to_b64(disp),
             "coverage_b64": imaging.array_to_b64(np.flipud(coverage).astype(np.float32)),
             "width": n_px,
@@ -534,7 +538,7 @@ def get_epoch_coadds(
     dec: float,
     radius_arcsec: float = Query(120.0, gt=0, le=3600),
     survey: str = "wide",
-    release: Literal["all", "qr2", "qr3"] = "all",
+    release: releases.ReleaseSelection = "all",
     limit: int = Query(500, gt=0),
     bin_months: float = Query(6.0, ge=0.25, le=25),
     background: str = Query("zodi", pattern="^(zodi|none)$"),
@@ -559,7 +563,7 @@ def get_epoch_coadds(
     a natural SPHEREx visit in two, producing shallow fragment coadds (e.g.
     3 + 35 exposures) on either side of an arbitrary boundary.  Here:
 
-    - exposures are partitioned by calibration release, then each release
+    - exposures are partitioned by compatible calibration family, then each family
       is sorted by MJD and split where the gap between
       consecutive exposures exceeds ``G = min(30 d, bin_months*30.4375/4)``
       (SPHEREx builds a full spectrum over ~1-2 weeks and revisits ~every
@@ -685,12 +689,12 @@ def get_epoch_coadds(
     # --- Visit-gap epoch clustering (see docstring) ---------------------
     bin_days = bin_months * 30.4375  # requested nominal/maximum epoch span
     gap_days = min(30.0, 0.25 * bin_days)
-    # A different release can neither fragment nor bridge this release's
-    # visits. Partition before temporal clustering, even when dates interleave.
+    # Incompatible calibrations cannot fragment or bridge one another's visits.
+    # DR1/QR3 share R7 processing; partition by family before time clustering.
     components: list[list] = []
-    for data_release in sorted({e.extras["data_release"] for e in exposures}):
+    for family in sorted({releases.calibration_family(e.extras["data_release"]) for e in exposures}):
         subset = sorted(
-            (e for e in exposures if e.extras["data_release"] == data_release),
+            (e for e in exposures if releases.calibration_family(e.extras["data_release"]) == family),
             key=lambda e: (e.mjd, e.obs_id, e.detector),
         )
         components.append([subset[0]])
@@ -718,7 +722,7 @@ def get_epoch_coadds(
                 subs[i].append(e)
             epochs.extend((s, "window") for s in subs if s)
 
-    # Release-specific epochs may overlap in time. Assign frame IDs only after
+    # Calibration-specific epochs may overlap in time. Assign frame IDs only after
     # restoring chronological order, with a stable tie-break for equal starts.
     epochs.sort(key=lambda epoch: (epoch[0][0].mjd, epoch[0][0].extras["data_release"]))
     frames = []
@@ -730,7 +734,7 @@ def get_epoch_coadds(
         channels = {}
         for name, sub in groups.items():
             # Channels below the exposure floor are dropped (3+ recommended
-            # for robust outlier rejection; default 1 keeps sparse QR2 bins).
+            # for robust outlier rejection; default 1 keeps sparse visits).
             if len(sub) < min_channel_exposures:
                 continue
             try:
@@ -752,6 +756,7 @@ def get_epoch_coadds(
             z = (img - med) / sig_px
             disp = np.flipud(np.where(np.isfinite(z), z, 0.0)).astype(np.float32)
             channels[name] = {
+                "release_summary": releases.release_summary(e.extras["data_release"] for e in sub),
                 "disp": disp,
                 "n": len(sub),
                 "detectors": sorted({e.detector for e in sub}),
@@ -761,14 +766,17 @@ def get_epoch_coadds(
             }
         if not channels:
             continue
-        mjds = sorted(e.mjd for e in grp)
+        # A dropped channel contributes neither pixels nor release provenance.
+        contributing_ids = {id(e) for name in channels for e in groups[name]}
+        contributors = [e for e in grp if id(e) in contributing_ids]
+        mjds = sorted(e.mjd for e in contributors)
         max_gap = max((b - a for a, b in zip(mjds, mjds[1:])), default=0.0)
         kind = "color" if len(channels) == 2 else f"{next(iter(channels))}-only"
         meta = {
             "epoch_index": k,
-            "data_release": grp[0].extras["data_release"],
+            **releases.release_summary(e.extras["data_release"] for e in contributors),
             "release_policy": releases.RELEASE_POLICY,
-            "input_calibrations": [dict(e.extras, obs_id=e.obs_id, did=e.did) for e in grp],
+            "input_calibrations": [dict(e.extras, obs_id=e.obs_id, did=e.did) for e in contributors],
             "grouping": grouping,  # "visit" (natural sky pass) | "window" (continuous-coverage fallback)
             "channels": kind,
             "mjd_min": min(mjds),
@@ -776,10 +784,11 @@ def get_epoch_coadds(
             "mjd_mean": round(float(np.mean(mjds)), 5),
             "span_days": round(max(mjds) - min(mjds), 3),
             "max_internal_gap_days": round(max_gap, 3),
-            "shallow": len(grp) < 5,
+            "shallow": len(contributors) < 5,
             "datetime_min_utc": Time(min(mjds), format="mjd").isot,
             "datetime_max_utc": Time(max(mjds), format="mjd").isot,
-            "n_exposures": len(grp),
+            "n_exposures": len(contributors),
+            "n_epoch_exposures": len(grp),
             "background": background,
             "method": "per-channel sky_ivar_weighted_mean"
                       + (f"_sigmaclip{clip_sigma:g}" if clip_sigma else "")
@@ -805,6 +814,7 @@ def get_epoch_coadds(
             ch = channels.get(name)
             if ch:
                 meta[f"{name}_channel"] = {
+                    **ch["release_summary"],
                     "n_exposures": ch["n"],
                     "detectors": ch["detectors"],
                     "lambda_target_um": ch["lambda_um"],
@@ -911,7 +921,7 @@ def spectra_table(job_id: str):
 def spectra_download(
     job_id: str,
     fmt: str = Query("votable", pattern="^(votable|csv|json)$"),
-    release: Literal["all", "qr2", "qr3"] = "all",
+    release: releases.ReleaseSelection = "all",
 ):
     """Download the spectrum: original VOTable, or flattened CSV / JSON."""
     try:

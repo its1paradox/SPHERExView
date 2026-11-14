@@ -34,9 +34,7 @@ from . import imaging
 from . import releases
 from . import spherex_client as sx
 
-ALGORITHM = "six-detector-1.1-qr3"
-CALIBRATION_VERSION = "cal-wcs-v4-2025-254"
-IRSA_ROOT = "https://irsa.ipac.caltech.edu/ibe/data/spherex/qr2"
+ALGORITHM = "six-detector-1.2-dr1"
 CAL_LOCK = threading.Lock()
 MAX_OUTPUT_CELLS = 400_000
 MAP_UNITS = {
@@ -62,7 +60,7 @@ class Recipe(BaseModel):
     dec: float = Field(ge=-90, le=90)
     size_arcsec: float = Field(default=240, ge=24, le=1800)
     survey: Literal["wide", "deep"] = "wide"
-    release: Literal["all", "qr2", "qr3"] = "all"
+    release: releases.ReleaseSelection = "all"
     bin_months: float = Field(default=6, ge=0.1, le=12)
     grouping: Literal["visit", "fixed"] = "visit"
     epoch_origin_mjd: float = Field(default=60000, ge=0, le=100000)
@@ -136,10 +134,10 @@ def inventory(images, recipe):
                 raise InputError("release_mismatch", str(exc)) from exc
             if recipe.release != "all" and release != recipe.release:
                 raise InputError("release_mismatch", "Product does not match selected release")
-            version = re.search(r"l2b-v(\d+)-(\d{4})-(\d{3})", image.access_url)
-            if not version:
-                raise InputError("version_unknown", "Cannot identify the archive processing version")
-            rank = (int(release[-1]), *map(int, version.groups()))
+            try:
+                rank = releases.processing_rank(image.access_url, release)
+            except ValueError as exc:
+                raise InputError("version_unknown", str(exc)) from exc
             key = (image.obs_id, detector)
             if key in chosen:
                 old, old_rank = chosen[key]
@@ -158,15 +156,19 @@ def inventory(images, recipe):
 
 
 def group_epochs(images, recipe):
-    """Each epoch has one calibration release, even if time bins overlap."""
+    """Cluster compatible calibrations together, preserving real time gaps."""
     groups = []
-    for release in releases.RELEASES:
-        subset = sorted((im for im in images if releases.product_release(im.access_url, im.survey) == release), key=lambda im: im.mjd_mid)
-        groups.extend(_group_epochs_one_release(subset, recipe))
+    by_family = {}
+    for im in images:
+        family = releases.calibration_family(releases.product_release(im.access_url, im.survey))
+        by_family.setdefault(family, []).append(im)
+    for family in sorted(by_family):
+        subset = sorted(by_family[family], key=lambda im: (im.mjd_mid, im.obs_id, detector_of(im)))
+        groups.extend(_group_epochs_one_family(subset, recipe))
     return sorted(groups, key=lambda g: (g[2], g[0][0].mjd_mid))
 
 
-def _group_epochs_one_release(images, recipe):
+def _group_epochs_one_family(images, recipe):
     """Common time membership is determined from inventory, before failed downloads."""
     if not images:
         return []
@@ -202,11 +204,13 @@ def _group_epochs_one_release(images, recipe):
 
 
 @lru_cache(maxsize=48)
-def calibration_file(detector, release="qr2", version=None):
+def calibration_file(detector, release, version=None):
     # Versioned by release; the full-resolution product is verified against
     # each exposure below. A missing/mismatched calibration excludes the input.
+    if release not in releases.RELEASES:
+        raise ValueError("Unsupported spectral calibration release")
     version = version or releases.RELEASES[release]["spectral_calibration"]
-    if release not in releases.RELEASES or not re.fullmatch(r"cal-(?:wcs|swcs)-v\d+-\d{4}-\d{3}", version):
+    if not re.fullmatch(r"cal-(?:wcs|swcs)-v\d+-\d{4}-\d{3}", version):
         raise ValueError("Unsupported spectral calibration")
     root = f"https://irsa.ipac.caltech.edu/ibe/data/spherex/{release}"
     url = f"{root}/spectral_wcs/{version}/{detector}/spectral_wcs_D{detector}_spx_{version}.fits"
@@ -444,6 +448,7 @@ def save_epoch(path, epoch, products, wcs, recipe, provenance):
     primary.header["DATATYPE"] = "MIXED-LAMBDA"
     primary.header["PSFMATCH"] = False
     primary.header["RELEASE"] = epoch.get("data_release", recipe.release)
+    primary.header["CALFAM"] = epoch.get("calibration_family", "unknown")
     primary.header["GAINCONV"] = False
     hdus = [primary]
     for detector, maps in products.items():
@@ -519,7 +524,7 @@ def build(recipe: Recipe, output_dir: Path, progress: Callable, cancelled: threa
             selected_total += len(sub)
         selected.append(per_detector)
     for k, (rows_in_epoch, grouping, start, end) in enumerate(groups):
-        epoch = {"data_release": releases.product_release(rows_in_epoch[0].access_url, rows_in_epoch[0].survey), "index": k, "grouping": grouping, "mjd_start": float(start), "mjd_end": float(end), "datetime_start": Time(start, format="mjd").isot, "datetime_end": Time(end, format="mjd").isot, "tiles": []}
+        epoch = {"inventory_releases": releases.release_summary(releases.product_release(im.access_url, im.survey) for im in rows_in_epoch)["data_releases"], "index": k, "grouping": grouping, "mjd_start": float(start), "mjd_end": float(end), "datetime_start": Time(start, format="mjd").isot, "datetime_end": Time(end, format="mjd").isot, "tiles": []}
         products, epoch_inputs = {}, []
         for detector, sub in enumerate(selected[k], start=1):
             accumulator, accepted, failures = Accumulator(n), [], []
@@ -546,10 +551,12 @@ def build(recipe: Recipe, output_dir: Path, progress: Callable, cancelled: threa
             maps = accumulator.finish(recipe.min_exposures)
             has_data = bool(np.isfinite(maps["intensity"]).any())
             tile = {"detector": detector, "status": "ok" if has_data else "missing" if not sub else "unavailable", "n_inventory": sum(detector_of(im) == detector for im in rows_in_epoch), "n_selected": len(sub), "n_accepted": len(accepted), "failures": {code: failures.count(code) for code in set(failures)}, "mjd_start": min(accepted) if accepted else None, "mjd_end": max(accepted) if accepted else None}
+            tile.update(releases.release_summary(r["data_release"] for r in epoch_inputs if r["detector"] == detector and r["status"] == "accepted"))
             if sub:
                 products[detector] = maps
                 tile["maps"] = encode_maps(maps)
             epoch["tiles"].append(tile)
+        epoch.update(releases.release_summary(r["data_release"] for r in epoch_inputs if r["status"] == "accepted"))
         epoch["complete_six"] = all(t["status"] == "ok" for t in epoch["tiles"])
         # FITS contains native FITS row ordering and the same numeric values
         # as the encoded arrays, before the display-only vertical flip.

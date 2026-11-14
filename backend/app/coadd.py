@@ -379,8 +379,9 @@ def combine(
     Returns (coadd, coadd_var, coverage, n_rejected_px, lambda_stats).
     ``coadd`` contains NaN where no exposure has valid data.
     """
-    release_set = {e.extras.get("data_release", "unknown") for e in exposures}
-    if len(release_set) > 1:
+    input_releases = {e.extras.get("data_release", "unknown") for e in exposures}
+    families = {releases.calibration_family(r) for r in input_releases}
+    if len(families) > 1 or ("unknown" in families and len(input_releases) > 1):
         raise ValueError("Cannot coadd different or unknown release calibrations")
     x = np.stack([e.sci for e in exposures])       # (N, H, W)
     v = np.stack([e.var for e in exposures])

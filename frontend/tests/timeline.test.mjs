@@ -117,18 +117,34 @@ test('a fresh launch shows the timeline tile with mission panels and their contr
   } finally { app.dom.window.close(); }
 });
 
-test('QR3 selection reaches image queries and all auxiliary tools', async () => {
-  const app = await mount('#ra=10&dec=-5&release=qr3');
+for (const release of ['dr1', 'qr3']) {
+  test(`${release.toUpperCase()} selection reaches image queries and all auxiliary tools`, async () => {
+    const app = await mount(`#ra=10&dec=-5&release=${release}`);
+    try {
+      await settle(() => app.q('.combined-viewer canvas'));
+      const queries = app.requests.map(u => new URL(u, 'http://localhost'));
+      for (const path of ['/api/epoch-stack', '/api/epoch-coadds']) {
+        assert.equal(queries.find(u => u.pathname === path).searchParams.get('release'), release);
+      }
+      for (const name of ['Generate spectrum at target', 'Epoch blink sequence', 'Six-detector comparison']) {
+        app.button(name).click();
+        assert.equal(new URLSearchParams(app.opened.at(-1)[0].split('#')[1]).get('release'), release);
+      }
+      assert.deepEqual(app.errors, []);
+    } finally { app.dom.window.close(); }
+  });
+}
+
+test('a legacy QR2 bookmark stays explicit instead of silently selecting current data', async () => {
+  const app = await mount('#ra=10&dec=-5&release=qr2');
   try {
     await settle(() => app.q('.combined-viewer canvas'));
-    const queries = app.requests.map(u => new URL(u, 'http://localhost'));
-    for (const path of ['/api/epoch-stack', '/api/epoch-coadds']) {
-      assert.equal(queries.find(u => u.pathname === path).searchParams.get('release'), 'qr3');
-    }
-    for (const name of ['Generate spectrum at target', 'Epoch blink sequence', 'Six-detector comparison']) {
-      app.button(name).click();
-      assert.equal(new URLSearchParams(app.opened.at(-1)[0].split('#')[1]).get('release'), 'qr3');
-    }
+    const option = app.w.document.querySelector('option[value="qr2"]');
+    assert.ok(option.selected && option.disabled);
+    assert.match(option.textContent, /retired/);
+    const select = option.parentElement;
+    assert.ok(select.querySelector('option[value="dr1"]'));
+    assert.ok(select.querySelector('option[value="qr3"]'));
     assert.deepEqual(app.errors, []);
   } finally { app.dom.window.close(); }
 });

@@ -26,7 +26,6 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
-import re
 import threading
 import time
 import warnings
@@ -42,10 +41,7 @@ from . import releases
 log = logging.getLogger("spherex-wiseview")
 
 # Map friendly survey names to IRSA obs_collection identifiers.
-COLLECTIONS = {
-    "wide": "spherex_qr2",
-    "deep": "spherex_qr2_deep",
-}
+COLLECTIONS = {survey: releases.RELEASES["dr1"][survey] for survey in ("wide", "deep")}
 
 CACHE_DIR = os.environ.get(
     "SPHEREX_CACHE_DIR",
@@ -142,7 +138,7 @@ def query_sia2(
     ra: float,
     dec: float,
     radius_deg: float = 0.01,
-    collection: str = "spherex_qr2",
+    collection: str = "spherex_dr1",
     band: Optional[str] = None,
 ) -> List[SpherexImage]:
     """Cone-search SPHEREx spectral images via IRSA's SIA2 interface.
@@ -154,8 +150,8 @@ def query_sia2(
     radius_deg : float
         Search radius in degrees.
     collection : str
-        IRSA obs_collection, e.g. ``spherex_qr2`` (wide) or
-        ``spherex_qr2_deep`` (deep).
+        IRSA obs_collection, e.g. ``spherex_dr1`` (wide) or
+        ``spherex_dr1_deep`` (deep).
     band : str, optional
         Filter on SPHEREx detector/band name(s), e.g. ``SPHEREx-D1`` or a
         comma-separated list ``SPHEREx-D1,SPHEREx-D3``.  Substring match,
@@ -221,8 +217,8 @@ def query_releases(ra, dec, radius_deg=0.01, survey="wide", release="all", band=
     """Fresh discovery for every request; a failed release query is not empty coverage.
 
     Query both releases before any time sorting or preview sampling. Select one
-    processing per physical observation/detector, preferring QR3 if reprocessed
-    copies overlap, and retain the choice in exported provenance.
+    processing per physical observation/detector, preferring current processing
+    over legacy QR2, and retain superseded copies in exported provenance.
     """
     query = query or query_sia2
     images = []
@@ -233,10 +229,9 @@ def query_releases(ra, dec, radius_deg=0.01, survey="wide", release="all", band=
         rel = releases.product_release(im.access_url, im.survey)
         if release != "all" and rel != release:
             raise ValueError("Archive product does not match the requested release")
-        version = re.search(r"l2b-v(\d+)-(\d{4})-(\d{3})", im.access_url)
-        if not version or not im.obs_id or not im.band:
+        if not im.obs_id or not im.band:
             raise ValueError("Archive product lacks a reproducible exposure identity/version")
-        rank = (int(rel[-1]), *map(int, version.groups()))
+        rank = releases.processing_rank(im.access_url, rel)
         key = (im.obs_id, im.band)
         old = chosen.get(key)
         if old and rank == old[0] and im.access_url != old[1].access_url:
@@ -253,7 +248,7 @@ def query_releases(ra, dec, radius_deg=0.01, survey="wide", release="all", band=
 
 
 def preview_order(images, limit):
-    """Prioritize a time-spanning preview so early QR2 data cannot hide QR3.
+    """Prioritize a time-spanning preview so early data cannot hide later visits.
 
     Remaining candidates allow callers to replace failed cutouts. This is
     display sampling only; the six-detector science path uses its full inventory.

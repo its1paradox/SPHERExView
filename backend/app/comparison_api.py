@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse
 
 from . import detector_comparison as dc
 from . import spherex_client as sx
+from . import releases
 
 router = APIRouter(prefix="/api/detector-comparison", tags=["detector comparison"])
 _pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="six-detector")
@@ -54,6 +55,10 @@ def _run(job_id, recipe, cancel):
 
 @router.post("", status_code=202)
 def start_comparison(recipe: dc.Recipe):
+    try:
+        releases.collections(recipe.survey, recipe.release)
+    except releases.RetiredReleaseError as exc:
+        raise HTTPException(410, str(exc)) from exc
     with _lock:
         if sum(j["status"] in ("queued", "running") for j in _jobs.values()) >= 2:
             raise HTTPException(429, "Two comparisons are already building; cancel one or wait for completion")
