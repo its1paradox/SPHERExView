@@ -8,3 +8,4 @@ numpy>=1.26
 Pillow>=10.0
 requests>=2.31
 reproject>=0.13
+photutils>=2.0,<4

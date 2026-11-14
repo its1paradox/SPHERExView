@@ -14,12 +14,15 @@ from urllib.parse import urlsplit
 ReleaseSelection = Literal["all", "dr1", "qr3", "qr2"]
 RELEASES = {
     "dr1": {"wide": "spherex_dr1", "deep": "spherex_dr1_deep",
+            "solid_angle_calibration": "cal-sapm-v3-2026-191",
             "spectral_calibration": "cal-swcs-v5-2026-191", "doi": "10.26131/IRSA678",
             "calibration_family": "r7"},
     "qr3": {"wide": "spherex_qr3", "deep": "spherex_qr3_deep",
+            "solid_angle_calibration": "cal-sapm-v3-2026-191",
             "spectral_calibration": "cal-swcs-v5-2026-191", "doi": "10.26131/IRSA662",
             "calibration_family": "r7"},
     "qr2": {"wide": "spherex_qr2", "deep": "spherex_qr2_deep",
+            "solid_angle_calibration": "cal-sapm-v2-2025-164",
             "spectral_calibration": "cal-wcs-v4-2025-254", "doi": "10.26131/IRSA652",
             "calibration_family": "qr2"},
 }

@@ -5,11 +5,13 @@ import { DETECTORS, NOMINAL_RANGES, LAYERS, readState, recipeFromForm, stateHash
 import { COLOR_METHOD, colorFrame, colorPixel, colorDescription, pairSample } from '../lib/color.js';
 import { wavelengthFrame, wavelengthPixel, wavelengthDescription, wavelengthProvenance } from '../lib/wavelength.js';
 import ExpandedDetector from './ExpandedDetector.jsx';
+import LiveSpectrum from './LiveSpectrum.jsx';
+import { rgbFrame, rgbPixel, RGB_METHOD } from '../lib/liveSpectrum.js';
 import '../comparison.css';
 
 const fmt = (x, digits = 5) => Number.isFinite(x) ? Number(x.toPrecision(digits)).toString() : '—';
 const date = x => Number.isFinite(x) ? new Date((x - 40587) * 86400000).toISOString().slice(0, 16).replace('T', ' ') : '—';
-const COLORS = ['#8cc9ff', '#78d8de', '#a6dcac', '#ebd68c', '#eab082', '#e98d99'];
+const COLORS = ['#8cc9ff', '#78d8de', '#a6dcac', '#ebd68c', '#eab082', '#e98d99', '#c5b7ff'];
 
 function WavelengthKey({ strength }) {
   const stops = Array.from({ length: 65 }, (_, i) => `rgb(${wavelengthPixel(.55, .75 + 4.25 * i / 64, 1, 'linear', strength).join(',')}) ${100 * i / 64}%`);
@@ -32,7 +34,7 @@ function saveBlob(blob, name) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function renderTile(canvas, tile, values, result, display, limits, pin, hover, color = null, colorWhite = 1) {
+function renderTile(canvas, tile, values, result, display, limits, pin, hover, color = null, colorWhite = 1, rgb = null) {
   const n = result.width, side = canvas.width, ctx = canvas.getContext('2d');
   ctx.fillStyle = '#101820'; ctx.fillRect(0, 0, side, side);
   if (!values && !color) return;
@@ -53,6 +55,7 @@ function renderTile(canvas, tile, values, result, display, limits, pin, hover, c
       pixels.data.set([...rgb, 255], i * 4);
       continue;
     }
+    if (rgb) { pixels.data.set([...rgbPixel(rgb, i, colorWhite, display.stretch), 255], i * 4); continue; }
     level = displayFraction(values[i], ...limits, display.stretch);
     if (display.invert) level = 1 - level;
     const v = Math.round(level * 255); pixels.data.set([v, v, v, 255], i * 4);
@@ -66,16 +69,31 @@ function renderTile(canvas, tile, values, result, display, limits, pin, hover, c
     const xy = sky && worldToPixel(result.wcs, sky.ra, sky.dec);
     if (!xy) return;
     const [x, y] = imageToScreen(...xy, side, n, display);
-    ctx.strokeStyle = '#07101b'; ctx.lineWidth = 5;
+    // Keep a small marker legible even on compact tiles; its size is a display
+    // choice and has no effect on the aperture measurement.
+    const markerScale = side / Math.max(1, canvas.getBoundingClientRect().width || side);
+    ctx.strokeStyle = '#07101b'; ctx.lineWidth = 4 * markerScale;
     for (const stroke of [true, false]) {
-      if (!stroke) { ctx.strokeStyle = color; ctx.lineWidth = 2; }
+      if (!stroke) { ctx.strokeStyle = color; ctx.lineWidth = 2 * markerScale; }
       ctx.beginPath();
-      if (ring) ctx.arc(x, y, 10, 0, 2 * Math.PI);
-      else { ctx.moveTo(x - 12, y); ctx.lineTo(x + 12, y); ctx.moveTo(x, y - 12); ctx.lineTo(x, y + 12); }
+      if (ring) ctx.arc(x, y, 6 * markerScale, 0, 2 * Math.PI);
+      else { const arm = 4 * markerScale; ctx.moveTo(x - arm, y); ctx.lineTo(x + arm, y); ctx.moveTo(x, y - arm); ctx.lineTo(x, y + arm); }
       ctx.stroke();
     }
   };
   marker(pin, '#ffd583', true); marker(hover, '#88d7f0', false);
+  const apertureSky = hover || pin;
+  const aperturePixel = apertureSky && worldToPixel(result.wcs, apertureSky.ra, apertureSky.dec);
+  if (display.showAperture && aperturePixel) {
+    const [x, y] = imageToScreen(...aperturePixel, side, n, display);
+    const radius = (result.recipe.aperture_radius_arcsec || 12.4) / result.recipe.pixscale_arcsec * side * display.zoom / n;
+    ctx.strokeStyle = '#88d7f0'; ctx.lineWidth = 1;
+    for (const factor of [1, 1.5, 2.5]) {
+      ctx.setLineDash?.(factor === 1 ? [] : [4, 4]);
+      ctx.beginPath(); ctx.arc(x, y, radius * factor, 0, 2 * Math.PI); ctx.stroke();
+    }
+    ctx.setLineDash?.([]);
+  }
   ctx.fillStyle = '#08121cbb'; ctx.fillRect(8, side - 43, 150, 33);
   ctx.fillStyle = '#ecf2f7'; ctx.font = '16px sans-serif';
   const scaleArcsec = result.recipe.pixscale_arcsec * n / (display.zoom * 4);
@@ -86,10 +104,19 @@ function renderTile(canvas, tile, values, result, display, limits, pin, hover, c
   ctx.fillStyle = '#eaf2f7'; ctx.fillText('N ↑  E ←', 14, 27);
 }
 
-function Tile({ tile, values, result, display, setDisplay, limits, pin, setPin, hover, setHover, selected, setSelected, color, colorWhite, referenceAvailable, onExpand, expanded = false }) {
+function Tile({ tile, values, result, display, setDisplay, limits, pin, setPin, hover, setHover, selected, setSelected, color, colorWhite, referenceAvailable, onExpand, expanded = false, rgb = null }) {
   const canvas = useRef(null), drag = useRef(null);
   const side = expanded ? 1200 : 600;
-  useEffect(() => { if (canvas.current && result) renderTile(canvas.current, tile, values, result, display, limits, pin, hover, color, colorWhite); }, [tile, values, result, display, limits, pin, hover, color, colorWhite]);
+  useEffect(() => {
+    if (!canvas.current || !result) return;
+    const draw = () => renderTile(canvas.current, tile, values, result, display, limits, pin, hover, color, colorWhite, rgb);
+    draw();
+    // Keep the ring's screen size fixed when a tile expands or resizes.
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(draw);
+    observer.observe(canvas.current);
+    return () => observer.disconnect();
+  }, [tile, values, result, display, limits, pin, hover, color, colorWhite, rgb]);
   useEffect(() => {
     const node = canvas.current;
     const wheel = event => {
@@ -108,7 +135,7 @@ function Tile({ tile, values, result, display, setDisplay, limits, pin, setPin, 
   const imagePosition = event => screenToImage(...position(event), side, result.width, display);
   const choosePin = xy => {
     if (!xy || xy[0] < 0 || xy[1] < 0 || xy[0] >= result.width || xy[1] >= result.height) return;
-    const [ra, dec] = pixelToWorld(result.wcs, ...xy); setPin({ ra, dec });
+    const [ra, dec] = pixelToWorld(result.wcs, Math.floor(xy[0]) + .5, Math.floor(xy[1]) + .5); setPin({ ra, dec }); setHover(null);
   };
   const pointerMove = event => {
     if (drag.current) {
@@ -118,31 +145,31 @@ function Tile({ tile, values, result, display, setDisplay, limits, pin, setPin, 
     } else {
       const xy = imagePosition(event);
       if (xy[0] >= 0 && xy[1] >= 0 && xy[0] < result.width && xy[1] < result.height) {
-        const [ra, dec] = pixelToWorld(result.wcs, ...xy); setHover({ ra, dec });
+        const [ra, dec] = pixelToWorld(result.wcs, Math.floor(xy[0]) + .5, Math.floor(xy[1]) + .5); setHover(previous => previous?.ra === ra && previous?.dec === dec ? previous : { ra, dec });
       } else setHover(null);
     }
   };
   return <article className={`detector-tile ${expanded ? 'expanded-tile' : ''} ${selected === tile.detector ? 'selected' : ''}`} style={{ '--detector-color': COLORS[tile.detector - 1] }}>
     <div className="detector-topline">
-    <button className="detector-heading" onClick={() => setSelected(tile.detector)} aria-pressed={selected === tile.detector} aria-label={`Select D${tile.detector} details`}>
-      <span><strong>D{tile.detector}</strong><small>≈ {NOMINAL_RANGES[tile.detector - 1]} µm</small></span>
-      <span className="detector-key" aria-label={`Detector ${tile.detector} of 6`}>{DETECTORS.map(d => <i key={d} className={d === tile.detector ? 'active' : ''}>{d}</i>)}</span>
+    <button className="detector-heading" onClick={() => setSelected(tile.detector)} aria-pressed={selected === tile.detector} aria-label={`Select ${rgb ? 'RGB' : `D${tile.detector}`} details`}>
+      <span><strong>{rgb ? 'RGB' : `D${tile.detector}`}</strong><small>{rgb ? 'All six detectors' : `≈ ${NOMINAL_RANGES[tile.detector - 1]} µm`}</small></span>
+      {!rgb && <span className="detector-key" aria-label={`Detector ${tile.detector} of 6`}>{DETECTORS.map(d => <i key={d} className={d === tile.detector ? 'active' : ''}>{d}</i>)}</span>}
     </button>
-    {!expanded && <button className="expand-tile" aria-label={`Expand D${tile.detector}`} title={`Expand D${tile.detector}; browse all six detectors`} onClick={event => onExpand(tile.detector, event.currentTarget)}><svg aria-hidden="true" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M7 2H2v5m11-5h5v5M2 13v5h5m11-5v5h-5" /></svg><span>Expand</span></button>}
+    {!expanded && <button className="expand-tile" aria-label={`Expand ${rgb ? 'RGB' : `D${tile.detector}`}`} title={'Expand and browse all seven tiles'} onClick={event => onExpand(tile.detector, event.currentTarget)}><svg aria-hidden="true" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M7 2H2v5m11-5h5v5M2 13v5h5m11-5v5h-5" /></svg><span>Expand</span></button>}
     </div>
-    {display.mode === 'color' && <div className="tile-color-key">{tile.detector === display.reference ? <span>Reference control · unscaled grayscale</span> : <><span className="warm-text">D{tile.detector} target</span><span className="cool-text">D{display.reference} × {fmt(display.referenceGain, 3)}</span></>}</div>}
-    {display.mode === 'wavelength' && <div className="tile-color-key">Hue: mean sampled λ · shared intensity scale</div>}
+    {!rgb && display.mode === 'color' && <div className="tile-color-key">{tile.detector === display.reference ? <span>Reference control · unscaled grayscale</span> : <><span className="warm-text">D{tile.detector} target</span><span className="cool-text">D{display.reference} × {fmt(display.referenceGain, 3)}</span></>}</div>}
+    {!rgb && display.mode === 'wavelength' && <div className="tile-color-key">Hue: mean sampled λ · shared intensity scale</div>}
     <div className="detector-image">
-      <canvas ref={canvas} width={side} height={side} tabIndex={0} aria-label={`D${tile.detector} ${display.mode === 'color' ? `color comparison against D${display.reference}` : display.mode === 'wavelength' ? 'wavelength color' : LAYERS[display.layer][0]} image. Click to pin; drag to pan; wheel to zoom; Enter pins the view center.`}
+      <canvas ref={canvas} width={side} height={side} tabIndex={0} aria-label={`${rgb ? 'RGB all six detectors' : `D${tile.detector}`} ${rgb ? 'composite' : display.mode === 'color' ? `color comparison against D${display.reference}` : display.mode === 'wavelength' ? 'wavelength color' : LAYERS[display.layer][0]} image. Click to pin; drag to pan; wheel to zoom; Enter pins the view center.`}
         onPointerDown={event => { const [x, y] = position(event); drag.current = { x, y, moved: false, ...display }; canvas.current.setPointerCapture(event.pointerId); setSelected(tile.detector); }}
         onPointerMove={pointerMove} onPointerUp={event => { if (!drag.current?.moved) choosePin(imagePosition(event)); drag.current = null; canvas.current.releasePointerCapture(event.pointerId); }}
         onPointerCancel={() => { drag.current = null; }} onPointerLeave={() => { if (!drag.current) setHover(null); }}
         onDoubleClick={event => { const [x, y] = position(event); setDisplay(v => zoomAt(v, event.shiftKey ? .5 : 2, x / side, y / side)); }}
         onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); choosePin(screenToImage(side / 2, side / 2, side, result.width, display)); } }} />
-      {tile.status !== 'ok' && <div className="detector-empty"><strong>{tile.status === 'missing' ? 'No observations in this epoch' : 'No usable coadd'}</strong><span>{tile.n_accepted ? `Coverage below ${result.recipe.min_exposures} exposures per pixel` : Object.keys(tile.failures).join(' · ').replaceAll('_', ' ') || 'This detector remains empty'}</span></div>}
-      {tile.status === 'ok' && display.mode === 'color' && !referenceAvailable && <div className="detector-empty"><strong>Reference D{display.reference} unavailable</strong><span>Select another reference or use grayscale to inspect D{tile.detector}.</span></div>}
+      {tile.status !== 'ok' && <div className="detector-empty"><strong>{rgb ? 'RGB needs all six detectors' : tile.status === 'missing' ? 'No observations in this epoch' : 'No usable coadd'}</strong><span>{rgb ? 'No common six-detector coverage. Individual tiles and spectra remain available.' : tile.n_accepted ? `Coverage below ${result.recipe.min_exposures} exposures per pixel` : Object.keys(tile.failures).join(' · ').replaceAll('_', ' ') || 'This detector remains empty'}</span></div>}
+      {!rgb && tile.status === 'ok' && display.mode === 'color' && !referenceAvailable && <div className="detector-empty"><strong>Reference D{display.reference} unavailable</strong><span>Select another reference or use grayscale to inspect D{tile.detector}.</span></div>}
     </div>
-    <footer><span>{tile.n_accepted} / {tile.n_selected} exposures used{tile.n_selected < tile.n_inventory ? ' · subset' : ''}</span><span>{date(tile.mjd_start)}{tile.mjd_end > tile.mjd_start ? ` → ${date(tile.mjd_end)}` : ''} UTC</span></footer>
+    <footer>{rgb && <div className="tile-color-key rgb-key"><span>R: D5+6</span><span>G: D3+4</span><span>B: D1+2</span></div>}<span>{tile.n_accepted} / {tile.n_selected} exposures used{tile.n_selected < tile.n_inventory ? ' · subset' : ''}</span><span>{date(tile.mjd_start)}{tile.mjd_end > tile.mjd_start ? ` → ${date(tile.mjd_end)}` : ''} UTC</span></footer>
   </article>;
 }
 
@@ -226,37 +253,50 @@ export default function DetectorComparison() {
   const colorScaleValid = whiteSetting === '' || (Number.isFinite(Number(whiteSetting)) && Number(whiteSetting) > 0);
   const colorWhite = whiteSetting === '' || !colorScaleValid ? Math.max(colorAutomatic, 1e-6) : Number(whiteSetting);
   const referenceAvailable = currentEpoch?.tiles[display.reference - 1]?.status === 'ok';
-  const chosenSky = pin || hover;
+  const preview = !!hover && (!pin || Math.abs(hover.ra - pin.ra) > 1e-9 || Math.abs(hover.dec - pin.dec) > 1e-9);
+  const requestedSky = preview ? hover : pin;
+  const requestedPixel = requestedSky && result ? worldToPixel(result.wcs, requestedSky.ra, requestedSky.dec) : null;
+  const gridSky = requestedPixel && result ? pixelToWorld(result.wcs, Math.floor(requestedPixel[0]) + .5, Math.floor(requestedPixel[1]) + .5) : null;
+  const chosenSky = gridSky ? { ra: gridSky[0], dec: gridSky[1] } : null;
+  const rgbFrames = useMemo(() => result?.epochs.map(e => rgbFrame(e, result.width * result.height)) || [], [result]);
+  const rgbWhite = useMemo(() => Math.max(1e-9, pooledLimits(rgbFrames.map(f => f.brightness), 'intensity')[1]), [rgbFrames]);
+  const rgb = rgbFrames[epoch];
+  const rgbTile = useMemo(() => currentEpoch && rgb ? { detector: 7, status: rgb.coverage.some(v => v) ? 'ok' : 'unavailable',
+    arrays: { coverage: rgb.coverage }, failures: {}, n_accepted: currentEpoch.tiles.reduce((sum, t) => sum + t.n_accepted, 0),
+    n_selected: currentEpoch.tiles.reduce((sum, t) => sum + t.n_selected, 0), n_inventory: currentEpoch.tiles.reduce((sum, t) => sum + t.n_inventory, 0),
+    mjd_start: currentEpoch.mjd_start, mjd_end: currentEpoch.mjd_end } : null, [currentEpoch, rgb]);
   const point = chosenSky && result ? worldToPixel(result.wcs, chosenSky.ra, chosenSky.dec) : null;
   const measurements = currentEpoch?.tiles.map(t => point ? sampleAt(t, ...point, result.width, result.height) : null);
   const pixelIndex = point && point[0] >= 0 && point[1] >= 0 && point[0] < result.width && point[1] < result.height ? Math.floor(point[1]) * result.width + Math.floor(point[0]) : null;
   const colorMeasurements = currentEpoch?.tiles.map(t => pixelIndex === null ? null : pairSample(t, currentEpoch.tiles[display.reference - 1], pixelIndex, display, t.detector === display.reference));
-  const currentInputs = result?.inputs.filter(i => i.epoch === epoch && i.detector === selected) || [];
+  const currentInputs = result?.inputs.filter(i => i.epoch === epoch && (selected === 7 || i.detector === selected)) || [];
   const numeric = (key, label, props = {}) => <label>{label}<input type="number" step="any" {...props} value={form[key]} onChange={e => update(key, e.target.value)} /></label>;
   const modeSwitch = <div className="view-switch" role="group" aria-label="Comparison display">{[['gray', 'Grayscale'], ['color', 'Color comparison'], ['wavelength', 'Wavelength color']].map(([mode, label]) => <button key={mode} aria-pressed={display.mode === mode} onClick={() => show('mode', mode)}>{label}</button>)}</div>;
   const openExpanded = (detector, opener) => { expandOpener.current = opener; setSelected(detector); setPlaying(false); setHover(null); setExpanded(true); };
-  const tileView = (tile, expandedTile = false) => <Tile key={tile.detector} {...{ tile, result, display, setDisplay, limits, pin, setPin, hover, setHover, selected, setSelected }} values={layers[epoch]?.[tile.detector - 1]} color={colorFrames[epoch]?.[tile.detector - 1]} colorWhite={colorWhite} referenceAvailable={referenceAvailable} onExpand={openExpanded} expanded={expandedTile} />;
+  const tileView = (tile, expandedTile = false) => <Tile key={tile.detector} {...{ tile, result, display, setDisplay, limits, pin, setPin, hover, setHover, selected, setSelected }} values={tile.detector === 7 ? rgb.brightness : layers[epoch]?.[tile.detector - 1]} color={tile.detector === 7 ? null : colorFrames[epoch]?.[tile.detector - 1]} rgb={tile.detector === 7 ? rgb : null} colorWhite={tile.detector === 7 ? rgbWhite : colorWhite} referenceAvailable={referenceAvailable} onExpand={openExpanded} expanded={expandedTile} />;
+  const spectrumView = result && <LiveSpectrum display={display} setDisplay={setDisplay} epoch={currentEpoch} index={pixelIndex} sky={chosenSky} recipe={result.recipe} pinned={!!pin} preview={preview} previewSubset={result.preview_subset} failures={result.inputs.filter(i => i.epoch === epoch && i.spectrum_status === 'unavailable').length} onClearPin={() => setPin(null)} />;
 
   const exportFigure = () => {
-    const canvas = document.createElement('canvas'); canvas.width = 1800; canvas.height = 1590;
+    const canvas = document.createElement('canvas'); canvas.width = 2400; canvas.height = 1590;
     const ctx = canvas.getContext('2d'); ctx.fillStyle = '#07101a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#eef3f8'; ctx.font = 'bold 30px sans-serif'; ctx.fillText(`SpherexMultiView · ${display.mode === 'color' ? 'color comparison' : display.mode === 'wavelength' ? 'wavelength color' : 'six detectors'} · epoch ${epoch + 1}`, 28, 44);
     ctx.font = '18px sans-serif'; ctx.fillText(`${result.recipe.ra.toFixed(6)}°, ${result.recipe.dec.toFixed(6)}° ICRS  |  ${currentEpoch.data_release?.toUpperCase()} | ${currentEpoch.datetime_start} — ${currentEpoch.datetime_end} UTC`, 28, 78);
-    currentEpoch.tiles.forEach((tile, i) => {
-      const x = 28 + (i % 3) * 590, y = 115 + Math.floor(i / 3) * 635;
-      ctx.fillStyle = COLORS[i]; ctx.font = 'bold 24px sans-serif'; ctx.fillText(`D${i + 1} · ≈ ${NOMINAL_RANGES[i]} µm`, x, y);
+    [...currentEpoch.tiles, rgbTile].forEach((tile, i) => {
+      const x = 28 + (i % 4) * 590, y = 115 + Math.floor(i / 4) * 635;
+      ctx.fillStyle = COLORS[i]; ctx.font = 'bold 24px sans-serif'; ctx.fillText(i === 6 ? 'RGB · D5+6 / D3+4 / D1+2' : `D${i + 1} · ≈ ${NOMINAL_RANGES[i]} µm`, x, y);
       const tileCanvas = document.createElement('canvas'); tileCanvas.width = tileCanvas.height = 560;
-      renderTile(tileCanvas, tile, layers[epoch][i], result, display, limits, pin, null, colorFrames[epoch]?.[i], colorWhite);
+      renderTile(tileCanvas, tile, i === 6 ? rgb.brightness : layers[epoch][i], result, display, limits, pin, null, i === 6 ? null : colorFrames[epoch]?.[i], i === 6 ? rgbWhite : colorWhite, i === 6 ? rgb : null);
       ctx.drawImage(tileCanvas, x, y + 14); ctx.fillStyle = '#d7e1ea'; ctx.font = '15px sans-serif';
       if (tile.status !== 'ok') ctx.fillText('NO USABLE DATA', x + 180, y + 290);
       ctx.fillText(`${tile.n_accepted}/${tile.n_selected} exposures · ${date(tile.mjd_start)} → ${date(tile.mjd_end)} UTC`, x, y + 598);
-      if (display.mode === 'color') {
+      if (i < 6 && display.mode === 'color') {
         ctx.fillStyle = '#f0c992';
         ctx.fillText(tile.detector === display.reference ? 'Reference control · unscaled grayscale' : `Orange: D${tile.detector} | Blue: D${display.reference} × ${fmt(display.referenceGain, 3)}`, x, y + 618);
         if (tile.status === 'ok' && !referenceAvailable) ctx.fillText('REFERENCE UNAVAILABLE', x + 150, y + 290);
       }
-      if (display.mode === 'wavelength') ctx.fillText('Hue: mean sampled CWAVE wavelength', x, y + 618);
+      if (i < 6 && display.mode === 'wavelength') ctx.fillText('Hue: mean sampled CWAVE wavelength', x, y + 618);
     });
+    ctx.fillText(`RGB: equal detector means, common ${display.stretch} scale 0–${fmt(rgbWhite)} MJy/sr; all six required.`, 28, 1365);
     ctx.font = '18px sans-serif'; ctx.fillStyle = '#eef3f8';
     if (display.mode === 'color') {
       ctx.fillText(`Two-channel color · ${display.stretch} · shared brightness: 0 to ${fmt(colorWhite)} MJy/sr · strength ${fmt(display.colorStrength)}`, 28, 1405);
@@ -277,12 +317,12 @@ export default function DetectorComparison() {
     ctx.fillText(`Hatching: missing / masked / insufficient coverage in ${display.mode === 'color' ? 'either channel' : 'the detector'}. ${display.smooth ? 'Display smoothing enabled. ' : ''}Zoom ${fmt(display.zoom, 3)}×.`, 28, 1515);
     ctx.fillText(display.mode === 'color' ? 'Visual comparison; PSF and spectral/time sampling can create color. Nonpositive values clip to zero for display only. Not a calibrated excess.' : display.mode === 'wavelength' ? 'False color shows wavelength sampling, not a source spectrum. Negative values display as black; bright highlights desaturate to white.' : 'Scientific arrays and provenance remain in the accompanying FITS and JSON exports.', 28, 1550);
     canvas.toBlob(blob => saveBlob(blob, `SpherexMultiView-${display.mode}-epoch-${epoch + 1}.png`));
-    const epochMetadata = { ...currentEpoch, tiles: currentEpoch.tiles.map(({ maps, arrays, ...metadata }) => metadata) };
+    const epochMetadata = { ...currentEpoch, spectra: currentEpoch.spectra.map(({ arrays, ...metadata }) => metadata), rgb_method: RGB_METHOD, tiles: currentEpoch.tiles.map(({ maps, arrays, ...metadata }) => metadata) };
     saveBlob(new Blob([JSON.stringify({ ...result, application: 'SpherexMultiView', application_version: '0.2.0', epochs: [epochMetadata], display: { ...display, actual_limits: limits, color_method: display.mode === 'color' ? COLOR_METHOD : null, color_white: display.mode === 'color' ? colorWhite : null, color_legend: display.mode === 'color' ? colorDescription(display) : null, wavelength_color: display.mode === 'wavelength' ? wavelengthProvenance(display, colorWhite) : null }, epoch: currentEpoch.index, pin, job_id: resultJobId }, null, 2)], { type: 'application/json' }), `SpherexMultiView-${display.mode}-epoch-${epoch + 1}.json`);
   };
 
   return <div className="compare-page" data-mode={display.mode}>
-    <header className="compare-header"><div><a href="index.html" className="compare-brand">SpherexMultiView</a><h1>Six-detector comparison</h1></div><span className="comparison-tag">DR1 + QR3 · ICRS</span></header>
+    <header className="compare-header"><div><a href="index.html" className="compare-brand">SpherexMultiView</a><h1>Detector &amp; spectrum explorer</h1></div><span className="comparison-tag">DR1 + QR3 · ICRS</span></header>
     <div className="compare-layout">
       <main className="compare-main">
         <section className="compare-toolbar" aria-label="Epoch playback">
@@ -296,13 +336,13 @@ export default function DetectorComparison() {
         {error && <div className="compare-error" role="alert">{error}</div>}
         {pending && <p className="compare-pending">Recipe changes pending. The displayed coadds and exports still use the last completed build.</p>}
         {currentEpoch && <div className="epoch-caption"><strong>{currentEpoch.datetime_start.slice(0, 10)} — {currentEpoch.datetime_end.slice(0, 10)}</strong><span>{currentEpoch.data_release?.toUpperCase()} · {currentEpoch.grouping} · UTC · actual detector times below each tile</span></div>}
-        {result && completeOnly && !eligible.length ? <div className="compare-placeholder">No epoch has usable data in all six detectors. Disable “Complete six only” to inspect available data.</div> : result ? <div className="detector-grid">{currentEpoch.tiles.map(tile => tileView(tile))}</div> : <div className="detector-grid empty-grid">{DETECTORS.map(d => <article className="detector-tile" key={d} style={{ '--detector-color': COLORS[d - 1] }}><div className="detector-heading"><strong>D{d}</strong><small>≈ {NOMINAL_RANGES[d - 1]} µm</small></div><div className="compare-placeholder">{busy ? 'Building calibrated coadds…' : 'Awaiting target'}</div></article>)}</div>}
+        {result && completeOnly && !eligible.length ? <div className="compare-placeholder">No epoch has usable data in all six detectors. Disable “Complete six only” to inspect available data.</div> : result ? <div className="detector-grid">{currentEpoch.tiles.map(tile => tileView(tile))}{tileView(rgbTile)}</div> : <div className="detector-grid empty-grid">{[...DETECTORS, 7].map(d => <article className="detector-tile" key={d} style={{ '--detector-color': COLORS[d - 1] }}><div className="detector-heading"><strong>{d === 7 ? 'RGB' : `D${d}`}</strong><small>{d === 7 ? 'All six detectors' : `≈ ${NOMINAL_RANGES[d - 1]} µm`}</small></div><div className="compare-placeholder">{busy ? 'Building calibrated coadds…' : 'Awaiting target'}</div></article>)}</div>}
         {display.mode === 'gray' ? <section className="compare-scale" aria-label="Shared intensity scale"><span>{fmt(limits[0])}</span><div className={display.invert ? 'inverse' : ''} /><span>{fmt(limits[1])} {LAYERS[display.layer][1]}</span><small>{display.stretch} · shared across every detector and epoch</small></section> : display.mode === 'wavelength' ? <section className="wavelength-legend" aria-label="Wavelength color meaning"><WavelengthKey strength={display.wavelengthStrength} /><p>{wavelengthDescription}</p><p>Shared brightness: 0–{fmt(colorWhite)} MJy/sr · {display.stretch}. Bright highlights become white. Inspect the wavelength span in the readout for mixed samples.</p></section> : <section className="color-legend" aria-label="Color meaning"><div><span className="cool-text">Reference stronger</span><div className="color-ramp" style={{ background: `linear-gradient(to right, rgb(${colorPixel(colorWhite, -1, true, colorWhite, display.stretch, display.colorStrength).join(',')}), white, rgb(${colorPixel(colorWhite, 1, true, colorWhite, display.stretch, display.colorStrength).join(',')}))` }} /><span className="warm-text">Target stronger</span></div><p>{colorDescription(display)}</p><p>Shared brightness: 0–{fmt(colorWhite)} MJy/sr · {display.stretch} · native PSFs. Colors identify candidates to inspect; PSF, background and wavelength/time sampling differences also affect color.</p></section>}
-        <p className="compare-help">Expand a tile to browse D1–D6 at full size · wheel or double-click to magnify · drag to pan · click to pin · arrows change epoch in the grid · hatching marks unavailable samples.</p>
-        {result && <section className="source-readout"><div className="source-title"><h2>{pin ? 'Pinned source' : hover ? 'Cursor position' : 'Linked source readout'}</h2>{chosenSky && <span>{chosenSky.ra.toFixed(7)}°, {chosenSky.dec.toFixed(7)}° ICRS</span>}{pin && <button onClick={() => setPin(null)}>Clear pin</button>}</div>
+        <p className="compare-help">Hover to preview a spectrum · click to pin · wheel to zoom · drag to pan · hatching marks unavailable data. RGB uses equal detector means, one shared stretch, and requires all six detectors at each pixel.</p>
+        {spectrumView}
+        {result && <section className="source-readout"><div className="source-title"><h2>{preview ? 'Cursor position' : pin ? 'Pinned source' : 'Linked source readout'}</h2>{chosenSky && <span>{chosenSky.ra.toFixed(7)}°, {chosenSky.dec.toFixed(7)}° ICRS</span>}{pin && <button onClick={() => setPin(null)}>Clear pin</button>}</div>
           <div className="readout-scroll"><table><thead><tr><th>Detector</th><th>I (MJy/sr)</th><th>Formal σ</th><th>Exposures</th><th>λ mean [min–max], µm</th><th>Bandwidth, µm</th><th>Time range, MJD UTC</th>{display.mode === 'color' && <><th>ΔI vs ref (MJy/sr)</th><th>ΔI / formal σΔ</th></>}</tr></thead><tbody>{DETECTORS.map((d, i) => { const m = measurements?.[i]; return <tr key={d}><th>D{d}</th><td>{fmt(m?.intensity)}</td><td>{fmt(m?.variance >= 0 ? Math.sqrt(m.variance) : NaN)}</td><td>{fmt(m?.coverage)}</td><td>{m ? `${fmt(m.wavelength)} [${fmt(m.lambda_min)}–${fmt(m.lambda_max)}]` : '—'}</td><td>{fmt(m?.bandwidth)}</td><td>{m ? `${fmt(m.mjd_min, 10)}–${fmt(m.mjd_max, 10)}` : '—'}</td>{display.mode === 'color' && <><td>{fmt(colorMeasurements?.[i]?.difference)}</td><td>{fmt(colorMeasurements?.[i]?.z)}</td></>}</tr>; })}</tbody></table></div>
           <p>Readouts use the unsmoothed coadd pixel under the pin. Formal σ excludes calibration, foreground-model and input covariance errors. {display.mode === 'color' && 'ΔI uses the signed values and the reference multiplier; its formal error assumes independent detector noise. It is not a source-detection significance.'}</p>
-          <button disabled={!pin} onClick={() => window.open(`spectrum.html#${new URLSearchParams({ ra: pin.ra, dec: pin.dec })}`, '_blank', 'noopener')}>Generate spectrum at pin</button>
         </section>}
       </main>
       <aside className="compare-sidebar">
@@ -330,14 +370,16 @@ export default function DetectorComparison() {
           <label>RA, Dec · ICRS degrees<input value={form.coords} onChange={e => update('coords', e.target.value)} placeholder="304.693509 42.443687" required /></label>
           <div className="compare-two">{numeric('size_arcsec', 'Field width (arcsec)', { min: 24, max: 1800 })}<label>Survey<select value={form.survey} onChange={e => update('survey', e.target.value)}><option value="wide">Wide</option><option value="deep">Deep</option></select></label></div>
           <ReleaseSelect value={form.release} onChange={e => update('release', e.target.value)} />
+          <label className="compare-check"><input aria-label="Precompute aperture spectra" type="checkbox" checked={form.include_spectra} onChange={e => update('include_spectra', e.target.checked)} />Precompute aperture spectra</label>
+          <p>{form.include_spectra ? 'Builds local hover spectra with extra processing and downloads.' : 'Images only: builds all seven tiles without aperture processing.'}</p>
           <div className="compare-two"><label>Epoch grouping<select value={form.grouping} onChange={e => update('grouping', e.target.value)}><option value="visit">Sky-pass visits</option><option value="fixed">Fixed MJD bins</option></select></label>{numeric('bin_months', 'Maximum span (months)', { min: .1, max: 12 })}</div>
           {form.grouping === 'fixed' && numeric('epoch_origin_mjd', 'Bin origin (MJD UTC)')}
           <details><summary>Time selection &amp; depth</summary><div className="compare-two">{numeric('mjd_start', 'Start MJD (inclusive)')}{numeric('mjd_end', 'End MJD (exclusive)')}</div>{numeric('max_per_tile', 'Max exposures per tile (0 = all)', { min: 0, max: 10000, step: 1 })}{numeric('min_exposures', 'Minimum exposures per pixel', { min: 1, max: 10000, step: 1 })}<p>Epoch membership is fixed before downloads. A cap selects a declared time-spread preview within each detector and epoch.</p></details>
-          <details><summary>Background, weights &amp; sampling</summary><label>Background<select value={form.background} onChange={e => update('background', e.target.value)}><option value="zodi">Subtract supplied ZODI model</option><option value="none">No subtraction</option></select></label><label>Sample weights<select value={form.weighting} onChange={e => update('weighting', e.target.value)}><option value="equal">Equal native-sample weights</option><option value="sky">Inverse source-free sky variance</option></select></label><label>Resampling<select value={form.resampling} onChange={e => update('resampling', e.target.value)}><option value="bin">Input-pixel binning</option><option value="nearest">Nearest neighbor</option></select></label>{numeric('pixscale_arcsec', 'Output pixel size (arcsec)', { min: 3.1, max: 24.8 })}<p>Finer pixels do not improve angular resolution. Binning may leave gaps; nearest neighbor can correlate output pixels. Source flags are preserved in the science image. Additional clipping is off.</p></details>
+          <details><summary>Background, weights &amp; sampling</summary><label>Background<select value={form.background} onChange={e => update('background', e.target.value)}><option value="zodi">Subtract supplied ZODI model</option><option value="none">No subtraction</option></select></label><label>Sample weights<select value={form.weighting} onChange={e => update('weighting', e.target.value)}><option value="equal">Equal native-sample weights</option><option value="sky">Inverse source-free sky variance</option></select></label><label>Resampling<select value={form.resampling} onChange={e => update('resampling', e.target.value)}><option value="bin">Input-pixel binning</option><option value="nearest">Nearest neighbor</option></select></label>{numeric('pixscale_arcsec', 'Output pixel size (arcsec)', { min: 3.1, max: 24.8 })}{numeric('aperture_radius_arcsec', 'Spectrum aperture radius (arcsec)', { min: 6.2, max: 31, disabled: !form.include_spectra })}<p>Finer pixels do not improve angular resolution. Binning may leave gaps; nearest neighbor can correlate output pixels. Source flags are preserved in the science image. Additional clipping is off.</p></details>
           <details><summary>Calibrated wavelength selection</summary><p>Optional input-pixel central-wavelength limits in µm, lower inclusive / upper exclusive. Empty pairs use full detector depth.</p><div className="wavelength-ranges">{DETECTORS.map(d => <div key={d}><strong>D{d}</strong>{['Lower', 'Upper'].map((label, i) => <input key={label} aria-label={`D${d} ${label} wavelength`} type="number" step="any" min="0" max="10" placeholder={label} value={form.ranges[d]?.[i] ?? ''} onChange={e => setForm(f => { const bounds = [...(f.ranges[d] || ['', ''])]; bounds[i] = e.target.value; return { ...f, ranges: { ...f.ranges, [d]: bounds } }; })} />)}</div>)}</div><p>CWAVE/CBAND calibration is required. A detector is never substituted when calibration or coverage is missing.</p></details>
           <button className="compare-primary" type="submit">{busy ? 'Building…' : 'Build coadds'}</button>
         </fieldset></form>
-        {busy && <button className="compare-cancel" disabled={!jobId} onClick={async () => { try { await jsonRequest(`/api/detector-comparison/${jobId}`, { method: 'DELETE' }); setStatus('Cancelling after the current archive request…'); } catch (e) { setError(e.message); } }}>Cancel build</button>}
+        {busy && <button className="compare-cancel" disabled={!jobId} onClick={async () => { try { await jsonRequest(`/api/detector-comparison/${jobId}`, { method: 'DELETE' }); setStatus('Cancelling after the current exposure…'); } catch (e) { setError(e.message); } }}>Cancel build</button>}
         <fieldset><legend>Shared display</legend><label>Grayscale layer<select disabled={display.mode !== 'gray'} value={display.layer} onChange={e => setDisplay(v => ({ ...v, layer: e.target.value, vmin: '', vmax: '' }))}>{Object.entries(LAYERS).map(([key, [label, unit]]) => <option key={key} value={key}>{label} ({unit})</option>)}</select></label>
           <label>Stretch<select value={display.stretch} onChange={e => show('stretch', e.target.value)}><option value="asinh">Signed asinh</option><option value="linear">Linear</option></select></label>
           <div className="compare-two"><label>Black limit<input type="number" step="any" disabled={display.mode !== 'gray'} value={display.vmin} placeholder={fmt(automatic[0])} onChange={e => show('vmin', e.target.value)} /></label><label>White limit<input type="number" step="any" disabled={display.mode !== 'gray'} value={display.vmax} placeholder={fmt(automatic[1])} onChange={e => show('vmax', e.target.value)} /></label></div>
@@ -347,13 +389,14 @@ export default function DetectorComparison() {
           <button onClick={() => setDisplay(v => ({ ...v, zoom: 1, panX: 0, panY: 0 }))}>Reset field of view</button>
           <label className="compare-check"><input type="checkbox" disabled={display.mode !== 'gray'} checked={display.invert} onChange={e => show('invert', e.target.checked)} />Invert grayscale</label><label className="compare-check"><input type="checkbox" checked={display.smooth} onChange={e => show('smooth', e.target.checked)} />Display smoothing</label><p>A shared scale is frozen across all loaded epochs; grayscale limits and inversion apply in grayscale mode. Display adjustments never rebuild or alter scientific arrays.</p>
         </fieldset>
-        {result && <fieldset><legend>Export &amp; provenance</legend><button onClick={exportFigure}>Export six-panel PNG + settings</button><a className="compare-download" href={`/api/detector-comparison/${resultJobId}/epochs/${currentEpoch.index}.fits`}>Download epoch FITS</a><a className="compare-download" href={`/api/detector-comparison/${resultJobId}/manifest`}>Download full manifest</a><p>FITS includes intensity, variance, coverage, weights, wavelength/time maps, WCS and input provenance. DR1 and QR3 share compatible calibrations; each input retains its release provenance. PNG retains labels and display limits.</p><details><summary>D{selected} input provenance ({currentInputs.length})</summary><div className="comparison-inputs">{currentInputs.length ? currentInputs.map((input, i) => <article key={i}><a href={input.url} target="_blank" rel="noreferrer">{input.obs_id}</a><span>{input.status.replaceAll('_', ' ')}</span>{input.reason && <p>{input.reason}</p>}{input.pipeline_version && <small>{input.data_release?.toUpperCase()} · Pipeline {input.pipeline_version} · PSF header: {input.psf_header_status.replaceAll('_', ' ')}</small>}</article>) : <p>No observations for D{selected} in this epoch.</p>}</div></details></fieldset>}
+        {result && <fieldset><legend>Export &amp; provenance</legend><button onClick={exportFigure}>Export tiles PNG + settings</button><a className="compare-download" href={`/api/detector-comparison/${resultJobId}/epochs/${currentEpoch.index}.fits`}>Download epoch FITS</a>{(currentEpoch.spectra_enabled || currentEpoch.spectra.length > 0) && <a className="compare-download" href={`/api/detector-comparison/${resultJobId}/spectra/${currentEpoch.index}.fits`}>Download aperture spectra FITS</a>}<a className="compare-download" href={`/api/detector-comparison/${resultJobId}/manifest`}>Download full manifest</a><p>FITS includes intensity, variance, coverage, weights, wavelength/time maps, WCS and input provenance. DR1 and QR3 share compatible calibrations; each input retains its release provenance. PNG retains labels and display limits.</p><details><summary>{selected === 7 ? 'All detectors' : `D${selected}`} input provenance ({currentInputs.length})</summary><div className="comparison-inputs">{currentInputs.length ? currentInputs.map((input, i) => <article key={i}><a href={input.url} target="_blank" rel="noreferrer">{input.obs_id}</a><span>{input.status.replaceAll('_', ' ')}</span>{input.reason && <p>{input.reason}</p>}{input.spectrum_reason && <p>Aperture spectrum unavailable: {input.spectrum_reason}</p>}{input.pipeline_version && <small>{input.data_release?.toUpperCase()} · Pipeline {input.pipeline_version} · PSF header: {input.psf_header_status.replaceAll('_', ' ')}</small>}</article>) : <p>No observations for D{selected} in this epoch.</p>}</div></details></fieldset>}
         <details className="comparison-science"><summary>Scientific interpretation</summary><p>Each tile averages the detector’s sampled LVF wavelengths. Different PSFs, depths and wavelength distributions affect source prominence. These images are inspection products; use exposure-level spectra for quantitative source comparisons.</p><p>PSFs are native and unmatched. A color fringe or bright core can reflect PSF mismatch. Detector coadds are not six fixed photometric filters, and color is not an object classification. Formal uncertainty is not a complete measurement error budget.</p><a href="https://caltech-ipac.github.io/spherex-archive-documentation/spherex-data-products/" target="_blank" rel="noreferrer">IRSA data-product documentation ↗</a></details>
       </aside>
     </div>
     {expanded && currentEpoch && <ExpandedDetector detector={selected} onSelect={d => { setSelected(d); setHover(null); }} onClose={() => { setExpanded(false); setHover(null); }} returnFocus={expandOpener.current} epochLabel={`Epoch ${epoch + 1} · ${currentEpoch.datetime_start.slice(0, 10)} — ${currentEpoch.datetime_end.slice(0, 10)} UTC`} modeSwitch={modeSwitch}>
-      {tileView(currentEpoch.tiles[selected - 1], true)}
-      {display.mode === 'wavelength' ? <div className="expanded-key"><WavelengthKey strength={display.wavelengthStrength} /><p>Hue: mean sampled CWAVE · brightness 0–{fmt(colorWhite)} MJy/sr · {display.stretch}</p></div> : <p className="expanded-scale">{display.mode === 'color' ? `${colorDescription(display)} Shared brightness 0–${fmt(colorWhite)} MJy/sr.` : `${LAYERS[display.layer][0]}: ${fmt(limits[0])}–${fmt(limits[1])} ${LAYERS[display.layer][1]} · ${display.stretch}`} · Zoom {fmt(display.zoom, 3)}×</p>}
+      {tileView(selected === 7 ? rgbTile : currentEpoch.tiles[selected - 1], true)}
+      {spectrumView}
+      {selected === 7 ? <p className="expanded-scale">{RGB_METHOD} RGB white scale: {fmt(rgbWhite)} MJy/sr.</p> : display.mode === 'wavelength' ? <div className="expanded-key"><WavelengthKey strength={display.wavelengthStrength} /><p>Hue: mean sampled CWAVE · brightness 0–{fmt(colorWhite)} MJy/sr · {display.stretch}</p></div> : <p className="expanded-scale">{display.mode === 'color' ? `${colorDescription(display)} Shared brightness 0–${fmt(colorWhite)} MJy/sr.` : `${LAYERS[display.layer][0]}: ${fmt(limits[0])}–${fmt(limits[1])} ${LAYERS[display.layer][1]} · ${display.stretch}`} · Zoom {fmt(display.zoom, 3)}×</p>}
     </ExpandedDetector>}
   </div>;
 }

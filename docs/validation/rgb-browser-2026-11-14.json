@@ -1,0 +1,17 @@
+{
+  "checked_utc": "2026-11-14T13:17:27.434Z",
+  "browser": "157.0.8103.78",
+  "data": "Explicitly synthetic fixture, real production frontend",
+  "checks": [
+    "seven tiles and pin",
+    "separate DR1/QR3 guides",
+    "frequency axis",
+    "CSV and valid PNG downloads",
+    "expanded RGB",
+    "390px layout without page overflow",
+    "images-only empty state and no broken FITS link",
+    "no archive calls for display changes",
+    "no JavaScript page errors"
+  ],
+  "complete": true
+}
