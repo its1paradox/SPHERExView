@@ -17,7 +17,7 @@ RGB and native-exposure aperture spectra on the DR1/QR3 main branch.
 
 ## Validation record
 
-103 backend tests and 54 frontend tests pass. The production Vite build succeeds.
+135 backend tests and 54 frontend tests pass. The production Vite build succeeds.
 Headless Chrome checks the actual built page with explicitly synthetic data:
 seven tiles, pinning, independent release guides, frequency mode, CSV/PNG
 downloads, expanded RGB and the 390-pixel mobile layout. Display interactions
@@ -39,6 +39,9 @@ retains these retrieval details and the replaced URL. Measurement code and
 acceptance thresholds were unchanged.
 
 Browser checks are recorded in [the browser record](validation/rgb-browser-2026-11-14.json).
+The downloader's retry and cache protections are covered by the backend suite;
+see [archive download recovery](ARCHIVE_DOWNLOADS.md) for the 2026-11-15 update
+and a fresh download check against the original QR3 D4 exposure.
 These checks do not establish absolute photometric accuracy or guarantee
 survey-wide performance. Aperture precomputation adds CPU, memory and download
 cost; images-only mode retains the original query and cutout sizes. With spectra

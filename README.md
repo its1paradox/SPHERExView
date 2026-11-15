@@ -28,6 +28,10 @@ number of exposures. Downloaded files are cached in `backend/cache/` for
 reuse. If port 8000 is already in use, set the `PORT` environment variable
 before starting the launcher.
 
+Transient SPHEREx download failures are retried with increasing delays and
+respect for the archive's requested wait time. See
+[archive download recovery](docs/ARCHIVE_DOWNLOADS.md) for retry limits and validation.
+
 ## Using SPHERExView
 
 Enter **RA and Dec in decimal degrees**, choose a field of view in arcseconds,
