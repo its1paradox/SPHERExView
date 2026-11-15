@@ -1,0 +1,18 @@
+{
+  "checked_utc": "2026-11-15T08:46:38.938482+00:00",
+  "url": "https://irsa.ipac.caltech.edu/ibe/data/spherex/qr3/level2/2026W21_2A/l2b-v27-2026-268/4/level2_2026W21_2A_0222_1D4_spx_l2b-v27-2026-268.fits?center=304.97130751832196,42.43377087701584&size=180arcsec",
+  "attempts": [
+    {
+      "status": 200,
+      "retry_after": null,
+      "request_id": "b7bdfce37ab0119aa9da772729e29322",
+      "seconds_to_headers": 0.92
+    }
+  ],
+  "elapsed_seconds": 18.473,
+  "bytes": 3962880,
+  "sha256": "c34d4a1c57415478017e2acec119c9434237dcd21b2affbc60065ae3d26ee36b",
+  "matches_original_cutout_hash": true,
+  "temporary_files_remaining": false,
+  "source_sha256": "87f51262a87f86e8f6c2367f838a81b807c69210f7b7c960292162a815f2dfc6"
+}

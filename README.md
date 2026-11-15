@@ -28,6 +28,10 @@ number of exposures. Downloaded files are cached in `backend/cache/` for
 reuse. If port 8000 is already in use, set the `PORT` environment variable
 before starting the launcher.
 
+Transient SPHEREx download failures are retried with increasing delays and
+respect for the archive's requested wait time. See
+[archive download recovery](docs/ARCHIVE_DOWNLOADS.md) for retry limits and validation.
+
 ## Using SPHERExView
 
 Enter **RA and Dec in decimal degrees**, choose a field of view in arcseconds,
@@ -48,8 +52,12 @@ See [DR1 support and scientific validation](docs/DR1_SUPPORT.md).
   coadds, or a custom detector combination.
 - **Epoch blink:** inspect SPHEREx coadds grouped by observing visit.
 - **SpherexMultiView:** compare D1–D6 at one epoch using grayscale,
-  detector-to-reference color, or wavelength color. Expand a tile and use
-  Previous/Next to move between detectors.
+  detector-to-reference color, or wavelength color, alongside a seventh RGB
+  composite. Hover or pin any tile for an instant, precomputed aperture
+  spectrum with wavelength/frequency axes and flux density in µJy. Expand a
+  tile and use Previous/Next to move between all seven views. See the
+  [measurement method and limitations](docs/LIVE_APERTURE_SPECTRA.md). Disable **Precompute aperture spectra**
+  for an images-only build when exploring large fields or time ranges.
 - **Spectrum:** click an image to pin a position, then request an IRSA
   forced-photometry spectrum. Spectrum jobs can take several minutes. The
   release selector filters returned measurements; it does not restrict the
