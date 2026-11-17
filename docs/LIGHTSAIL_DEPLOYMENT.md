@@ -55,6 +55,17 @@ separate, unapproved cost; cosmiccodex.com is a requested name, not owned yet.
   another domain or arrange an ownership transfer before configuring it.
 - sslip.io is a third-party DNS service, suitable as a temporary address.
 
+Validation: Linux Docker build succeeded; all five frontend pages and health
+returned HTTPS 200. A live 120-arcsec preview comparison at ICRS
+(133.7599588, -7.2449993), capped to one exposure per detector per epoch,
+accepted 18/18 exposures and produced three complete six-detector epochs
+with aperture spectra. A simultaneous heavy request correctly returned 429.
+Peak app cgroup memory was 567,693,312 bytes (about 541 MiB), with zero OOM
+events; this small test is not a worst-case load benchmark. After Ubuntu
+updates and a full instance reboot, HTTPS and saved results recovered.
+Downloaded epoch FITS (80 HDUs) and spectrum FITS (17 HDUs) passed Astropy
+verification. Local evidence is in .validation/lightsail (not committed).
+
 ## Operations
 
 From /opt/spherexview/deploy/lightsail:
