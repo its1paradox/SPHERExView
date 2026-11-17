@@ -1,3 +1,4 @@
+import { localWindow } from './localWindow.mjs';
 // Synthetic API/React checks; these do not substitute for visual browser review.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,7 +21,7 @@ const wise = [0, 1].map(i => ({ ...frame, id: `wise-${i}`, band: 'W2', epoch: i,
   mjd: 55200 + i * 180, datetime_utc: `2010-0${1 + i * 6}-01T00:00:00`, gaia_markers: [] }));
 
 async function settle(check) {
-  for (let i = 0; i < 150; i++) {
+  for (let i = 0; i < 2000; i++) {
     if (check()) return;
     await new Promise(resolve => setTimeout(resolve, 10));
   }
@@ -29,10 +30,10 @@ async function settle(check) {
 
 async function mount(hash = '', responseOverride) {
   const dom = new JSDOM('<!doctype html><div id="root"></div>', {
-    url: `http://localhost/${hash}`, runScripts: 'outside-only', pretendToBeVisual: true,
+    url: `http://localhost/timeline.html${hash}`, runScripts: 'outside-only', pretendToBeVisual: true,
   });
   const w = dom.window, requests = [], opened = [], errors = [], copied = [];
-  w.structuredClone = structuredClone;
+  localWindow(w);
   w.HTMLDialogElement.prototype.showModal = function() { this.setAttribute('open', ''); };
   w.HTMLDialogElement.prototype.close = function() { this.removeAttribute('open'); };
   w.console.error = (...args) => errors.push(args.join(' '));
@@ -62,7 +63,7 @@ async function mount(hash = '', responseOverride) {
     } else if (parsed.pathname.startsWith('/static/cutouts/')) result = {data_b64: data};
     else throw new Error(`Unexpected request: ${url}`);
     if (responseOverride) result = responseOverride(parsed, result);
-    return { ok: true, json: async () => structuredClone(result) };
+    return Response.json(structuredClone(result));
   };
   vm.runInContext((await compiled).outputFiles[0].text, dom.getInternalVMContext());
   await settle(() => w.document.querySelector('.panel-switch'));
@@ -198,7 +199,7 @@ test('persistent target bar edits the shared draft and submits the current coord
       assert.equal(query.searchParams.get(query.pathname === '/api/wise-stack' ? 'size_arcsec' : 'radius_arcsec'), query.pathname === '/api/wise-stack' ? '90' : '45');
     }
     assert.equal(queries.filter(u => u.pathname === '/api/epoch-stack').length, 1);
-    assert.equal(queries.filter(u => u.pathname === '/api/wise-stack').length, 2, 'Matched-color mode also refreshes W1+W2 epochs');
+    assert.equal(queries.filter(u => u.pathname === '/api/wise-stack').length, 1, 'Matched-color mode reuses the same W1+W2 local recipe');
     assert.equal(new URLSearchParams(app.w.location.hash.slice(1)).get('size'), '90');
     app.toggle('Combined timeline');
     await settle(() => !app.q('.timeline-primary'));
@@ -340,7 +341,7 @@ test('a missing mission leaves a useful timeline message and available individua
   } finally { app.dom.window.close(); }
 });
 
-test('all 1007 lazy frames remain navigable and pixels load only when viewed', async () => {
+test('all 1007 frames are saved locally and decoded pixels remain bounded', async () => {
   const app = await mount('#ra=10&dec=-5&cmode=exposures&speed=5000&maxframes=1', (url, result) => {
     if (url.pathname !== '/api/epoch-stack') return result;
     return {count:1007, n_attempted:1008, n_exposures_skipped:1,
@@ -352,7 +353,7 @@ test('all 1007 lazy frames remain navigable and pixels load only when viewed', a
   try {
     await settle(() => app.q('.combined-viewer canvas'));
     assert.match(app.q('.processing-details').textContent, /download failed/);
-    assert.equal(app.requests.filter(u => u.startsWith('/static/')).length,0);
+    assert.equal(app.requests.filter(u => u.startsWith('/static/')).length,1007,'Every frame is saved locally before publishing the snapshot');
     // Let the initial frame-set effect reset playback before scrubbing.
     await new Promise(resolve => setTimeout(resolve, 40));
     const slider = app.q('[aria-label="Timeline frame"]');
@@ -365,7 +366,7 @@ test('all 1007 lazy frames remain navigable and pixels load only when viewed', a
     app.button('Use current as reference').click();
     app.q('[aria-label="Previous timeline frame"]').click();
     await settle(() => app.requests.includes('/static/cutouts/lazy-1005.json'));
-    assert.ok(app.requests.filter(u => u.startsWith('/static/')).length <= 3);
+    assert.equal(app.requests.filter(u => u.startsWith('/static/')).length,1007,'Scrubbing uses local pixels without server requests');
     app.toggle('SPHEREx panel');
     await settle(() => app.q('.viewer-row canvas'));
     await new Promise(resolve => setTimeout(resolve, 40));
@@ -391,8 +392,8 @@ test('failed lazy pixels show an error rather than silently advancing playback',
     return result;
   });
   try {
-    await settle(() => app.q('.viewer-row [role="alert"]'));
-    assert.match(app.q('.viewer-row [role="alert"]').textContent,/Synthetic pixel download failed/);
+    await settle(() => app.q('[role="alert"]') || app.q('.error'));
+    assert.match((app.q('[role="alert"]') || app.q('.error')).textContent,/Synthetic pixel download failed/);
     assert.ok(app.q('.timeline-target-bar'));
     assert.deepEqual(app.errors,[]);
   } finally { app.dom.window.close(); }

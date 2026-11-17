@@ -66,6 +66,7 @@ def test_discovery_does_not_sample_when_legacy_limit_is_supplied(monkeypatch):
 
 
 def test_raw_stack_processes_every_candidate_and_returns_lazy_pixels(monkeypatch, tmp_path):
+    monkeypatch.setenv('SPHEREX_CACHE_DIR', str(tmp_path))
     images = [observation('dr1', i * .001, 4, i)[0] for i in range(1007)]
     monkeypatch.setattr(main.sx, 'query_releases', lambda *a, **k: images)
     monkeypatch.setattr(main.sx, 'download_cutout', lambda url: 'fixture')
@@ -93,7 +94,7 @@ def test_raw_stack_processes_every_candidate_and_returns_lazy_pixels(monkeypatch
     assert result['complete'] is True
     assert all('data_b64' not in frame and 'data_url' in frame for frame in result['cutouts'])
     # Equal payloads are stored once; repeat queries don't duplicate the cache.
-    files = list((tmp_path / 'cutouts').iterdir())
+    files = list(main.research.assets_dir(tmp_path).iterdir())
     assert len(files) == 1
     assert json.loads(files[0].read_text())['data_b64']
 

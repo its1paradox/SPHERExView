@@ -7,6 +7,7 @@ import CombinedViewer from './components/CombinedViewer.jsx';
 import { decodeB64Float32, sortPixels } from './lib/render.js';
 import { DEFAULT_DISPLAY, buildHash, parseHash } from './lib/urlstate.js';
 import { comparisonUrl } from './lib/comparison.js';
+import { beginResearch, saveResearchView } from './lib/research.js';
 
 export { DEFAULT_DISPLAY };
 
@@ -161,6 +162,15 @@ export default function App() {
   const [pin, setPin] = useState(null);
   // Target + field of the last search, for the combined WISE->SPHEREx timeline.
   const [queried, setQueried] = useState(null);
+  const [historyError, setHistoryError] = useState('');
+
+  useEffect(() => {
+    if (!queried || loading) return;
+    const savedForm = { ...form, coords: `${queried.ra} ${queried.dec}`, fov: String(queried.fov),
+      survey: queried.survey, release: queried.release, wiseBand: queried.wiseBand, bands: queried.band ? queried.band.split(',') : [] };
+    const timer = setTimeout(() => saveResearchView(queried, 'timeline', buildHash(savedForm, view)).catch(e => setHistoryError(e.message)), 600);
+    return () => clearTimeout(timer);
+  }, [queried, loading, form, view]);
 
   // Keep the address bar in sync so the current view is always shareable.
   useEffect(() => {
@@ -315,6 +325,13 @@ export default function App() {
 
   const search = async ({ ra, dec, fov, survey, release = 'all', band, limit, wiseBand }) => {
     setLoading(true);
+    setHistoryError('');
+    try {
+      await beginResearch({ ra, dec, fov, survey, release });
+      await saveResearchView({ ra, dec, fov, survey, release }, 'timeline', buildHash({ ...form,
+        coords: `${ra} ${dec}`, fov: String(fov), survey, release, wiseBand, bands: band ? band.split(',') : [] }, view));
+    }
+    catch (e) { setHistoryError(`History unavailable: ${e.message}`); setLoading(false); return; }
     setError(null);
     setProcessing({});
     setStatus('Querying SPHEREx + WiseView\u2026 processing all observations in batches; large fields can take several minutes.');
@@ -333,6 +350,7 @@ export default function App() {
       survey,
       release,
       band: band || '',
+      wiseBand,
     });
 
     const sxParams = new URLSearchParams({
@@ -405,8 +423,8 @@ export default function App() {
       }
 
       setStatus(messages.join(' \u00b7 '));
-      if (sxRes.status === 'rejected' && wiseRes.status === 'rejected') {
-        setError('Both queries failed.');
+      if (sxRes.status === 'rejected' || wiseRes.status === 'rejected') {
+        setError([sxRes, wiseRes].filter(r => r.status === 'rejected').map(r => r.reason.message).join(' · '));
       }
     } catch (err) {
       setError(err.message);
@@ -454,7 +472,16 @@ export default function App() {
     <div className="app timeline-app">
       <header className="timeline-header">
         <div>
-          <a className="timeline-brand" href="index.html">SPHERExView</a>
+          <a className="timeline-brand" href="index.html" title="Return to research library" onClick={async event => {
+            if (!queried || loading) return;
+            event.preventDefault();
+            try {
+              await saveResearchView(queried, 'timeline', buildHash({ ...form, coords: `${queried.ra} ${queried.dec}`,
+                fov: String(queried.fov), survey: queried.survey, release: queried.release,
+                wiseBand: queried.wiseBand, bands: queried.band ? queried.band.split(',') : [] }, view));
+              window.location.assign('index.html');
+            } catch (e) { setHistoryError(e.message); }
+          }}>SPHERExView · Library</a>
           <h1>WISE → SPHEREx</h1>
           <p className="subtitle">One sky field. Two missions. A continuous timeline.</p>
         </div>
@@ -463,6 +490,7 @@ export default function App() {
       </header>
       <div className="layout">
         <main className="viewers">
+          {historyError && <p role="alert">{historyError}</p>}
           <form className="timeline-target-bar" aria-label="Target coordinates and field width" onSubmit={submitTarget}>
             <TargetFields form={form} setForm={setForm} coordsError={coordsError} setCoordsError={setCoordsError} />
             <button type="submit" disabled={loading}>{loading ? 'Loading…' : 'Fetch images'}</button>

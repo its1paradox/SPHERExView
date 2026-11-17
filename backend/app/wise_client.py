@@ -14,6 +14,8 @@ propagated (proper motion) to each epoch's MJD.
 
 from __future__ import annotations
 
+from . import research
+
 import hashlib
 import logging
 import os
@@ -91,13 +93,20 @@ def get_epochs(ra: float, dec: float, band: int) -> List[dict]:
     return epochs
 
 
+def _epoch_cache_path(ra, dec, size_arcsec, band, epoch):
+    size_px = arcsec_to_px(size_arcsec)
+    key = hashlib.md5(f"byw|{ra:.5f}|{dec:.5f}|{size_px}|{band}|{epoch}".encode()).hexdigest()
+    return os.path.join(research.cache_dir(CACHE_DIR), f"{key}.fits")
+
+
+@research.source_download(_epoch_cache_path)
 def download_epoch_cutout(
     ra: float, dec: float, size_arcsec: float, band: int, epoch: int
 ) -> str:
     """Download one time-resolved epoch cutout FITS (cached). Returns path."""
     size_px = arcsec_to_px(size_arcsec)
     key = hashlib.md5(f"byw|{ra:.5f}|{dec:.5f}|{size_px}|{band}|{epoch}".encode()).hexdigest()
-    path = os.path.join(CACHE_DIR, f"{key}.fits")
+    path = os.path.join(research.cache_dir(CACHE_DIR), f"{key}.fits")
     if os.path.exists(path) and os.path.getsize(path) > 0:
         return path
 
@@ -109,10 +118,12 @@ def download_epoch_cutout(
     if resp.status_code != 200 or len(resp.content) < 2880:
         raise WiseCutoutError(f"cutout HTTP {resp.status_code} for epoch={epoch}")
 
-    os.makedirs(CACHE_DIR, exist_ok=True)
+    os.makedirs(research.cache_dir(CACHE_DIR), exist_ok=True)
     tmp = f"{path}.tmp.{os.getpid()}.{threading.get_ident()}"
-    with open(tmp, "wb") as fh:
-        fh.write(resp.content)
+    with research.lock:
+        research.reserve_source(len(resp.content))
+        with open(tmp, "wb") as fh:
+            fh.write(resp.content)
     os.replace(tmp, path)
     return path
 

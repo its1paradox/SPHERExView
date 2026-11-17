@@ -19,7 +19,8 @@ from dataclasses import dataclass
 from collections import deque
 from contextlib import ExitStack
 from concurrent.futures import ThreadPoolExecutor
-from functools import lru_cache
+from contextvars import copy_context
+from . import research
 from pathlib import Path
 from typing import Callable, Literal
 
@@ -207,7 +208,7 @@ def _group_epochs_one_family(images, recipe):
     return groups
 
 
-@lru_cache(maxsize=48)
+@research.file_cache(maxsize=48)
 def calibration_file(detector, release, version=None):
     # Versioned by release; the full-resolution product is verified against
     # each exposure below. A missing/mismatched calibration excludes the input.
@@ -271,6 +272,8 @@ def load_samples(path, image, recipe, wcs_out, n, calibration_loader=None):
             cal_path, cal_url, cal_hash = (calibration_loader(detector) if calibration_loader
                                          else calibration_file(detector, release, cal_version))
             calibration = stack.enter_context(fits.open(cal_path))
+        except research.CacheCapacityError:
+            raise
         except Exception as exc:
             raise InputError("calibration_unavailable", str(exc)) from exc
         try:
@@ -399,6 +402,8 @@ def load_samples(path, image, recipe, wcs_out, n, calibration_loader=None):
                     (flags & (1 << bit_map["MP_SOURCE"])) == 0, omega, sky_wcs, wcs_out, n, recipe.aperture_radius_arcsec)
                 metadata.update(area_metadata, spectrum_status="ready", spectrum_valid_positions=int(np.isfinite(spectral_maps["flux"]).sum()),
                     spectrum_usable_positions=int(np.isfinite(spectral_maps["usable_flux"]).sum()))
+            except research.CacheCapacityError:
+                raise
             except Exception as exc:
                 metadata.update(spectrum_status="unavailable", spectrum_reason=str(exc))
         else:
@@ -507,7 +512,7 @@ def prefetch_downloads(images, recipe, downloader, cancelled):
             if recipe.include_spectra:
                 cutout_size += 5 * recipe.aperture_radius_arcsec + 24.8
             url = sx.get_cutout_url(im.access_url, recipe.ra, recipe.dec, cutout_size)
-            queue.append((im, url, pool.submit(downloader, url)))
+            queue.append((im, url, pool.submit(copy_context().run, downloader, url)))
     try:
         fill()
         while queue:
@@ -516,7 +521,9 @@ def prefetch_downloads(images, recipe, downloader, cancelled):
             yield queue.popleft()
             fill()
     finally:
-        pool.shutdown(wait=False, cancel_futures=True)
+        # Retain the workspace lease until downloads stop writing. A cancelled
+        # job must not race a user's subsequent cache deletion.
+        pool.shutdown(wait=True, cancel_futures=True)
 
 
 def build(recipe: Recipe, output_dir: Path, progress: Callable, cancelled: threading.Event,
@@ -566,7 +573,8 @@ def build(recipe: Recipe, output_dir: Path, progress: Callable, cancelled: threa
                 record["input_index"] = len(provenance)
                 try:
                     path = download.result()
-                    samples = loader(path, im, recipe, wcs, n)
+                    with research.source_scope():
+                        samples = loader(path, im, recipe, wcs, n)
                     if samples.index.size:
                         accumulator.add(samples)
                         accepted.append(samples.mjd)
@@ -576,12 +584,15 @@ def build(recipe: Recipe, output_dir: Path, progress: Callable, cancelled: threa
                     if recipe.include_spectra and samples.spectrum is not None:
                         spectral_samples.append({"detector": detector, "obs_id": im.obs_id, "mjd": samples.mjd,
                             "data_release": record["data_release"], "input_index": len(provenance), "arrays": samples.spectrum})
-                except Cancelled:
+                except (Cancelled, research.CacheCapacityError):
                     raise
                 except Exception as exc:
                     status = getattr(exc, "code", "no_overlap" if isinstance(exc, sx.CutoutNoOverlapError) else "input_error")
                     record.update(status=status, reason=str(exc))
                     failures.append(status)
+                finally:
+                    if download.done() and not download.cancelled() and download.exception() is None:
+                        research.unpin(download.result())
                 provenance.append(record)
                 epoch_inputs.append(record)
                 finished += 1
@@ -606,6 +617,7 @@ def build(recipe: Recipe, output_dir: Path, progress: Callable, cancelled: threa
             spectrum.save_spectra(output_dir / f"spectrum-{k}.fits", spectral_samples, wcs, recipe, epoch, epoch_inputs)
         epoch["spectra"] = [{**{key: value for key, value in s.items() if key != "arrays"}, "maps": encode_maps(s["arrays"])} for s in spectral_samples]
         epochs.append(epoch)
+        research.maintain_outputs(research.workspace())
     if cancelled.is_set():
         raise Cancelled()
     deps = {name: importlib.metadata.version(name) for name in ("numpy", "astropy", "astroquery", "photutils")}

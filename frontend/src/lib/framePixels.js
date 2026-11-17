@@ -1,3 +1,4 @@
+import { fetchApi } from './api.js';
 import { useEffect, useState } from 'react';
 import { decodeB64Float32, sortPixels } from './render.js';
 
@@ -37,7 +38,7 @@ export function useFramePixels(frames) {
           cache.delete(url); cache.set(url, pixels);
           continue;
         }
-        const response = await fetch(url, { signal: controller.signal });
+        const response = await fetchApi(url, { signal: controller.signal });
         if (!response.ok) throw new Error(`Image download failed (${response.status}). Select the frame again to retry.`);
         const payload = await response.json();
         if (!active) return;

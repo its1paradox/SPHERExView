@@ -58,11 +58,18 @@ class DiskArray:
             value._mmap.close()
 
 
+def check_workspace(folder, required):
+    if sum(p.stat().st_size for p in folder.rglob("*") if p.is_file()) + required > int(os.getenv("SPHEREX_WORK_BYTES", str(8 * 1024**3))):
+        raise HTTPException(507, "Working storage budget exceeded. No subset was substituted.")
+    check_space(folder, required)
+
+
 def spill(exposure, index):
     folder = _workspace.get()
     if folder is None:
         return exposure
-    check_space(folder, sum(getattr(exposure, k).nbytes for k in ("sci", "var", "valid")))
+    needed = sum(getattr(exposure, k).nbytes for k in ("sci", "var", "valid"))
+    check_workspace(folder, needed)
     for name in ("sci", "var", "valid"):
         setattr(exposure, name, DiskArray(folder / f"{name}.bin", getattr(exposure, name)))
     return exposure
@@ -90,7 +97,7 @@ def combine(exposures, sigma=5.0, maxiters=2, min_clip_n=5):
     tile = max(1, min(pixels, budget // max(1, n * 96)))
     folder = _workspace.get()
     with tempfile.TemporaryDirectory(dir=folder) as tmp:
-        check_space(tmp, n * pixels)
+        check_workspace(folder or Path(tmp), n * pixels)
         mask_path = Path(tmp) / "mask.bin"
         with open(mask_path, "wb") as file:
             file.truncate(n * pixels)

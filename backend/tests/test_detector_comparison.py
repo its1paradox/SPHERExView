@@ -190,7 +190,7 @@ def test_api_rejects_invalid_recipes_and_export_paths():
     client = TestClient(app)
     assert client.post('/api/detector-comparison', json={'ra': 360, 'dec': 0}).status_code == 422
     assert client.get('/api/detector-comparison/not-a-job').status_code == 404
-    assert client.get('/api/detector-comparison/' + 'a' * 32 + '/epochs/-1.fits').status_code == 409
+    assert client.get('/api/detector-comparison/' + 'a' * 32 + '/epochs/-1.fits').status_code == 410
 
 
 def test_completed_job_exports_survive_registry_eviction(tmp_path, monkeypatch):

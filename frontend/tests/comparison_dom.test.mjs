@@ -1,3 +1,4 @@
+import { localWindow } from './localWindow.mjs';
 // DOM integration uses explicitly synthetic data; it does not claim visual QA.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,7 +11,7 @@ import { pixelToWorld } from '../src/lib/render.js';
 const encode = values => ({ dtype: '<f4', data_b64: Buffer.from(new Float32Array(values).buffer).toString('base64') });
 const fixture = {
   width: 4, height: 4, n_selected: 12, n_unique_inventory: 12, preview_subset: false,
-  recipe: { ra: 10, dec: -5, pixscale_arcsec: 6.2, min_exposures: 1, background: 'zodi', weighting: 'equal', resampling: 'bin' },
+  recipe: { ra: 10, dec: -5, size_arcsec:240, survey:'wide', release:'all', pixscale_arcsec: 6.2, min_exposures: 1, background: 'zodi', weighting: 'equal', resampling: 'bin' },
   wcs: { height: 4, crpix1: 2.5, crpix2: 2.5, crval1: 10, crval2: -5, cd11: -6.2/3600, cd12: 0, cd21: 0, cd22: 6.2/3600 },
   inputs: [], epochs: [0, 1].map(epoch => ({ index: epoch, grouping: 'visit', datetime_start: '2026-01-01T00:00:00', datetime_end: '2026-01-02T00:00:00', complete_six: epoch === 0,
     tiles: [1,2,3,4,5,6].map(d => ({ detector: d, status: epoch === 1 && d === 6 ? 'missing' : 'ok', n_inventory: 1, n_selected: 1, n_accepted: 1, failures: {}, mjd_start: 61000 + epoch, mjd_end: 61000 + epoch,
@@ -22,14 +23,14 @@ for (const scenario of ['match', 'different recipe', 'missing result']) test(`sa
   const hash = `#ra=10&dec=-5&epoch=1&pinra=10&pindec=-5&result=${'a'.repeat(32)}`;
   const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: `http://localhost/compare.html${hash}`, runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window, requests = [];
-  w.structuredClone = structuredClone;
+  localWindow(w);
   w.HTMLCanvasElement.prototype.getContext = () => ({ fillRect() {}, clearRect() {}, drawImage() {}, putImageData() {}, beginPath() {}, moveTo() {}, lineTo() {}, arc() {}, stroke() {}, fillText() {}, createImageData: (width, height) => ({ data: new Uint8ClampedArray(width * height * 4) }) });
   w.fetch = async (url, options) => {
     requests.push([url, options]);
     const saved = structuredClone(fixture);
     saved.recipe = recipeFromForm(readState(hash).form);
     if (scenario === 'different recipe') saved.recipe.ra = 30;
-    return { ok: scenario !== 'missing result', status: 404, json: async () => scenario === 'missing result' ? { detail: 'Result no longer exists' } : saved };
+    return Response.json(scenario === 'missing result' ? {detail:'Result no longer exists'} : saved, {status:scenario === 'missing result'?404:200});
   };
   try {
     vm.runInContext(bundle.outputFiles[0].text, dom.getInternalVMContext());
@@ -43,8 +44,10 @@ for (const scenario of ['match', 'different recipe', 'missing result']) test(`sa
       await settle(() => w.document.querySelector('.compare-error'));
       assert.equal(w.document.querySelectorAll('.detector-grid canvas').length, 0, 'Never show a mismatched saved field');
     }
-    assert.equal(requests.length, 1, 'Restoring or rejecting a saved link must not trigger a build');
-    assert.equal(requests[0][1], undefined);
+    assert.equal(requests.filter(([url])=>url.endsWith('/result')).length,1);
+    assert.equal(requests.filter(([,o])=>o?.method==='POST').length,0,'Restoring must not trigger a build');
+    assert.equal(requests[0][1]?.method, undefined);
+    assert.match(requests[0][1].headers.get('X-Research-Target'), /^[a-f0-9]{32}$/);
   } finally { dom.window.close(); }
 });
 
@@ -64,7 +67,7 @@ test('real React entry builds seven tiles with a local spectrum, links pins and 
   const bundle = await build({ entryPoints: ['src/compare.jsx'], bundle: true, format: 'iife', jsx: 'automatic', write: false, loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' } });
   const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'http://localhost/compare.html#ra=10&dec=-5', runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window, requests = [], errors = [];
-  w.structuredClone = structuredClone;
+  localWindow(w);
   w.HTMLDialogElement.prototype.showModal = function() { this.setAttribute('open', ''); };
   w.HTMLDialogElement.prototype.close = function() { this.removeAttribute('open'); };
   w.console.error = (...args) => errors.push(args.join(' '));
@@ -72,7 +75,7 @@ test('real React entry builds seven tiles with a local spectrum, links pins and 
   w.fetch = async (url, options) => {
     requests.push([url, options]);
     const data = options?.method === 'POST' ? { job_id: 'abc' } : url.endsWith('/result') ? structuredClone(fixture) : { status: 'complete', message: 'Synthetic fixture ready' };
-    return { ok: true, json: async () => data };
+    return Response.json(data);
   };
   const click = selector => w.document.querySelector(selector).click();
   try {
@@ -138,7 +141,7 @@ test('real React entry builds seven tiles with a local spectrum, links pins and 
     assert.match(w.document.querySelector('.rgb-legend').textContent, /peak-channel brightness/);
     const scientificReadout = w.document.querySelector('.source-readout').textContent;
     const spectrumPlot = w.document.querySelector('.spectrum-plot').innerHTML;
-    const fitsLink = w.document.querySelector('a[href$="epochs/0.fits"]').href;
+    const fitsLink = w.document.querySelector('button[data-export-url$="epochs/0.fits"]').dataset.exportUrl;
     const pinnedBeforeLayout = readState(w.location.hash).pin;
     assert.equal(w.document.querySelector('[aria-label="Image area"]'), null, 'No detached layout slider');
     const workspace = w.document.querySelector('.analysis-workspace');
@@ -177,7 +180,7 @@ test('real React entry builds seven tiles with a local spectrum, links pins and 
     await settle(()=>w.location.hash.includes('rgbbg=neutral'));
     assert.equal(w.document.querySelector('.source-readout').textContent, scientificReadout);
     assert.equal(w.document.querySelector('.spectrum-plot').innerHTML, spectrumPlot);
-    assert.equal(w.document.querySelector('a[href$="epochs/0.fits"]').href,fitsLink);
+    assert.equal(w.document.querySelector('button[data-export-url$="epochs/0.fits"]').dataset.exportUrl,fitsLink);
     assert.equal(requests.length,callsBeforeHover,'RGB changes must make no archive, extraction or rebuild request');
     assert.equal(w.document.querySelector('.rgb-legend details').open, false, 'RGB explanatory content stays collapsed by default');
     rgbBackground.value='shared'; rgbBackground.dispatchEvent(new w.Event('change',{bubbles:true}));
@@ -204,7 +207,7 @@ test('real React entry builds seven tiles with a local spectrum, links pins and 
     survey.value = 'deep'; survey.dispatchEvent(new w.Event('change', { bubbles: true }));
     await settle(() => !!w.document.querySelector('.compare-pending'));
     assert.ok(w.location.hash.includes('survey=wide'), 'Shared result link keeps the displayed recipe');
-    assert.equal(w.document.querySelector('a[href$="epochs/0.fits"]').getAttribute('href'), '/api/detector-comparison/abc/epochs/0.fits');
+    assert.equal(w.document.querySelector('button[data-export-url$="epochs/0.fits"]').dataset.exportUrl, '/api/detector-comparison/abc/epochs/0.fits');
     assert.deepEqual(errors, []);
   } finally { dom.window.close(); }
 });
@@ -214,15 +217,16 @@ for (const legacy of [false, true]) {
     const bundle = await build({ entryPoints: ['src/compare.jsx'], bundle: true, format: 'iife', jsx: 'automatic', write: false, loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' } });
     const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'http://localhost/compare.html#ra=10&dec=-5&release=dr1&spectra=0', runScripts: 'outside-only', pretendToBeVisual: true });
     const w = dom.window, requests = [], errors = [];
-    w.structuredClone = structuredClone;
+    localWindow(w);
     w.console.error = (...args) => errors.push(args.join(' '));
     w.HTMLCanvasElement.prototype.getContext = () => ({ fillRect() {}, clearRect() {}, drawImage() {}, putImageData() {}, beginPath() {}, moveTo() {}, lineTo() {}, arc() {}, stroke() {}, fillText() {}, createImageData: (width, height) => ({ data: new Uint8ClampedArray(width * height * 4) }) });
     const result = structuredClone(fixture);
+    result.recipe.release = 'dr1';
     for (const e of result.epochs) { delete e.spectra; if (!legacy) e.spectra_enabled = false; }
     if (!legacy) result.recipe.include_spectra = false;
     w.fetch = async (url, options) => {
       requests.push([url, options]);
-      return { ok: true, json: async () => options?.method === 'POST' ? {job_id:'abc'} : url.endsWith('/result') ? structuredClone(result) : {status:'complete',message:'Images ready'} };
+      return Response.json(options?.method === 'POST' ? {job_id:'abc'} : url.endsWith('/result') ? structuredClone(result) : {status:'complete',message:'Images ready'});
     };
     try {
       vm.runInContext(bundle.outputFiles[0].text, dom.getInternalVMContext());
@@ -231,7 +235,7 @@ for (const legacy of [false, true]) {
       assert.equal(JSON.parse(requests[0][1].body).release, 'dr1');
       assert.equal(w.document.querySelector('[aria-label="Precompute aperture spectra"]').checked, false);
       assert.equal(w.document.querySelector('a[href*="/spectra/"]'), null);
-      assert.ok(w.document.querySelector('a[href$="epochs/0.fits"]'));
+      assert.ok([...w.document.querySelectorAll('button')].some(b => b.textContent === 'Download epoch FITS'));
       w.document.querySelector('canvas').dispatchEvent(new w.KeyboardEvent('keydown', {key:'Enter',bubbles:true}));
       await settle(() => w.document.querySelector('.spectrum-empty').textContent.includes(legacy ? 'No precomputed' : 'Images-only'));
       const before = requests.length;
@@ -248,7 +252,7 @@ test('expanded detector navigation, three color modes, wheel navigation and expo
   const bundle = await build({ entryPoints: ['src/compare.jsx'], bundle: true, format: 'iife', jsx: 'automatic', write: false, loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' } });
   const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'http://localhost:8001/#ra=10&dec=-5&colorsigma=0', runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window, requests = [], errors = [], blobs = [], pixels = [];
-  w.structuredClone = structuredClone; w.Blob = Blob;
+  localWindow(w); w.Blob = Blob;
   w.HTMLDialogElement.prototype.showModal = function() { this.setAttribute('open', ''); };
   w.HTMLDialogElement.prototype.close = function() { this.removeAttribute('open'); };
   w.console.error = (...args) => errors.push(args.join(' '));
@@ -261,7 +265,7 @@ test('expanded detector navigation, three color modes, wheel navigation and expo
   w.fetch = async (url, options) => {
     requests.push([url, options]);
     const data = options?.method === 'POST' ? { job_id: 'abc' } : url.endsWith('/result') ? structuredClone(fixture) : { status: 'complete', message: 'Synthetic fixture ready' };
-    return { ok: true, json: async () => data };
+    return Response.json(data);
   };
   const button = name => [...w.document.querySelectorAll('button')].find(e => e.textContent === name);
   const params = () => new URLSearchParams(w.location.hash.slice(1));

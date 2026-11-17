@@ -15,6 +15,8 @@ GET /api/spectra/download/{job_id} -- result in votable / csv / json
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
 import hashlib
 import logging
 import os
@@ -34,6 +36,7 @@ from astropy.io import fits
 from . import coadd as cx
 from . import releases
 from . import hosting
+from . import research
 from . import batching
 from . import imaging
 from . import spectra_client as spx
@@ -50,8 +53,29 @@ STATIC_DIR = os.environ.get(
 )
 os.makedirs(os.path.join(STATIC_DIR, "cutouts"), exist_ok=True)
 
-app = FastAPI(title="SPHERExView", version="0.4.0")
+@asynccontextmanager
+async def lifespan(app):
+    await asyncio.to_thread(research.maintenance, True)
+    async def clean():
+        while True:
+            await asyncio.sleep(60)
+            try:
+                await asyncio.to_thread(research.maintenance)
+            except Exception:
+                log.exception("Cache maintenance failed")
+    task = asyncio.create_task(clean())
+    try:
+        yield
+    finally:
+        task.cancel()
+        try: await task
+        except asyncio.CancelledError: pass
+
+
+app = FastAPI(title="SPHERExView", version="0.4.0", lifespan=lifespan)
 app.include_router(comparison_router)
+app.include_router(research.router)
+app.add_middleware(research.ResearchMiddleware)
 app.add_middleware(hosting.PublicAdmissionMiddleware)
 
 app.add_middleware(
@@ -97,6 +121,7 @@ def _build_stack(
 
     size_arcsec = 2 * radius_arcsec
 
+    @research.source_reader
     def fetch_one(im: sx.SpherexImage):
         """Download + reproject one cutout, or return a recorded exclusion.
 
@@ -115,6 +140,8 @@ def _build_stack(
             fits_path = sx.download_cutout(cutout_url)
             with fits.open(fits_path) as hdul:
                 release_meta = releases.fits_provenance(hdul, releases.product_release(im.access_url, im.survey))
+        except research.CacheCapacityError:
+            raise
         except sx.CutoutNoOverlapError:
             # Footprint matched the cone search but does not contain the
             # exact position (SPHEREx footprints are elongated/rotated).
@@ -166,7 +193,7 @@ def _build_stack(
             batching.check_space(STATIC_DIR)
             batch = images[idx : idx + workers]
             idx += len(batch)
-            for res in pool.map(fetch_one, batch):
+            for res in research.map_context(pool, fetch_one, batch):
                 if "failure" in res:
                     omissions.append(res["failure"])
                     skipped += 1
@@ -174,8 +201,9 @@ def _build_stack(
                     payload = {"data_b64": res.pop("data_b64")}
                     encoded = json.dumps(payload)
                     name = f"timeline-{hashlib.sha256(encoded.encode()).hexdigest()}.json"
-                    destination = os.path.join(STATIC_DIR, "cutouts", name)
+                    destination = str(research.assets_dir(STATIC_DIR) / name)
                     if not os.path.exists(destination):
+                        research.maintain_outputs(research.workspace(), len(encoded.encode()))
                         temporary = destination + f".{uuid.uuid4().hex}.tmp"
                         try:
                             with open(temporary, "w") as output:
@@ -184,7 +212,7 @@ def _build_stack(
                         finally:
                             if os.path.exists(temporary):
                                 os.unlink(temporary)
-                    res["data_url"] = f"/static/cutouts/{name}"
+                    res["data_url"] = research.asset_url(name)
                     cutouts.append(res)
 
     cutouts.sort(key=lambda c: (c["metadata"].get("mjd_mid") is None, c["metadata"].get("mjd_mid") or 0))
@@ -207,6 +235,7 @@ def _build_stack(
 
 
 @app.get("/api/cutouts")
+@research.cached
 def get_cutouts(
     ra: float,
     dec: float,
@@ -220,6 +249,7 @@ def get_cutouts(
 
 
 @app.get("/api/wise-stack")
+@research.cached
 def get_wise_stack(
     ra: float,
     dec: float,
@@ -269,6 +299,7 @@ def get_wise_stack(
         except Exception as exc:
             log.warning("Gaia query failed, markers disabled: %s", exc)
 
+    @research.source_reader
     def fetch_epoch(ep):
         try:
             b1 = 1 if two_band else band_num
@@ -281,6 +312,8 @@ def get_wise_stack(
                 if (h2, w2) != (h, w):
                     log.info("WISE epoch %s: W1/W2 size mismatch, skipping", ep["epoch"])
                     return None
+        except research.CacheCapacityError:
+            raise
         except wc.WiseCutoutError as exc:
             log.info("WISE epoch %s unavailable: %s", ep["epoch"], exc)
             return None
@@ -320,7 +353,7 @@ def get_wise_stack(
         return frame
 
     with ThreadPoolExecutor(max_workers=int(os.getenv("SPHEREX_FETCH_WORKERS", "8"))) as pool:
-        results = list(pool.map(fetch_epoch, epochs))
+        results = list(research.map_context(pool, fetch_epoch, epochs))
 
     frames = [r for r in results if r is not None]
     frames.sort(key=lambda f: f["mjd"])
@@ -337,6 +370,7 @@ def get_wise_stack(
 
 
 @app.get("/api/epoch-stack")
+@research.cached
 def get_epoch_stack(
     ra: float,
     dec: float,
@@ -387,6 +421,7 @@ def _fetch_aligned(
     """
 
     omissions = []
+    @research.source_reader
     def fetch_one(im: sx.SpherexImage):
         def failure(reason):
             omissions.append({"obs_id": im.obs_id, "access_url": im.access_url, "reason": reason})
@@ -404,6 +439,8 @@ def _fetch_aligned(
                 resampling=resampling,
                 expected_release=releases.product_release(im.access_url, im.survey),
             )
+        except research.CacheCapacityError:
+            raise
         except sx.CutoutNoOverlapError:
             return failure("no_overlap")
         except Exception as exc:
@@ -430,7 +467,7 @@ def _fetch_aligned(
     exposures = []
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for start in range(0, len(images), workers):
-            for result in pool.map(fetch_one, images[start:start + workers]):
+            for result in research.map_context(pool, fetch_one, images[start:start + workers]):
                 if result is not None:
                     exposures.append(batching.spill(result, len(exposures)))
     return exposures, batching.Skipped(omissions)
@@ -450,6 +487,7 @@ def _validate_coadd_workload(n_px: int, n_images: int):
 
 
 @app.get("/api/coadd")
+@research.cached
 @batching.workspace
 def get_coadd(
     ra: float,
@@ -569,6 +607,7 @@ def get_coadd(
 
 
 @app.get("/api/epoch-coadds")
+@research.cached
 @batching.workspace
 def get_epoch_coadds(
     ra: float,

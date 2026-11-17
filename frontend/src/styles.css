@@ -788,3 +788,6 @@ header h1 {
   padding: 3px 6px;
   font-size: 0.82rem;
 }
+
+.local-save-status {position:fixed;z-index:1200;bottom:16px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 32px);box-sizing:border-box;padding:12px 18px;border:1px solid #426a82;border-radius:8px;background:#122431;color:#dfedf5;box-shadow:0 4px 20px #0008;font-size:14px;}
+.local-save-status small {display:block;color:#a8c2d2;margin-top:4px;}

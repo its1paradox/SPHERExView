@@ -23,6 +23,8 @@ Design notes / lessons learned
 
 from __future__ import annotations
 
+from . import research
+
 import hashlib
 import logging
 import os
@@ -279,7 +281,7 @@ def get_cutout_url(access_url: str, ra: float, dec: float, size_arcsec: float) -
 
 def _cache_path(cutout_url: str) -> str:
     key = hashlib.md5(cutout_url.encode()).hexdigest()
-    return os.path.join(CACHE_DIR, f"{key}.fits")
+    return os.path.join(research.cache_dir(CACHE_DIR), f"{key}.fits")
 
 
 def _retry_after_seconds(value):
@@ -312,6 +314,7 @@ def _looks_like_fits(path):
         return False
 
 
+@research.source_download(_cache_path)
 def download_cutout(cutout_url: str) -> str:
     """Download a FITS cutout (with on-disk caching). Returns the local path.
 
@@ -323,7 +326,7 @@ def download_cutout(cutout_url: str) -> str:
     CutoutDownloadError
         For permanent HTTP errors or exhausted transient retries.
     """
-    os.makedirs(CACHE_DIR, exist_ok=True)
+    os.makedirs(research.cache_dir(CACHE_DIR), exist_ok=True)
     path = _cache_path(cutout_url)
     if _looks_like_fits(path):
         return path
@@ -349,7 +352,10 @@ def download_cutout(cutout_url: str) -> str:
                     with open(tmp, "wb") as stream:
                         for chunk in resp.iter_content(chunk_size=64 * 1024):
                             if chunk:
-                                stream.write(chunk)
+                                with research.lock:
+                                    research.reserve_source(len(chunk))
+                                    stream.write(chunk)
+                                    stream.flush()
                                 size += len(chunk)
                     # iter_content decodes HTTP content encodings. Compare
                     # Content-Length only when it describes the decoded bytes.

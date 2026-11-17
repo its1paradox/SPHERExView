@@ -34,6 +34,76 @@ respect for the archive's requested wait time. See
 
 ## Using SPHERExView
 
+The landing page is your **research library**. Enter a sky position and field
+width, then choose **WISE–SPHEREx** or **6 detectors**. Searches from either
+tool are retained automatically, with one entry per exact coordinates, field
+width, survey and release selection. Each tool remembers its own recipe and
+display settings. The library link in either viewer returns to this dashboard.
+
+History and results live **on the user's device in IndexedDB**, not in a
+per-user server archive. Each saved response includes its numerical data and
+provenance. All raw timeline frame pixels and detector FITS/manifest exports
+are downloaded into local storage before the snapshot is marked saved.
+Revisiting an unchanged recipe reads these local files, including after the
+server cache expires. This still requires loading the web application itself;
+it is not a fully offline installable app.
+
+The dashboard reports actual saved payload bytes per field (excluding browser
+database overhead), split into timeline data, pixels, detector data and exports.
+It never adds the sizes of the shared server cache to a user's local total.
+
+- **Refresh data:** explicitly query the selected tool again. Every eligible
+  observation remains in scope. A complete replacement is committed atomically;
+  failures or device quota errors preserve the previous snapshot. Reopen normally
+  to view the previous saved result; use Refresh again to retry. The weekly
+  reminder does not claim that new observations are available.
+- **Clear cached files:** delete local result payloads while retaining the target
+  and recipes. Opening a tool rebuilds the deleted products.
+- **Remove target and data:** delete the local entry and its results. Neither
+  action affects files separately exported to the user's downloads folder.
+- **Protect local storage:** request browser persistence. The browser may decline.
+  Browser quotas still apply, and clearing site data deletes the library. Export
+  important FITS/manifests for long-term retention. There is no cross-device sync.
+
+Raw archive FITS are processed by the Python backend; processing has not moved
+into the browser. They are shared by immutable URL in a bounded source cache,
+not duplicated per user. The browser stores the generated research products.
+
+### Server storage policy
+
+Use one server process, as in the existing Docker deployment. Cache locks,
+reader pins and public admission controls are process-local. Defaults:
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `SPHEREX_SOURCE_CACHE_BYTES` | 2 GiB | Shared source FITS and calibration LRU cache |
+| `SPHEREX_RESULT_CACHE_BYTES` | 1 GiB | Temporary result handoffs, globally across users |
+| `SPHEREX_RESULT_TTL_SECONDS` | 3600 | Idle handoff lifetime; checked every minute |
+| `SPHEREX_WORK_BYTES` | 8 GiB | Per-job temporary timeline scratch budget |
+| `SPHEREX_MIN_FREE_GB` | 3 GiB | Free disk reserve |
+
+Source-cache writes reserve space before writing each chunk. Active readers and
+prefetches pin their files, so eviction cannot change an ongoing calculation.
+Completed result handoffs use LRU/expiry cleanup. In-progress output staging is
+protected and checked before publication; it can temporarily exceed the retained
+result budget while a job is building. Public admission admits one heavy job at a
+time. Scratch arrays are disk-batched and deleted when a job finishes, including
+failure; abandoned scratch is removed on restart. These are storage budgets,
+**not observation-count limits**. Insufficient working capacity returns an explicit
+error rather than substituting a scientifically incomplete subset.
+
+On startup, known legacy source FITS, comparison products and timeline JSON
+pixels move into managed storage and become eligible for eviction. Old server-only
+result links can therefore expire; the saved local recipe can rebuild them. No
+server search-history API or per-user history files are created. Temporary transfers
+use a random browser key in headers, never in shared URLs. Search history from
+before this feature cannot be reconstructed automatically.
+
+No new database server, storage subscription or paid service is required.
+
+The WISE timeline is also available directly at `timeline.html`; older
+`index.html#ra=…&dec=…` bookmarks continue to open the timeline.
+
 Enter **RA and Dec in decimal degrees**, choose a field of view in arcseconds,
 and click **Fetch images**. The default view combines WISE W1+W2 color epochs
 with SPHEREx D4+D6 color coadds. All eligible observations are processed; there
