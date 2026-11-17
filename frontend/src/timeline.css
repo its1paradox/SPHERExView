@@ -133,3 +133,87 @@
   .timeline-app .controls { padding: 8px; }
   .timeline-app .controls button { padding: 8px; }
 }
+/* Compact research workspace: image and playback stay in the same viewport. */
+.app.timeline-app { max-width: none; width: 100%; padding: 0; margin: 0; }
+.timeline-header { padding: 12px 20px; min-height: 64px; gap: 18px; }
+.timeline-header > div { display: flex; align-items: baseline; gap: 18px; }
+.timeline-brand { font-size: 10px; white-space: nowrap; }
+.timeline-header h1 { font-size: 18px; margin: 0; }
+.timeline-header .subtitle { display: none; }
+.timeline-tag { margin-left: auto; font-size: 10px; }
+.timeline-workspace-actions { display: flex; gap: 6px; }
+.timeline-app .timeline-workspace-actions button { font-size: 11px; padding: 7px 10px; }
+.timeline-app .layout { display: block; max-width: 2300px; padding: 12px 20px 16px; }
+.timeline-toolbar { padding: 8px 10px; gap: 8px 16px; }
+.panel-switch label { padding: 6px 8px; font-size: 11px; }
+.timeline-app .timeline-tools button { font-size: 11px; padding: 6px 9px; }
+.panel-switch > span, .timeline-tools > span { font-size: 10px; margin-right: 2px; }
+.timeline-status { min-height: 30px; padding: 6px 0; font-size: 11px; }
+.timeline-primary { margin-bottom: 12px; }
+.timeline-app .panel { padding: 12px; border-radius: 9px; }
+.timeline-app .panel h2 { padding: 9px 12px; margin: -12px -12px 10px; font-size: 13px; }
+.timeline-analysis { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 20px; align-items: start; }
+.timeline-image-stage { min-width: 0; display: flex; justify-content: center; background: #080f17; border-radius: 6px; }
+.timeline-app .combined-viewer canvas { width: min(100%, calc(100dvh - 280px)); height: auto; aspect-ratio: 1; margin: 0; }
+.timeline-app .frame-label { font-size: 11px; margin-bottom: 9px; }
+.timeline-inspector { border-left: 1px solid #293e50; padding: 8px 0 0 20px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.timeline-section-label { text-transform: uppercase; letter-spacing: .14em; color: #7fa6bc; font-size: 9px; font-weight: 600; }
+.timeline-inspector h3 { margin: -7px 0 0; font-size: 17px; font-weight: 600; }
+.timeline-target { font-size: 12px; color: #a6c3d7; margin: -7px 0 0; font-variant-numeric: tabular-nums; }
+.timeline-inspector .controls { order: 1; margin: 0; padding: 10px; }
+.timeline-inspector .coord-readout { order: 2; margin: 0; font-size: 10px; }
+.timeline-inspector .timeline-pin { order: 3; margin: 0; padding: 10px; justify-content: flex-start; }
+.timeline-inspector .combined-note { order: 4; margin: 0; border-top: 1px solid #293e50; padding-top: 12px; font-size: 11px; }
+.timeline-app .timeline-pin span { font-size: 11px; }
+.timeline-app .timeline-pin button { font-size: 10px; padding: 6px; }
+.timeline-app .viewer-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 12px; }
+.timeline-app .viewer-row .viewer { width: 100%; }
+.timeline-app .viewer-row canvas { max-height: calc(100dvh - 330px); max-width: 100%; width: auto; height: auto; margin: auto; }
+.timeline-app .info-panel { max-height: none; overflow: visible; }
+.timeline-app .workspace-settings .sidebar { display: block; position: static; max-height: none; overflow: visible; padding: 20px 22px; }
+.timeline-app .workspace-settings fieldset { border: 0; padding: 0; background: transparent; }
+.timeline-app .workspace-settings legend { padding: 0 0 14px; }
+@media (max-width: 1200px) {
+  .timeline-header > div { display: block; }
+  .timeline-header h1 { margin-top: 4px; }
+  .timeline-tag { display: none; }
+  .timeline-workspace-actions { margin-left: auto; }
+  .timeline-app .layout { padding: 10px 12px; }
+  .timeline-analysis { grid-template-columns: minmax(0, 1fr) 280px; gap: 14px; }
+  .timeline-inspector { padding-left: 14px; }
+}
+@media (max-width: 800px) {
+  .timeline-analysis { grid-template-columns: 1fr; gap: 12px; }
+  .timeline-inspector { border-left: 0; padding: 0; }
+  .timeline-app .combined-viewer canvas { width: min(100%, 520px); }
+  .timeline-header { flex-wrap: wrap; gap: 10px; padding: 12px; }
+  .timeline-workspace-actions { margin: 0; flex-wrap: wrap; }
+  .timeline-app .timeline-workspace-actions button { font-size: 10px; }
+  .timeline-inspector .combined-note { padding-top: 8px; }
+  .timeline-tools { margin-left: 0; }
+}
+.timeline-analysis { grid-template-columns: minmax(0, 1fr) 280px; gap: 18px; }
+.timeline-image-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; }
+.timeline-image-stage { display: flex; flex-direction: column; align-items: center; margin: 0; min-width: 0; background: #080f17; }
+.timeline-reference { order: -1; }
+.timeline-image-stage figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 5px 12px; align-self: stretch; padding: 9px 11px; font-size: 11px; color: #9bb7ca; border: 1px solid #283d50; border-radius: 5px 5px 0 0; }
+.timeline-image-stage figcaption strong { color: #d3e4ef; font-weight: 600; }
+.timeline-current figcaption { border-top: 2px solid #85c9ef; padding-top: 8px; }
+.timeline-app .combined-viewer canvas { width: min(100%, calc(100dvh - 315px)); height: auto; }
+.timeline-reference-controls { order: 2; display: flex; flex-wrap: wrap; gap: 6px; border-top: 1px solid #293e50; padding-top: 12px; }
+.timeline-app .timeline-reference-controls button { font-size: 11px; padding: 7px 9px; }
+.timeline-reference-controls p { color: #91abbe; font-size: 11px; line-height: 1.6; margin: 3px 0 0; }
+.timeline-inspector .controls { display: grid; grid-template-columns: repeat(3, auto) 1fr; }
+.timeline-inspector .controls input[type=range] { grid-column: 1 / -1; grid-row: 2; width: 100%; }
+@media (max-width: 1200px) {
+  .timeline-analysis { grid-template-columns: minmax(0, 1fr) 250px; gap: 12px; }
+  .timeline-image-stage figcaption { font-size: 10px; padding: 7px; }
+}
+@media (max-width: 900px) {
+  .timeline-analysis { grid-template-columns: 1fr; }
+  .timeline-inspector { border-left: 0; padding: 0; }
+}
+@media (max-width: 480px) {
+  .timeline-image-pair { gap: 7px; }
+  .timeline-image-stage figcaption { font-size: 9px; gap: 3px; }
+}

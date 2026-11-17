@@ -113,10 +113,9 @@ function attachLuptonScale(frames, { sat = 1.25, whitePct = 99.5 } = {}) {
   );
 }
 
-// Opens the spectrum viewer in a new tab for a sky position.
-export function openSpectrumTab(ra, dec, release = 'all') {
-  const params = `ra=${ra.toFixed(6)}&dec=${dec.toFixed(6)}&release=${release}`;
-  window.open(`spectrum.html#${params}`, '_blank', 'noopener');
+// The main spectrum workflow preserves the exact requested sky position.
+export function openApertureExplorer(ra, dec, fov, survey, release = 'all') {
+  window.open(`${comparisonUrl(ra, dec, fov, survey, release)}&pinra=${ra}&pindec=${dec}`, '_blank', 'noopener');
 }
 
 // Opens the time-resolved COLOR epoch blink (unWISE-style epoch coadds) in
@@ -428,6 +427,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const [settingsSection, setSettingsSection] = useState(null);
   return (
     <div className="app timeline-app">
       <header className="timeline-header">
@@ -437,6 +437,7 @@ export default function App() {
           <p className="subtitle">One sky field. Two missions. A continuous timeline.</p>
         </div>
         <span className="timeline-tag">DR1 + QR3 · ICRS</span>
+        <nav className="timeline-workspace-actions" aria-label="Viewer controls"><button onClick={() => setSettingsSection('target')}>Target &amp; images</button><button onClick={() => setSettingsSection('timeline')}>Timeline recipe</button><button onClick={() => setSettingsSection('display')}>Display settings</button></nav>
       </header>
       <div className="layout">
         <main className="viewers">
@@ -469,20 +470,6 @@ export default function App() {
                     setCoordsError('Enter RA and Dec in decimal degrees, e.g. 11.889632 28.089606');
                     return;
                   }
-                  openSpectrumTab(coords.ra, coords.dec, form.release);
-                }}
-              >
-                Generate spectrum at target
-              </button>
-              <button
-                type="button"
-                className="spectrum-btn"
-                onClick={() => {
-                  const coords = parseCoords(form.coords);
-                  if (!coords) {
-                    setCoordsError('Enter RA and Dec in decimal degrees, e.g. 11.889632 28.089606');
-                    return;
-                  }
                   openBlinkTab(coords.ra, coords.dec, form.fov, form.survey, form.limit, form.release);
                 }}
               >
@@ -494,9 +481,9 @@ export default function App() {
                   setCoordsError('Enter RA and Dec in decimal degrees, e.g. 11.889632 28.089606');
                   return;
                 }
-                window.open(comparisonUrl(coords.ra, coords.dec, form.fov, form.survey, form.release), '_blank', 'noopener');
+                openApertureExplorer(coords.ra, coords.dec, form.fov, form.survey, form.release);
               }}>
-                Six-detector comparison
+                Detector &amp; spectrum explorer
               </button>
             </div>
           </div>
@@ -505,6 +492,7 @@ export default function App() {
             {status || 'Choose a sky position and fetch images to begin.'}
           </div>
           {error && <p className="status error" role="alert">{error}</p>}
+          {coordsError && <p className="status error" role="alert">{coordsError}</p>}
           {view.showCombined && (
             <div className="timeline-primary" aria-label="Combined timeline view">
               {view.combinedMode !== 'exposures' && combinedCoaddStatus && (
@@ -523,7 +511,7 @@ export default function App() {
                     speedMs={view.speedMs}
                     pin={pin}
                     onPin={setPin}
-                    onSpectrum={(ra, dec) => openSpectrumTab(ra, dec, form.release)}
+                    onSpectrum={(ra, dec) => openApertureExplorer(ra, dec, queried?.fov ?? form.fov, queried?.survey ?? form.survey, queried?.release ?? form.release)}
                   />
                 ) : (
                   <section className="panel viewer combined-viewer timeline-empty">
@@ -565,7 +553,7 @@ export default function App() {
                 allowPin
                 pin={pin}
                 onPin={setPin}
-                onSpectrum={(ra, dec) => openSpectrumTab(ra, dec, form.release)}
+                onSpectrum={(ra, dec) => openApertureExplorer(ra, dec, queried?.fov ?? form.fov, queried?.survey ?? form.survey, queried?.release ?? form.release)}
                 outerOnly={view.sxOuter}
                 outerControls
               />
@@ -590,12 +578,14 @@ export default function App() {
                 allowPin
                 pin={pin}
                 onPin={setPin}
-                onSpectrum={(ra, dec) => openSpectrumTab(ra, dec, form.release)}
+                onSpectrum={(ra, dec) => openApertureExplorer(ra, dec, queried?.fov ?? form.fov, queried?.survey ?? form.survey, queried?.release ?? form.release)}
               />
             )}
           </div>
         </main>
         <ControlPanel
+          settingsSection={settingsSection}
+          setSettingsSection={setSettingsSection}
           onSearch={search}
           loading={loading}
           view={view}

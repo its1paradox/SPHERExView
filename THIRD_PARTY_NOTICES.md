@@ -4,8 +4,9 @@ The median-anchor guide in `frontend/src/lib/liveSpectrum.js` adapts the
 coarse-bin method in AstroToolBox's `SpherexViewerTab.createGuideData`,
 commit `6dab9013c558262e99768b88d34be8fa6aa78635`.
 Source: https://github.com/fkiwy/AstroToolBox
-The natural cubic evaluator is independently implemented; this viewer also
-breaks large unsupported wavelength gaps. Measurements remain unchanged.
+The revised guide requires at least three complete samples per anchor,
+connects anchors linearly, separates releases, and breaks large unsupported
+wavelength gaps. Measurements remain unchanged.
 
 MIT License
 

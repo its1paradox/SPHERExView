@@ -301,10 +301,10 @@ export default function FrameViewer({
                 <button
                   type="button"
                   className="pin-btn"
-                  title="Extract an IRSA forced-photometry spectrum at the pin (opens a new tab)"
+                  title="Open the detector and aperture-spectrum explorer at this pin (opens a new tab)"
                   onClick={() => onSpectrum(pin.ra, pin.dec)}
                 >
-                  Spectrum
+                  Explore spectrum
                 </button>
               )}
               <button type="button" className="pin-btn" onClick={() => setPin(null)}>

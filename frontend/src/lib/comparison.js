@@ -33,9 +33,13 @@ export function readState(hash = '') {
     return p.has(key) && Number.isFinite(x) ? Math.max(lo, Math.min(hi, x)) : fallback;
   };
   return { form, display: {
-    spectrumFrequency: p.get('specfreq') === '1', spectrumLocalSky: p.get('specsky') === '1',
-    spectrumLines: p.get('speclines') !== '0', showAperture: p.get('apertureoverlay') === '1',
-    spectrumComplete: p.get('speccomplete') === '1',
+    imageFraction: bounded('imagearea', 50, 20, 80),
+    workspaceLayout: ['images', 'spectrum'].includes(p.get('workspace')) ? p.get('workspace') : 'split',
+    imageView: p.get('images') === 'rgb' ? 'rgb' : 'detectors',
+    rgbBackground: p.get('rgbbg') === 'neutral' ? 'neutral' : 'shared',
+    spectrumFrequency: p.get('specfreq') === '1', spectrumLocalSky: p.get('specsky') !== '0',
+    spectrumLines: p.get('speclines') === '1', showAperture: p.get('apertureoverlay') === '1',
+    spectrumComplete: p.get('speccomplete') !== '0',
     mode: ['color', 'wavelength'].includes(p.get('mode')) ? p.get('mode') : 'gray',
     wavelengthStrength: bounded('wavestrength', 1, 0, 1),
     wavelengthWhite: p.get('wavewhite') || '',
@@ -85,6 +89,10 @@ export function stateHash(form, display, epoch, pin) {
   p.set('specfreq', display.spectrumFrequency ? '1' : '0'); p.set('specsky', display.spectrumLocalSky ? '1' : '0');
   p.set('speclines', display.spectrumLines ? '1' : '0'); p.set('apertureoverlay', display.showAperture ? '1' : '0');
   p.set('speccomplete', display.spectrumComplete ? '1' : '0');
+  p.set('imagearea', display.imageFraction ?? 50);
+  p.set('workspace', ['images', 'spectrum'].includes(display.workspaceLayout) ? display.workspaceLayout : 'split');
+  p.set('images', display.imageView === 'rgb' ? 'rgb' : 'detectors');
+  p.set('rgbbg', display.rgbBackground === 'neutral' ? 'neutral' : 'shared');
   p.set('panx', display.panX); p.set('pany', display.panY); p.set('epoch', epoch);
   if (pin) { p.set('pinra', pin.ra); p.set('pindec', pin.dec); }
   return `#${p}`;

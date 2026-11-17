@@ -1,0 +1,1814 @@
+{
+  "reference_count": 222,
+  "maximum_celestial_pixel_difference": 0.00460858684697385,
+  "maximum_atb_minus_shifted_um": 1.7763568394002505e-15,
+  "detectors": [
+    {
+      "detector": 1,
+      "median_atb_minus_correct_nm": 0.1968471836415464
+    },
+    {
+      "detector": 2,
+      "median_atb_minus_correct_nm": 0.27061609479739346
+    },
+    {
+      "detector": 3,
+      "median_atb_minus_correct_nm": 0.38353345940023154
+    },
+    {
+      "detector": 4,
+      "median_atb_minus_correct_nm": 0.75446112106059
+    },
+    {
+      "detector": 5,
+      "median_atb_minus_correct_nm": 0.30163829366536277
+    },
+    {
+      "detector": 6,
+      "median_atb_minus_correct_nm": 0.2895519927603729
+    }
+  ],
+  "measurements": [
+    {
+      "file": "cutout_0.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.003620514877921366,
+      "atb_wavelength_um": 2.2580217216451826,
+      "astropy_wavelength_um": 2.2575517589920415,
+      "astropy_minus_one_pixel_um": 2.258021721645183
+    },
+    {
+      "file": "cutout_1.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.003986930139435074,
+      "atb_wavelength_um": 4.895231765027658,
+      "astropy_wavelength_um": 4.894899585383633,
+      "astropy_minus_one_pixel_um": 4.895231765027658
+    },
+    {
+      "file": "cutout_10.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.003295424970165328,
+      "atb_wavelength_um": 2.1567365405041303,
+      "astropy_wavelength_um": 2.156285944262037,
+      "astropy_minus_one_pixel_um": 2.1567365405041308
+    },
+    {
+      "file": "cutout_100.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.001976489549074145,
+      "atb_wavelength_um": 1.0653152166591577,
+      "astropy_wavelength_um": 1.065095938537241,
+      "astropy_minus_one_pixel_um": 1.0653152166591577
+    },
+    {
+      "file": "cutout_101.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.002108712434969462,
+      "atb_wavelength_um": 3.637761603469259,
+      "astropy_wavelength_um": 3.636925037803576,
+      "astropy_minus_one_pixel_um": 3.637761603469259
+    },
+    {
+      "file": "cutout_102.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.002332732491293399,
+      "atb_wavelength_um": 2.3631505680778804,
+      "astropy_wavelength_um": 2.362665771439224,
+      "astropy_minus_one_pixel_um": 2.3631505680778804
+    },
+    {
+      "file": "cutout_103.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.002401171627653298,
+      "atb_wavelength_um": 4.9671925101150345,
+      "astropy_wavelength_um": 4.966858935714075,
+      "astropy_minus_one_pixel_um": 4.9671925101150345
+    },
+    {
+      "file": "cutout_105.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.0007998075367723345,
+      "atb_wavelength_um": 5.003255122614004,
+      "astropy_wavelength_um": 5.002923127271746,
+      "astropy_minus_one_pixel_um": 5.003255122614003
+    },
+    {
+      "file": "cutout_106.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.003726644610326346,
+      "atb_wavelength_um": 2.207640975519139,
+      "astropy_wavelength_um": 2.20717130037432,
+      "astropy_minus_one_pixel_um": 2.2076409755191384
+    },
+    {
+      "file": "cutout_107.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.003908907136461082,
+      "atb_wavelength_um": 4.859689017695234,
+      "astropy_wavelength_um": 4.859358142645968,
+      "astropy_minus_one_pixel_um": 4.859689017695235
+    },
+    {
+      "file": "cutout_11.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.0038295069028198014,
+      "atb_wavelength_um": 4.8248061393219315,
+      "astropy_wavelength_um": 4.824486268610932,
+      "astropy_minus_one_pixel_um": 4.824806139321932
+    },
+    {
+      "file": "cutout_111.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.002387095588916921,
+      "atb_wavelength_um": 4.331746376508686,
+      "astropy_wavelength_um": 4.331415894540097,
+      "astropy_minus_one_pixel_um": 4.331746376508686
+    },
+    {
+      "file": "cutout_112.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0024628301196649716,
+      "atb_wavelength_um": 1.589682256343419,
+      "astropy_wavelength_um": 1.589342667310131,
+      "astropy_minus_one_pixel_um": 1.589682256343419
+    },
+    {
+      "file": "cutout_113.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0023471901966019004,
+      "atb_wavelength_um": 4.368754474982595,
+      "astropy_wavelength_um": 4.368420289852624,
+      "astropy_minus_one_pixel_um": 4.368754474982595
+    },
+    {
+      "file": "cutout_114.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0030276720663025003,
+      "atb_wavelength_um": 1.6278865120484334,
+      "astropy_wavelength_um": 1.6275467153186018,
+      "astropy_minus_one_pixel_um": 1.6278865120484332
+    },
+    {
+      "file": "cutout_115.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0028635252815067957,
+      "atb_wavelength_um": 4.406089653352791,
+      "astropy_wavelength_um": 4.405756392741114,
+      "astropy_minus_one_pixel_um": 4.40608965335279
+    },
+    {
+      "file": "cutout_116.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0022517472783167847,
+      "atb_wavelength_um": 1.279499324909688,
+      "astropy_wavelength_um": 1.2792187249591596,
+      "astropy_minus_one_pixel_um": 1.279499324909688
+    },
+    {
+      "file": "cutout_117.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.002187937878224133,
+      "atb_wavelength_um": 4.038486851533353,
+      "astropy_wavelength_um": 4.038158163111502,
+      "astropy_minus_one_pixel_um": 4.038486851533354
+    },
+    {
+      "file": "cutout_118.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0021411506173869554,
+      "atb_wavelength_um": 1.3098982194501427,
+      "astropy_wavelength_um": 1.309608557962377,
+      "astropy_minus_one_pixel_um": 1.309898219450143
+    },
+    {
+      "file": "cutout_119.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0021287593525602944,
+      "atb_wavelength_um": 4.073640959857213,
+      "astropy_wavelength_um": 4.07330844073623,
+      "astropy_minus_one_pixel_um": 4.073640959857213
+    },
+    {
+      "file": "cutout_12.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0036632028087577595,
+      "atb_wavelength_um": 2.2074364681098624,
+      "astropy_wavelength_um": 2.206966792159463,
+      "astropy_minus_one_pixel_um": 2.207436468109862
+    },
+    {
+      "file": "cutout_120.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.002263912317827632,
+      "atb_wavelength_um": 1.340709059713038,
+      "astropy_wavelength_um": 1.3404195576239346,
+      "astropy_minus_one_pixel_um": 1.3407090597130382
+    },
+    {
+      "file": "cutout_121.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.002177081379379331,
+      "atb_wavelength_um": 4.108944694149763,
+      "astropy_wavelength_um": 4.1086116612756145,
+      "astropy_minus_one_pixel_um": 4.108944694149763
+    },
+    {
+      "file": "cutout_122.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0022064725692896303,
+      "atb_wavelength_um": 1.372688821413902,
+      "astropy_wavelength_um": 1.3723873738832166,
+      "astropy_minus_one_pixel_um": 1.372688821413902
+    },
+    {
+      "file": "cutout_125.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.003683954871840811,
+      "atb_wavelength_um": 4.418511555116905,
+      "astropy_wavelength_um": 4.418230197020753,
+      "astropy_minus_one_pixel_um": 4.418511555116905
+    },
+    {
+      "file": "cutout_126.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.002496625023676202,
+      "atb_wavelength_um": 1.669770412618035,
+      "astropy_wavelength_um": 1.6694351242449996,
+      "astropy_minus_one_pixel_um": 1.669770412618035
+    },
+    {
+      "file": "cutout_128.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0008308851580771659,
+      "atb_wavelength_um": 1.708233761010502,
+      "astropy_wavelength_um": 1.7078811435722203,
+      "astropy_minus_one_pixel_um": 1.708233761010502
+    },
+    {
+      "file": "cutout_129.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.0006786009957640005,
+      "atb_wavelength_um": 4.481972609420225,
+      "astropy_wavelength_um": 4.481683057427465,
+      "astropy_minus_one_pixel_um": 4.481972609420225
+    },
+    {
+      "file": "cutout_13.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.004172249644973647,
+      "atb_wavelength_um": 4.859556309818481,
+      "astropy_wavelength_um": 4.859225430560494,
+      "astropy_minus_one_pixel_um": 4.8595563098184815
+    },
+    {
+      "file": "cutout_131.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.002396198755361567,
+      "atb_wavelength_um": 4.547042001232234,
+      "astropy_wavelength_um": 4.546744905931895,
+      "astropy_minus_one_pixel_um": 4.547042001232234
+    },
+    {
+      "file": "cutout_133.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0021227963243539705,
+      "atb_wavelength_um": 1.7881793633693277,
+      "astropy_wavelength_um": 1.787806071768253,
+      "astropy_minus_one_pixel_um": 1.7881793633693275
+    },
+    {
+      "file": "cutout_134.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0034004931636388847,
+      "atb_wavelength_um": 1.8304706059486235,
+      "astropy_wavelength_um": 1.8300970026562238,
+      "astropy_minus_one_pixel_um": 1.8304706059486235
+    },
+    {
+      "file": "cutout_135.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.003680689836969009,
+      "atb_wavelength_um": 4.580409379929478,
+      "astropy_wavelength_um": 4.580112877216944,
+      "astropy_minus_one_pixel_um": 4.580409379929478
+    },
+    {
+      "file": "cutout_136.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.004277750199502606,
+      "atb_wavelength_um": 1.8730477526114437,
+      "astropy_wavelength_um": 1.8726607245816118,
+      "astropy_minus_one_pixel_um": 1.8730477526114437
+    },
+    {
+      "file": "cutout_137.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.00460858684697385,
+      "atb_wavelength_um": 4.613792503003301,
+      "astropy_wavelength_um": 4.613496593115767,
+      "astropy_minus_one_pixel_um": 4.613792503003301
+    },
+    {
+      "file": "cutout_138.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0033453850784361805,
+      "atb_wavelength_um": 1.1017415863247848,
+      "astropy_wavelength_um": 1.1015276865166368,
+      "astropy_minus_one_pixel_um": 1.1017415863247846
+    },
+    {
+      "file": "cutout_139.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.003284554588708133,
+      "atb_wavelength_um": 3.822245789692177,
+      "astropy_wavelength_um": 3.8219666583912977,
+      "astropy_minus_one_pixel_um": 3.822245789692177
+    },
+    {
+      "file": "cutout_140.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.002328590516681217,
+      "atb_wavelength_um": 1.1274538332283277,
+      "astropy_wavelength_um": 1.1272392779193805,
+      "astropy_minus_one_pixel_um": 1.1274538332283275
+    },
+    {
+      "file": "cutout_141.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.002476613890049606,
+      "atb_wavelength_um": 3.855366709624815,
+      "astropy_wavelength_um": 3.855086974336363,
+      "astropy_minus_one_pixel_um": 3.8553667096248154
+    },
+    {
+      "file": "cutout_142.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0022750923805343604,
+      "atb_wavelength_um": 1.1545245055629505,
+      "astropy_wavelength_um": 1.154295783661126,
+      "astropy_minus_one_pixel_um": 1.1545245055629505
+    },
+    {
+      "file": "cutout_143.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.002287753922056268,
+      "atb_wavelength_um": 3.8888783925854242,
+      "astropy_wavelength_um": 3.888595489632441,
+      "astropy_minus_one_pixel_um": 3.8888783925854247
+    },
+    {
+      "file": "cutout_144.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0021892294705896376,
+      "atb_wavelength_um": 1.1819606215482046,
+      "astropy_wavelength_um": 1.181723812343805,
+      "astropy_minus_one_pixel_um": 1.1819606215482046
+    },
+    {
+      "file": "cutout_145.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0021910034908358966,
+      "atb_wavelength_um": 3.9225257529049076,
+      "astropy_wavelength_um": 3.9222377335382754,
+      "astropy_minus_one_pixel_um": 3.9225257529049076
+    },
+    {
+      "file": "cutout_146.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.001778923606233107,
+      "atb_wavelength_um": 1.2102769662028132,
+      "astropy_wavelength_um": 1.2100404172139998,
+      "astropy_minus_one_pixel_um": 1.2102769662028132
+    },
+    {
+      "file": "cutout_147.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0018061696910542935,
+      "atb_wavelength_um": 3.9565796011340124,
+      "astropy_wavelength_um": 3.956291692082329,
+      "astropy_minus_one_pixel_um": 3.9565796011340124
+    },
+    {
+      "file": "cutout_148.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.002195971050827694,
+      "atb_wavelength_um": 1.2390583635740975,
+      "astropy_wavelength_um": 1.2388113606455533,
+      "astropy_minus_one_pixel_um": 1.2390583635740973
+    },
+    {
+      "file": "cutout_149.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.002242943528697694,
+      "atb_wavelength_um": 3.9910661984886757,
+      "astropy_wavelength_um": 3.9907730402718435,
+      "astropy_minus_one_pixel_um": 3.9910661984886757
+    },
+    {
+      "file": "cutout_150.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0027155189804819457,
+      "atb_wavelength_um": 1.900036327589142,
+      "astropy_wavelength_um": 1.8996724815650015,
+      "astropy_minus_one_pixel_um": 1.9000363275891416
+    },
+    {
+      "file": "cutout_151.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.0029700838761446136,
+      "atb_wavelength_um": 4.634401248385005,
+      "astropy_wavelength_um": 4.634117978113155,
+      "astropy_minus_one_pixel_um": 4.6344012483850054
+    },
+    {
+      "file": "cutout_152.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0033216253169197074,
+      "atb_wavelength_um": 1.943856047295494,
+      "astropy_wavelength_um": 1.94349239475928,
+      "astropy_minus_one_pixel_um": 1.943856047295494
+    },
+    {
+      "file": "cutout_153.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.0035466462298607837,
+      "atb_wavelength_um": 4.668517902667521,
+      "astropy_wavelength_um": 4.668233362785012,
+      "astropy_minus_one_pixel_um": 4.668517902667521
+    },
+    {
+      "file": "cutout_154.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.003556699232238003,
+      "atb_wavelength_um": 1.9888113013152626,
+      "astropy_wavelength_um": 1.988431262426294,
+      "astropy_minus_one_pixel_um": 1.9888113013152626
+    },
+    {
+      "file": "cutout_155.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.0036673334277459446,
+      "atb_wavelength_um": 4.702519547066829,
+      "astropy_wavelength_um": 4.702233024033438,
+      "astropy_minus_one_pixel_um": 4.702519547066829
+    },
+    {
+      "file": "cutout_156.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0034793899988283528,
+      "atb_wavelength_um": 2.0345348725034094,
+      "astropy_wavelength_um": 2.0341550145739196,
+      "astropy_minus_one_pixel_um": 2.0345348725034094
+    },
+    {
+      "file": "cutout_157.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.003868378160928998,
+      "atb_wavelength_um": 4.7367683703332855,
+      "astropy_wavelength_um": 4.736482726652518,
+      "astropy_minus_one_pixel_um": 4.736768370333285
+    },
+    {
+      "file": "cutout_158.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.003140477180901158,
+      "atb_wavelength_um": 2.0820235234173365,
+      "astropy_wavelength_um": 2.0816203523385464,
+      "astropy_minus_one_pixel_um": 2.0820235234173365
+    },
+    {
+      "file": "cutout_159.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.003546391108146807,
+      "atb_wavelength_um": 4.771032039004863,
+      "astropy_wavelength_um": 4.770747275072502,
+      "astropy_minus_one_pixel_um": 4.771032039004862
+    },
+    {
+      "file": "cutout_16.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.002113286952647897,
+      "atb_wavelength_um": 1.479084709848726,
+      "astropy_wavelength_um": 1.4787648495742463,
+      "astropy_minus_one_pixel_um": 1.4790847098487259
+    },
+    {
+      "file": "cutout_160.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0026536838774351423,
+      "atb_wavelength_um": 2.1304823202753753,
+      "astropy_wavelength_um": 2.1300793598024366,
+      "astropy_minus_one_pixel_um": 2.130482320275375
+    },
+    {
+      "file": "cutout_161.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.002672178039876627,
+      "atb_wavelength_um": 4.805649755336681,
+      "astropy_wavelength_um": 4.805360977674383,
+      "astropy_minus_one_pixel_um": 4.805649755336682
+    },
+    {
+      "file": "cutout_164.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0017665215361635234,
+      "atb_wavelength_um": 1.287562345099932,
+      "astropy_wavelength_um": 1.2873259751006139,
+      "astropy_minus_one_pixel_um": 1.287562345099932
+    },
+    {
+      "file": "cutout_165.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0018006546257538503,
+      "atb_wavelength_um": 4.047805800940197,
+      "astropy_wavelength_um": 4.047523470034296,
+      "astropy_minus_one_pixel_um": 4.047805800940199
+    },
+    {
+      "file": "cutout_166.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0017475633393804202,
+      "atb_wavelength_um": 1.3182076823317168,
+      "astropy_wavelength_um": 1.317962640513965,
+      "astropy_minus_one_pixel_um": 1.3182076823317168
+    },
+    {
+      "file": "cutout_167.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0017901891317713137,
+      "atb_wavelength_um": 4.083015897023837,
+      "astropy_wavelength_um": 4.0827331943731835,
+      "astropy_minus_one_pixel_um": 4.083015897023838
+    },
+    {
+      "file": "cutout_168.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.001668720719594674,
+      "atb_wavelength_um": 1.34914335857721,
+      "astropy_wavelength_um": 1.348887089710692,
+      "astropy_minus_one_pixel_um": 1.34914335857721
+    },
+    {
+      "file": "cutout_169.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.001863332667516815,
+      "atb_wavelength_um": 4.11835593034561,
+      "astropy_wavelength_um": 4.11806905506749,
+      "astropy_minus_one_pixel_um": 4.118355930345609
+    },
+    {
+      "file": "cutout_17.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.002212755659712684,
+      "atb_wavelength_um": 4.258214542587478,
+      "astropy_wavelength_um": 4.257886658104775,
+      "astropy_minus_one_pixel_um": 4.258214542587478
+    },
+    {
+      "file": "cutout_170.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0017094196244062942,
+      "atb_wavelength_um": 1.3811214827337412,
+      "astropy_wavelength_um": 1.3808655398166578,
+      "astropy_minus_one_pixel_um": 1.381121482733741
+    },
+    {
+      "file": "cutout_171.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0017466221295698858,
+      "atb_wavelength_um": 4.153906486038119,
+      "astropy_wavelength_um": 4.15361933948955,
+      "astropy_minus_one_pixel_um": 4.153906486038119
+    },
+    {
+      "file": "cutout_172.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0018516090575406707,
+      "atb_wavelength_um": 1.4139012534608495,
+      "astropy_wavelength_um": 1.413630124945634,
+      "astropy_minus_one_pixel_um": 1.4139012534608497
+    },
+    {
+      "file": "cutout_173.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.001790190983056661,
+      "atb_wavelength_um": 4.189714501457296,
+      "astropy_wavelength_um": 4.189426032882135,
+      "astropy_minus_one_pixel_um": 4.1897145014572965
+    },
+    {
+      "file": "cutout_175.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0020451287182456923,
+      "atb_wavelength_um": 4.22560753403168,
+      "astropy_wavelength_um": 4.225319657433934,
+      "astropy_minus_one_pixel_um": 4.22560753403168
+    },
+    {
+      "file": "cutout_176.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0023913182567198987,
+      "atb_wavelength_um": 1.4826184639023592,
+      "astropy_wavelength_um": 1.4823332086476992,
+      "astropy_minus_one_pixel_um": 1.4826184639023592
+    },
+    {
+      "file": "cutout_177.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0019434351834615171,
+      "atb_wavelength_um": 1.257877559688384,
+      "astropy_wavelength_um": 1.2576408632115283,
+      "astropy_minus_one_pixel_um": 1.2578775596883838
+    },
+    {
+      "file": "cutout_178.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0019021023695451333,
+      "atb_wavelength_um": 4.013011641819561,
+      "astropy_wavelength_um": 4.012732785558631,
+      "astropy_minus_one_pixel_um": 4.01301164181956
+    },
+    {
+      "file": "cutout_179.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.002690416373454241,
+      "atb_wavelength_um": 2.179755162127858,
+      "astropy_wavelength_um": 2.1793354732659482,
+      "astropy_minus_one_pixel_um": 2.1797551621278575
+    },
+    {
+      "file": "cutout_18.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.002455934855788655,
+      "atb_wavelength_um": 1.514989882754814,
+      "astropy_wavelength_um": 1.5146695394861434,
+      "astropy_minus_one_pixel_um": 1.5149898827548138
+    },
+    {
+      "file": "cutout_180.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.0029075472432200655,
+      "atb_wavelength_um": 4.840089487838887,
+      "astropy_wavelength_um": 4.839799722688381,
+      "astropy_minus_one_pixel_um": 4.8400894878388865
+    },
+    {
+      "file": "cutout_181.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0025021142871626267,
+      "atb_wavelength_um": 2.2302175200164616,
+      "astropy_wavelength_um": 2.2297976505571597,
+      "astropy_minus_one_pixel_um": 2.230217520016462
+    },
+    {
+      "file": "cutout_182.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.0025863812201158964,
+      "atb_wavelength_um": 4.875587427164488,
+      "astropy_wavelength_um": 4.875287686716178,
+      "astropy_minus_one_pixel_um": 4.875587427164488
+    },
+    {
+      "file": "cutout_183.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.002280058337889912,
+      "atb_wavelength_um": 2.281646984124384,
+      "astropy_wavelength_um": 2.281210524123826,
+      "astropy_minus_one_pixel_um": 2.2816469841243836
+    },
+    {
+      "file": "cutout_184.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.0022623736868698785,
+      "atb_wavelength_um": 4.911361693005594,
+      "astropy_wavelength_um": 4.9110616354004195,
+      "astropy_minus_one_pixel_um": 4.9113616930055946
+    },
+    {
+      "file": "cutout_185.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0018532835350058008,
+      "atb_wavelength_um": 2.3340342087586747,
+      "astropy_wavelength_um": 2.3335985252876195,
+      "astropy_minus_one_pixel_um": 2.3340342087586747
+    },
+    {
+      "file": "cutout_186.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.001792044181714303,
+      "atb_wavelength_um": 4.947213740715488,
+      "astropy_wavelength_um": 4.946912233111168,
+      "astropy_minus_one_pixel_um": 4.947213740715488
+    },
+    {
+      "file": "cutout_188.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.002496001229017608,
+      "atb_wavelength_um": 4.982898404293603,
+      "astropy_wavelength_um": 4.982596979596535,
+      "astropy_minus_one_pixel_um": 4.982898404293603
+    },
+    {
+      "file": "cutout_189.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.002482002121052318,
+      "atb_wavelength_um": 1.518361354998999,
+      "astropy_wavelength_um": 1.5180763173008598,
+      "astropy_minus_one_pixel_um": 1.5183613549989992
+    },
+    {
+      "file": "cutout_19.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0023882270239869996,
+      "atb_wavelength_um": 4.29484372636068,
+      "astropy_wavelength_um": 4.294516458555725,
+      "astropy_minus_one_pixel_um": 4.29484372636068
+    },
+    {
+      "file": "cutout_190.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0022844641828871914,
+      "atb_wavelength_um": 4.297946929610841,
+      "astropy_wavelength_um": 4.297654233729864,
+      "astropy_minus_one_pixel_um": 4.297946929610842
+    },
+    {
+      "file": "cutout_191.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0023769674536726626,
+      "atb_wavelength_um": 1.5554041143451762,
+      "astropy_wavelength_um": 1.5551058673103582,
+      "astropy_minus_one_pixel_um": 1.555404114345176
+    },
+    {
+      "file": "cutout_192.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0021552070148818103,
+      "atb_wavelength_um": 4.334696331295627,
+      "astropy_wavelength_um": 4.334400493535032,
+      "astropy_minus_one_pixel_um": 4.334696331295626
+    },
+    {
+      "file": "cutout_193.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0018181107196912905,
+      "atb_wavelength_um": 1.5927657775476,
+      "astropy_wavelength_um": 1.5924599200774447,
+      "astropy_minus_one_pixel_um": 1.5927657775475998
+    },
+    {
+      "file": "cutout_194.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0016329612909107283,
+      "atb_wavelength_um": 4.3715554716867375,
+      "astropy_wavelength_um": 4.371254595432545,
+      "astropy_minus_one_pixel_um": 4.371555471686738
+    },
+    {
+      "file": "cutout_195.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0009997175467102437,
+      "atb_wavelength_um": 1.6309572359464106,
+      "astropy_wavelength_um": 1.6306512071809498,
+      "astropy_minus_one_pixel_um": 1.6309572359464104
+    },
+    {
+      "file": "cutout_196.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0007903683130230377,
+      "atb_wavelength_um": 4.4088949123187575,
+      "astropy_wavelength_um": 4.408593274025092,
+      "astropy_minus_one_pixel_um": 4.408894912318758
+    },
+    {
+      "file": "cutout_197.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.002388744171248902,
+      "atb_wavelength_um": 4.261598036943053,
+      "astropy_wavelength_um": 4.261305961813713,
+      "astropy_minus_one_pixel_um": 4.261598036943053
+    },
+    {
+      "file": "cutout_198.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0016072182722872697,
+      "atb_wavelength_um": 2.153327703874278,
+      "astropy_wavelength_um": 2.1529366897349553,
+      "astropy_minus_one_pixel_um": 2.1533277038742784
+    },
+    {
+      "file": "cutout_2.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0033619925055443645,
+      "atb_wavelength_um": 2.3103974541920946,
+      "astropy_wavelength_um": 2.3099126497609728,
+      "astropy_minus_one_pixel_um": 2.3103974541920946
+    },
+    {
+      "file": "cutout_200.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0022295137567027723,
+      "atb_wavelength_um": 2.0567737840196023,
+      "astropy_wavelength_um": 2.056404098449382,
+      "astropy_minus_one_pixel_um": 2.0567737840196023
+    },
+    {
+      "file": "cutout_201.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.002165768664584178,
+      "atb_wavelength_um": 4.75295516428974,
+      "astropy_wavelength_um": 4.752679141555418,
+      "astropy_minus_one_pixel_um": 4.752955164289739
+    },
+    {
+      "file": "cutout_202.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0020240631135237663,
+      "atb_wavelength_um": 2.104853726212115,
+      "astropy_wavelength_um": 2.1044624486809576,
+      "astropy_minus_one_pixel_um": 2.1048537262121148
+    },
+    {
+      "file": "cutout_204.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0036920679838150505,
+      "atb_wavelength_um": 2.2581271694510034,
+      "astropy_wavelength_um": 2.2576572087772906,
+      "astropy_minus_one_pixel_um": 2.2581271694510043
+    },
+    {
+      "file": "cutout_205.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.0038863781932167996,
+      "atb_wavelength_um": 4.895297579944151,
+      "astropy_wavelength_um": 4.894965409788642,
+      "astropy_minus_one_pixel_um": 4.895297579944151
+    },
+    {
+      "file": "cutout_206.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0033018991545663567,
+      "atb_wavelength_um": 2.310461889816653,
+      "astropy_wavelength_um": 2.309977085321187,
+      "astropy_minus_one_pixel_um": 2.3104618898166525
+    },
+    {
+      "file": "cutout_207.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.0035342472092150246,
+      "atb_wavelength_um": 4.931127532817992,
+      "astropy_wavelength_um": 4.93079405224443,
+      "astropy_minus_one_pixel_um": 4.931127532817992
+    },
+    {
+      "file": "cutout_208.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.003288396614212985,
+      "atb_wavelength_um": 2.1566737267342275,
+      "astropy_wavelength_um": 2.156223132621725,
+      "astropy_minus_one_pixel_um": 2.1566737267342275
+    },
+    {
+      "file": "cutout_209.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.00388484603594641,
+      "atb_wavelength_um": 4.824762714490915,
+      "astropy_wavelength_um": 4.824442846823544,
+      "astropy_minus_one_pixel_um": 4.824762714490916
+    },
+    {
+      "file": "cutout_21.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.0036092988849176777,
+      "atb_wavelength_um": 4.423631627049589,
+      "astropy_wavelength_um": 4.423380178036403,
+      "astropy_minus_one_pixel_um": 4.423631627049589
+    },
+    {
+      "file": "cutout_210.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.003234565125664446,
+      "atb_wavelength_um": 1.0907308737963197,
+      "astropy_wavelength_um": 1.0905110914657015,
+      "astropy_minus_one_pixel_um": 1.09073087379632
+    },
+    {
+      "file": "cutout_211.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.003313832647329207,
+      "atb_wavelength_um": 3.7348095965970205,
+      "astropy_wavelength_um": 3.733950455786439,
+      "astropy_minus_one_pixel_um": 3.734809596597021
+    },
+    {
+      "file": "cutout_212.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0008551799005331873,
+      "atb_wavelength_um": 1.111027300533442,
+      "astropy_wavelength_um": 1.1107817560776725,
+      "astropy_minus_one_pixel_um": 1.1110273005334417
+    },
+    {
+      "file": "cutout_213.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0008174371212348319,
+      "atb_wavelength_um": 3.83445767407048,
+      "astropy_wavelength_um": 3.83414365553623,
+      "astropy_minus_one_pixel_um": 3.8344576740704803
+    },
+    {
+      "file": "cutout_214.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0016273476116470675,
+      "atb_wavelength_um": 1.1369224560915296,
+      "astropy_wavelength_um": 1.1366764522562276,
+      "astropy_minus_one_pixel_um": 1.1369224560915294
+    },
+    {
+      "file": "cutout_215.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0017547501262455967,
+      "atb_wavelength_um": 3.8673542271633132,
+      "astropy_wavelength_um": 3.867040178399969,
+      "astropy_minus_one_pixel_um": 3.8673542271633132
+    },
+    {
+      "file": "cutout_216.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0021960308628763414,
+      "atb_wavelength_um": 1.1643289725981893,
+      "astropy_wavelength_um": 1.1640686485558926,
+      "astropy_minus_one_pixel_um": 1.1643289725981891
+    },
+    {
+      "file": "cutout_217.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0021784964563860143,
+      "atb_wavelength_um": 3.9009558906580653,
+      "astropy_wavelength_um": 3.9006361705866546,
+      "astropy_minus_one_pixel_um": 3.9009558906580653
+    },
+    {
+      "file": "cutout_218.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.002347081576468568,
+      "atb_wavelength_um": 1.1920222528980227,
+      "astropy_wavelength_um": 1.1917524334758847,
+      "astropy_minus_one_pixel_um": 1.1920222528980227
+    },
+    {
+      "file": "cutout_219.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.002433530131284556,
+      "atb_wavelength_um": 3.934700524325391,
+      "astropy_wavelength_um": 3.934374862556912,
+      "astropy_minus_one_pixel_um": 3.9347005243253914
+    },
+    {
+      "file": "cutout_22.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0008302317105481904,
+      "atb_wavelength_um": 1.6760262872629328,
+      "astropy_wavelength_um": 1.6757238297409405,
+      "astropy_minus_one_pixel_um": 1.676026287262933
+    },
+    {
+      "file": "cutout_220.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.003994195657904598,
+      "atb_wavelength_um": 0.7438498129900845,
+      "astropy_wavelength_um": 0.7436907550338037,
+      "astropy_minus_one_pixel_um": 0.7438498129900843
+    },
+    {
+      "file": "cutout_222.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0038926281330340373,
+      "atb_wavelength_um": 0.7612699499247131,
+      "astropy_wavelength_um": 0.7611106108248775,
+      "astropy_minus_one_pixel_um": 0.761269949924713
+    },
+    {
+      "file": "cutout_223.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.004215998134688093,
+      "atb_wavelength_um": 2.475419963558878,
+      "astropy_wavelength_um": 2.474853482339175,
+      "astropy_minus_one_pixel_um": 2.4754199635588776
+    },
+    {
+      "file": "cutout_224.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0036139089422899673,
+      "atb_wavelength_um": 0.7789669134455031,
+      "astropy_wavelength_um": 0.7787969212664246,
+      "astropy_minus_one_pixel_um": 0.778966913445503
+    },
+    {
+      "file": "cutout_225.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.003339517955279092,
+      "atb_wavelength_um": 2.5425129324494273,
+      "astropy_wavelength_um": 2.5418968085599247,
+      "astropy_minus_one_pixel_um": 2.5425129324494273
+    },
+    {
+      "file": "cutout_226.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.002312536391398723,
+      "atb_wavelength_um": 1.220609368568327,
+      "astropy_wavelength_um": 1.2203395144016635,
+      "astropy_minus_one_pixel_um": 1.2206093685683272
+    },
+    {
+      "file": "cutout_227.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0022132820397278152,
+      "atb_wavelength_um": 3.968988891899437,
+      "astropy_wavelength_um": 3.9686633401199645,
+      "astropy_minus_one_pixel_um": 3.968988891899438
+    },
+    {
+      "file": "cutout_228.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0020405547587163397,
+      "atb_wavelength_um": 1.249652983012199,
+      "astropy_wavelength_um": 1.2493729913955254,
+      "astropy_minus_one_pixel_um": 1.249652983012199
+    },
+    {
+      "file": "cutout_229.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0022191119095307243,
+      "atb_wavelength_um": 4.0035399198672375,
+      "astropy_wavelength_um": 4.003210285338107,
+      "astropy_minus_one_pixel_um": 4.003539919867238
+    },
+    {
+      "file": "cutout_23.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.000581506460383352,
+      "atb_wavelength_um": 4.454829557677323,
+      "astropy_wavelength_um": 4.45457727287877,
+      "astropy_minus_one_pixel_um": 4.454829557677323
+    },
+    {
+      "file": "cutout_231.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0019429848309364672,
+      "atb_wavelength_um": 4.221959822047957,
+      "astropy_wavelength_um": 4.221635197139937,
+      "astropy_minus_one_pixel_um": 4.221959822047958
+    },
+    {
+      "file": "cutout_232.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.002171017677607523,
+      "atb_wavelength_um": 1.4791823914210287,
+      "astropy_wavelength_um": 1.4788625341897121,
+      "astropy_minus_one_pixel_um": 1.4791823914210287
+    },
+    {
+      "file": "cutout_233.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.002017379533903352,
+      "atb_wavelength_um": 4.258307079294173,
+      "astropy_wavelength_um": 4.257979190723893,
+      "astropy_minus_one_pixel_um": 4.258307079294174
+    },
+    {
+      "file": "cutout_234.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.002200389018456761,
+      "atb_wavelength_um": 1.4048121745223812,
+      "astropy_wavelength_um": 1.4044956610631094,
+      "astropy_minus_one_pixel_um": 1.4048121745223812
+    },
+    {
+      "file": "cutout_235.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.002214524603161294,
+      "atb_wavelength_um": 4.1801559730873885,
+      "astropy_wavelength_um": 4.179817755940716,
+      "astropy_minus_one_pixel_um": 4.180155973087389
+    },
+    {
+      "file": "cutout_236.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.002186301306213778,
+      "atb_wavelength_um": 1.4387601624328128,
+      "astropy_wavelength_um": 1.4384431297346838,
+      "astropy_minus_one_pixel_um": 1.4387601624328128
+    },
+    {
+      "file": "cutout_237.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0021614554054103507,
+      "atb_wavelength_um": 4.216211482432115,
+      "astropy_wavelength_um": 4.215873087171157,
+      "astropy_minus_one_pixel_um": 4.216211482432115
+    },
+    {
+      "file": "cutout_238.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0029044465125789287,
+      "atb_wavelength_um": 0.7975449388365359,
+      "astropy_wavelength_um": 0.7973747344208794,
+      "astropy_minus_one_pixel_um": 0.7975449388365359
+    },
+    {
+      "file": "cutout_239.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.003011213518123057,
+      "atb_wavelength_um": 2.610986570432847,
+      "astropy_wavelength_um": 2.610343611718811,
+      "astropy_minus_one_pixel_um": 2.6109865704328463
+    },
+    {
+      "file": "cutout_24.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0018427478894658122,
+      "atb_wavelength_um": 1.714050938105979,
+      "astropy_wavelength_um": 1.7137317249091304,
+      "astropy_minus_one_pixel_um": 1.714050938105979
+    },
+    {
+      "file": "cutout_240.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.002320039049900302,
+      "atb_wavelength_um": 0.8161794423356985,
+      "astropy_wavelength_um": 0.8160090236384021,
+      "astropy_minus_one_pixel_um": 0.8161794423356985
+    },
+    {
+      "file": "cutout_241.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.0021724350728717923,
+      "atb_wavelength_um": 2.6822113585624594,
+      "astropy_wavelength_um": 2.6815713467671243,
+      "astropy_minus_one_pixel_um": 2.682211358562459
+    },
+    {
+      "file": "cutout_242.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0013923190864080226,
+      "atb_wavelength_um": 0.835770669955852,
+      "astropy_wavelength_um": 0.8355922028644207,
+      "astropy_minus_one_pixel_um": 0.835770669955852
+    },
+    {
+      "file": "cutout_243.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.001146871225042645,
+      "atb_wavelength_um": 2.755394745609138,
+      "astropy_wavelength_um": 2.754733407590113,
+      "astropy_minus_one_pixel_um": 2.755394745609138
+    },
+    {
+      "file": "cutout_244.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.00195246513550984,
+      "atb_wavelength_um": 0.8553802386117385,
+      "astropy_wavelength_um": 0.8552018589938586,
+      "astropy_minus_one_pixel_um": 0.8553802386117385
+    },
+    {
+      "file": "cutout_245.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.0017927901948144864,
+      "atb_wavelength_um": 2.8302894362245214,
+      "astropy_wavelength_um": 2.829606913215712,
+      "astropy_minus_one_pixel_um": 2.8302894362245214
+    },
+    {
+      "file": "cutout_246.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.003332759512129968,
+      "atb_wavelength_um": 0.9693777120608662,
+      "astropy_wavelength_um": 0.9691807666195692,
+      "astropy_minus_one_pixel_um": 0.9693777120608664
+    },
+    {
+      "file": "cutout_247.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.0030298006457716298,
+      "atb_wavelength_um": 3.268218532652334,
+      "astropy_wavelength_um": 3.2674633092222023,
+      "astropy_minus_one_pixel_um": 3.2682185326523343
+    },
+    {
+      "file": "cutout_248.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0025631092203948214,
+      "atb_wavelength_um": 0.8757909700004722,
+      "astropy_wavelength_um": 0.8756027125164585,
+      "astropy_minus_one_pixel_um": 0.8757909700004722
+    },
+    {
+      "file": "cutout_249.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.0024410988963250446,
+      "atb_wavelength_um": 2.906709896130665,
+      "astropy_wavelength_um": 2.9060003924642777,
+      "astropy_minus_one_pixel_um": 2.906709896130665
+    },
+    {
+      "file": "cutout_25.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.002255776074278515,
+      "atb_wavelength_um": 4.486197348988115,
+      "astropy_wavelength_um": 4.485934615715865,
+      "astropy_minus_one_pixel_um": 4.486197348988115
+    },
+    {
+      "file": "cutout_250.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.002944970151078863,
+      "atb_wavelength_um": 0.8965303699871896,
+      "astropy_wavelength_um": 0.8963421332348219,
+      "astropy_minus_one_pixel_um": 0.8965303699871895
+    },
+    {
+      "file": "cutout_251.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.002813216902065818,
+      "atb_wavelength_um": 2.985993508384246,
+      "astropy_wavelength_um": 2.9852829479561342,
+      "astropy_minus_one_pixel_um": 2.985993508384246
+    },
+    {
+      "file": "cutout_252.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.002982958163496363,
+      "atb_wavelength_um": 0.9179073969303659,
+      "astropy_wavelength_um": 0.9177094490449529,
+      "astropy_minus_one_pixel_um": 0.9179073969303662
+    },
+    {
+      "file": "cutout_253.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.0030368676997092336,
+      "atb_wavelength_um": 3.069458603382456,
+      "astropy_wavelength_um": 3.0687076070414694,
+      "astropy_minus_one_pixel_um": 3.069458603382456
+    },
+    {
+      "file": "cutout_255.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.0029804044438570543,
+      "atb_wavelength_um": 3.154071526766703,
+      "astropy_wavelength_um": 3.153290611848975,
+      "astropy_minus_one_pixel_um": 3.1540715267667037
+    },
+    {
+      "file": "cutout_26.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0028438253685401094,
+      "atb_wavelength_um": 1.7536576784743945,
+      "astropy_wavelength_um": 1.7533385319468358,
+      "astropy_minus_one_pixel_um": 1.7536576784743945
+    },
+    {
+      "file": "cutout_27.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.0033372132720934644,
+      "atb_wavelength_um": 4.5185110644392505,
+      "astropy_wavelength_um": 4.518248248418046,
+      "astropy_minus_one_pixel_um": 4.5185110644392505
+    },
+    {
+      "file": "cutout_28.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0032083841296266513,
+      "atb_wavelength_um": 1.7935046976061304,
+      "astropy_wavelength_um": 1.7931625592629592,
+      "astropy_minus_one_pixel_um": 1.7935046976061304
+    },
+    {
+      "file": "cutout_29.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.0036397650782440394,
+      "atb_wavelength_um": 4.550852690536016,
+      "astropy_wavelength_um": 4.550589791412501,
+      "astropy_minus_one_pixel_um": 4.550852690536016
+    },
+    {
+      "file": "cutout_3.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.003424329680303373,
+      "atb_wavelength_um": 4.931084248624703,
+      "astropy_wavelength_um": 4.930750757540267,
+      "astropy_minus_one_pixel_um": 4.931084248624703
+    },
+    {
+      "file": "cutout_30.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0032143850527468487,
+      "atb_wavelength_um": 1.835802027509816,
+      "astropy_wavelength_um": 1.835460546667837,
+      "astropy_minus_one_pixel_um": 1.8358020275098157
+    },
+    {
+      "file": "cutout_34.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0031658623846571032,
+      "atb_wavelength_um": 1.921619542749482,
+      "astropy_wavelength_um": 1.9212677611863032,
+      "astropy_minus_one_pixel_um": 1.921619542749482
+    },
+    {
+      "file": "cutout_35.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.0033575752735135467,
+      "atb_wavelength_um": 4.650924465519361,
+      "astropy_wavelength_um": 4.650646967228464,
+      "astropy_minus_one_pixel_um": 4.650924465519362
+    },
+    {
+      "file": "cutout_37.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.003109536051326245,
+      "atb_wavelength_um": 4.684980870569001,
+      "astropy_wavelength_um": 4.684704861755213,
+      "astropy_minus_one_pixel_um": 4.684980870569003
+    },
+    {
+      "file": "cutout_38.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0025369473785801233,
+      "atb_wavelength_um": 2.01090606112088,
+      "astropy_wavelength_um": 2.0105353624867504,
+      "astropy_minus_one_pixel_um": 2.01090606112088
+    },
+    {
+      "file": "cutout_39.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.0025914332039960186,
+      "atb_wavelength_um": 4.719007265147254,
+      "astropy_wavelength_um": 4.718732786003939,
+      "astropy_minus_one_pixel_um": 4.719007265147255
+    },
+    {
+      "file": "cutout_4.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0023268650147549863,
+      "atb_wavelength_um": 2.363036795747041,
+      "astropy_wavelength_um": 2.362551999111217,
+      "astropy_minus_one_pixel_um": 2.3630367957470404
+    },
+    {
+      "file": "cutout_40.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0024069908416830543,
+      "atb_wavelength_um": 0.8035745325506058,
+      "astropy_wavelength_um": 0.803423617861645,
+      "astropy_minus_one_pixel_um": 0.8035745325506058
+    },
+    {
+      "file": "cutout_41.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.0024905389416147727,
+      "atb_wavelength_um": 2.6335927950483473,
+      "astropy_wavelength_um": 2.633015507623949,
+      "astropy_minus_one_pixel_um": 2.6335927950483473
+    },
+    {
+      "file": "cutout_42.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.002283314038161066,
+      "atb_wavelength_um": 0.8225272767282684,
+      "astropy_wavelength_um": 0.822369733383955,
+      "astropy_minus_one_pixel_um": 0.8225272767282683
+    },
+    {
+      "file": "cutout_44.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0018173166151722597,
+      "atb_wavelength_um": 0.8421211363999564,
+      "astropy_wavelength_um": 0.8419635979061432,
+      "astropy_minus_one_pixel_um": 0.8421211363999563
+    },
+    {
+      "file": "cutout_46.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0015747259256748691,
+      "atb_wavelength_um": 0.7497443190575074,
+      "astropy_wavelength_um": 0.7496060129110762,
+      "astropy_minus_one_pixel_um": 0.7497443190575074
+    },
+    {
+      "file": "cutout_47.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.0017285251763503595,
+      "atb_wavelength_um": 2.4398029790630864,
+      "astropy_wavelength_um": 2.4394450755408004,
+      "astropy_minus_one_pixel_um": 2.439802979063087
+    },
+    {
+      "file": "cutout_49.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.002392918869327687,
+      "atb_wavelength_um": 2.564311625942595,
+      "astropy_wavelength_um": 2.563761033740459,
+      "astropy_minus_one_pixel_um": 2.5643116259425955
+    },
+    {
+      "file": "cutout_5.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.0023400155002715195,
+      "atb_wavelength_um": 4.9671504440551635,
+      "astropy_wavelength_um": 4.966816872547752,
+      "astropy_minus_one_pixel_um": 4.967150444055163
+    },
+    {
+      "file": "cutout_50.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.002204101474232445,
+      "atb_wavelength_um": 0.7669281351332671,
+      "astropy_wavelength_um": 0.7667903547401889,
+      "astropy_minus_one_pixel_um": 0.7669281351332669
+    },
+    {
+      "file": "cutout_51.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.002191833011300659,
+      "atb_wavelength_um": 2.4962015938004023,
+      "astropy_wavelength_um": 2.4956662245670587,
+      "astropy_minus_one_pixel_um": 2.496201593800402
+    },
+    {
+      "file": "cutout_52.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0034259073496887282,
+      "atb_wavelength_um": 0.8617137661867712,
+      "astropy_wavelength_um": 0.8615251576851659,
+      "astropy_minus_one_pixel_um": 0.8617137661867712
+    },
+    {
+      "file": "cutout_53.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.003572468993224831,
+      "atb_wavelength_um": 2.8559005109287066,
+      "astropy_wavelength_um": 2.8551670170042263,
+      "astropy_minus_one_pixel_um": 2.855900510928706
+    },
+    {
+      "file": "cutout_54.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.003382896447567063,
+      "atb_wavelength_um": 0.8823593126237643,
+      "astropy_wavelength_um": 0.8821602503886578,
+      "astropy_minus_one_pixel_um": 0.8823593126237643
+    },
+    {
+      "file": "cutout_55.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.003506238239715742,
+      "atb_wavelength_um": 2.9337591506129197,
+      "astropy_wavelength_um": 2.933004689491859,
+      "astropy_minus_one_pixel_um": 2.9337591506129193
+    },
+    {
+      "file": "cutout_57.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.003239204579021049,
+      "atb_wavelength_um": 3.0132280466484396,
+      "astropy_wavelength_um": 3.0124753397012913,
+      "astropy_minus_one_pixel_um": 3.01322804664844
+    },
+    {
+      "file": "cutout_58.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0029719864262229834,
+      "atb_wavelength_um": 0.9247130679021964,
+      "astropy_wavelength_um": 0.9245044172778295,
+      "astropy_minus_one_pixel_um": 0.9247130679021965
+    },
+    {
+      "file": "cutout_6.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0025138053155444595,
+      "atb_wavelength_um": 1.5521702469455891,
+      "astropy_wavelength_um": 1.5518373821037614,
+      "astropy_minus_one_pixel_um": 1.5521702469455891
+    },
+    {
+      "file": "cutout_60.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0027676479812512866,
+      "atb_wavelength_um": 0.9465176465542469,
+      "astropy_wavelength_um": 0.9463086620764125,
+      "astropy_minus_one_pixel_um": 0.9465176465542467
+    },
+    {
+      "file": "cutout_61.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.0024319542540283123,
+      "atb_wavelength_um": 3.181630788373128,
+      "astropy_wavelength_um": 3.180817854909856,
+      "astropy_minus_one_pixel_um": 3.1816307883731274
+    },
+    {
+      "file": "cutout_62.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0023239426109071815,
+      "atb_wavelength_um": 0.968928381668452,
+      "astropy_wavelength_um": 0.9687081074248465,
+      "astropy_minus_one_pixel_um": 0.9689283816684519
+    },
+    {
+      "file": "cutout_63.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.002009636016124361,
+      "atb_wavelength_um": 3.2682279333858166,
+      "astropy_wavelength_um": 3.267396406443597,
+      "astropy_minus_one_pixel_um": 3.2682279333858166
+    },
+    {
+      "file": "cutout_65.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.0016110339786052918,
+      "atb_wavelength_um": 3.3562783247319428,
+      "astropy_wavelength_um": 3.355434165915436,
+      "astropy_minus_one_pixel_um": 3.3562783247319423
+    },
+    {
+      "file": "cutout_66.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0011787985148163926,
+      "atb_wavelength_um": 1.0155001632827827,
+      "astropy_wavelength_um": 1.0152689805988075,
+      "astropy_minus_one_pixel_um": 1.0155001632827827
+    },
+    {
+      "file": "cutout_67.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.0008864823765648566,
+      "atb_wavelength_um": 3.446063819862843,
+      "astropy_wavelength_um": 3.445226549344709,
+      "astropy_minus_one_pixel_um": 3.446063819862843
+    },
+    {
+      "file": "cutout_68.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0005087235181484573,
+      "atb_wavelength_um": 1.0399410298579193,
+      "astropy_wavelength_um": 1.0397093901320558,
+      "astropy_minus_one_pixel_um": 1.0399410298579193
+    },
+    {
+      "file": "cutout_69.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.0005831170406800368,
+      "atb_wavelength_um": 3.538968500930592,
+      "astropy_wavelength_um": 3.538094323020035,
+      "astropy_minus_one_pixel_um": 3.538968500930592
+    },
+    {
+      "file": "cutout_7.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0024147660086910605,
+      "atb_wavelength_um": 4.331710421414815,
+      "astropy_wavelength_um": 4.331379938968399,
+      "astropy_minus_one_pixel_um": 4.331710421414816
+    },
+    {
+      "file": "cutout_70.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0006855222795110194,
+      "atb_wavelength_um": 1.064390826976787,
+      "astropy_wavelength_um": 1.0641587301007973,
+      "astropy_minus_one_pixel_um": 1.0643908269767868
+    },
+    {
+      "file": "cutout_71.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.0007280635371920141,
+      "atb_wavelength_um": 3.6346316590925234,
+      "astropy_wavelength_um": 3.633717007351071,
+      "astropy_minus_one_pixel_um": 3.6346316590925234
+    },
+    {
+      "file": "cutout_72.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0020864987278876868,
+      "atb_wavelength_um": 1.0898312107347687,
+      "astropy_wavelength_um": 1.0895887241720876,
+      "astropy_minus_one_pixel_um": 1.0898312107347685
+    },
+    {
+      "file": "cutout_73.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.0018424935020178168,
+      "atb_wavelength_um": 3.732469902241779,
+      "astropy_wavelength_um": 3.7315122470795656,
+      "astropy_minus_one_pixel_um": 3.7324699022417795
+    },
+    {
+      "file": "cutout_74.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0038280354463129385,
+      "atb_wavelength_um": 1.115463997717594,
+      "astropy_wavelength_um": 1.115221196429771,
+      "astropy_minus_one_pixel_um": 1.115463997717594
+    },
+    {
+      "file": "cutout_75.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.0032033557882744645,
+      "atb_wavelength_um": 3.833836319168066,
+      "astropy_wavelength_um": 3.832880656183106,
+      "astropy_minus_one_pixel_um": 3.833836319168066
+    },
+    {
+      "file": "cutout_76.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.001750362707998221,
+      "atb_wavelength_um": 1.2874536328260786,
+      "astropy_wavelength_um": 1.2872172799747736,
+      "astropy_minus_one_pixel_um": 1.2874536328260786
+    },
+    {
+      "file": "cutout_78.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0016389447924805012,
+      "atb_wavelength_um": 1.3180173890305475,
+      "astropy_wavelength_um": 1.317772352932381,
+      "astropy_minus_one_pixel_um": 1.3180173890305478
+    },
+    {
+      "file": "cutout_79.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.001721309730006837,
+      "atb_wavelength_um": 4.082796965268264,
+      "astropy_wavelength_um": 4.082514249061272,
+      "astropy_minus_one_pixel_um": 4.082796965268263
+    },
+    {
+      "file": "cutout_8.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0024659616398938766,
+      "atb_wavelength_um": 1.5895443572285464,
+      "astropy_wavelength_um": 1.589204763684974,
+      "astropy_minus_one_pixel_um": 1.5895443572285468
+    },
+    {
+      "file": "cutout_80.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0028163870435253813,
+      "atb_wavelength_um": 1.8999689496354235,
+      "astropy_wavelength_um": 1.8996051113986667,
+      "astropy_minus_one_pixel_um": 1.8999689496354235
+    },
+    {
+      "file": "cutout_81.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.0030509365353861284,
+      "atb_wavelength_um": 4.634344343517697,
+      "astropy_wavelength_um": 4.63406102205818,
+      "astropy_minus_one_pixel_um": 4.634344343517698
+    },
+    {
+      "file": "cutout_82.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.003681734134204362,
+      "atb_wavelength_um": 1.988857692548962,
+      "astropy_wavelength_um": 1.9884776603539014,
+      "astropy_minus_one_pixel_um": 1.9888576925489623
+    },
+    {
+      "file": "cutout_83.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.0035955657966528776,
+      "atb_wavelength_um": 4.702555805151528,
+      "astropy_wavelength_um": 4.7022693144305165,
+      "astropy_minus_one_pixel_um": 4.702555805151528
+    },
+    {
+      "file": "cutout_84.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0016023679398458057,
+      "atb_wavelength_um": 1.3489819614686336,
+      "astropy_wavelength_um": 1.3487257091985174,
+      "astropy_minus_one_pixel_um": 1.3489819614686334
+    },
+    {
+      "file": "cutout_85.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0017170096065264318,
+      "atb_wavelength_um": 4.11816921722239,
+      "astropy_wavelength_um": 4.117882328319066,
+      "astropy_minus_one_pixel_um": 4.11816921722239
+    },
+    {
+      "file": "cutout_86.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0017435321384304814,
+      "atb_wavelength_um": 1.3810924560030153,
+      "astropy_wavelength_um": 1.3808365316564566,
+      "astropy_minus_one_pixel_um": 1.3810924560030156
+    },
+    {
+      "file": "cutout_88.fits",
+      "detector": 3,
+      "native_xy_difference_pixels": 0.0035319580315267274,
+      "atb_wavelength_um": 2.0345279341312716,
+      "astropy_wavelength_um": 2.0341480833274863,
+      "astropy_minus_one_pixel_um": 2.034527934131271
+    },
+    {
+      "file": "cutout_89.fits",
+      "detector": 6,
+      "native_xy_difference_pixels": 0.003988361039482413,
+      "atb_wavelength_um": 4.736769930404893,
+      "astropy_wavelength_um": 4.736484321252675,
+      "astropy_minus_one_pixel_um": 4.736769930404893
+    },
+    {
+      "file": "cutout_9.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.002382701013623034,
+      "atb_wavelength_um": 4.368617623868857,
+      "astropy_wavelength_um": 4.368283458566883,
+      "astropy_minus_one_pixel_um": 4.368617623868857
+    },
+    {
+      "file": "cutout_90.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0017531879428762664,
+      "atb_wavelength_um": 1.4137465009468593,
+      "astropy_wavelength_um": 1.4134754207047795,
+      "astropy_minus_one_pixel_um": 1.4137465009468593
+    },
+    {
+      "file": "cutout_92.fits",
+      "detector": 2,
+      "native_xy_difference_pixels": 0.0021283652015036125,
+      "atb_wavelength_um": 1.447673442406555,
+      "astropy_wavelength_um": 1.44740329045904,
+      "astropy_minus_one_pixel_um": 1.447673442406555
+    },
+    {
+      "file": "cutout_93.fits",
+      "detector": 5,
+      "native_xy_difference_pixels": 0.0020744426356476,
+      "atb_wavelength_um": 4.22542701935135,
+      "astropy_wavelength_um": 4.225139172814771,
+      "astropy_minus_one_pixel_um": 4.225427019351351
+    },
+    {
+      "file": "cutout_94.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0020778650617518934,
+      "atb_wavelength_um": 0.9925197922332751,
+      "astropy_wavelength_um": 0.9923229450496336,
+      "astropy_minus_one_pixel_um": 0.9925197922332752
+    },
+    {
+      "file": "cutout_95.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.0019708536484870365,
+      "atb_wavelength_um": 3.357508007966781,
+      "astropy_wavelength_um": 3.3567178468982877,
+      "astropy_minus_one_pixel_um": 3.3575080079667807
+    },
+    {
+      "file": "cutout_96.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0007851004640073711,
+      "atb_wavelength_um": 1.016220802708557,
+      "astropy_wavelength_um": 1.016012965340238,
+      "astropy_minus_one_pixel_um": 1.016220802708557
+    },
+    {
+      "file": "cutout_97.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.0006996532552765444,
+      "atb_wavelength_um": 3.4487072000550016,
+      "astropy_wavelength_um": 3.4479022921745743,
+      "astropy_minus_one_pixel_um": 3.448707200055001
+    },
+    {
+      "file": "cutout_98.fits",
+      "detector": 1,
+      "native_xy_difference_pixels": 0.0007057631037827861,
+      "atb_wavelength_um": 1.0405694148296183,
+      "astropy_wavelength_um": 1.0403615658150327,
+      "astropy_minus_one_pixel_um": 1.0405694148296183
+    },
+    {
+      "file": "cutout_99.fits",
+      "detector": 4,
+      "native_xy_difference_pixels": 0.0006873830894260635,
+      "atb_wavelength_um": 3.5417717320186615,
+      "astropy_wavelength_um": 3.5409668539306742,
+      "astropy_minus_one_pixel_um": 3.5417717320186615
+    }
+  ],
+  "frontend_wcs": {
+    "points": 200,
+    "maximum_error_arcsec": 2.1422546872333857e-10,
+    "maximum_error_pixels": 2.6016522269856068e-11
+  }
+}
