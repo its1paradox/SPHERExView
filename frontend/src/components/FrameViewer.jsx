@@ -1,3 +1,4 @@
+import { useFramePixels } from '../lib/framePixels.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   astroToolboxLimits,
@@ -95,12 +96,14 @@ export default function FrameViewer({
     return [framesAll[outerA], framesAll[outerB]];
   }, [framesAll, outerOnly, outerA, outerB]);
 
-  const maxW = useMemo(() => Math.max(1, ...frames.map((f) => f.width)), [frames]);
-  const maxH = useMemo(() => Math.max(1, ...frames.map((f) => f.height)), [frames]);
+  const maxW = useMemo(() => frames.reduce((size, f) => Math.max(size, f.width), 1), [frames]);
+  const maxH = useMemo(() => frames.reduce((size, f) => Math.max(size, f.height), 1), [frames]);
   // Snap to an integer pixel scale when magnifying -- keeps the
   // nearest-neighbour upscale perfectly crisp (uniform pixel blocks).
   const rawScale = displaySize / Math.max(maxW, maxH);
   const scale = rawScale >= 1 ? Math.round(rawScale) : rawScale;
+
+  const pixels = useFramePixels([frames[Math.min(index, frames.length - 1)], frames[0]]);
 
   // Contrast limits, recomputed when the mode/sliders change.
   const limits = useMemo(() => {
@@ -114,14 +117,15 @@ export default function FrameViewer({
       return frames.map(() => ref);
     }
     if (render.mode === 'percentile') {
-      return frames.map((f) => percentileLimits(f.sorted, render.blackPct, render.whitePct));
+      return frames.map((f) => pixels.get(f)?.sorted ? percentileLimits(pixels.get(f).sorted, render.blackPct, render.whitePct) : [0, 1]);
     }
-    return frames.map((f) => zscaleLimits(f.sorted));
+    return frames.map((f) => pixels.get(f)?.sorted ? zscaleLimits(pixels.get(f).sorted) : [0, 1]);
   }, [
     frames,
     render.mode,
     render.brightness,
     render.contrast,
+    pixels.revision,
     render.blackPct,
     render.whitePct,
   ]);
@@ -144,16 +148,17 @@ export default function FrameViewer({
 
   // Blink loop.
   useEffect(() => {
-    if (!playing || frames.length < 2) return undefined;
+    if (!playing || pixels.loading || pixels.error || frames.length < 2) return undefined;
     const t = setInterval(() => setIndex((i) => (i + 1) % frames.length), speedMs);
     return () => clearInterval(t);
-  }, [playing, frames, speedMs]);
+  }, [playing, frames, speedMs, pixels.loading, pixels.error]);
 
   // Draw current frame.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || frames.length === 0) return;
-    const f = frames[Math.min(index, frames.length - 1)];
+    const f = pixels.get(frames[Math.min(index, frames.length - 1)]);
+    if (!f?.data) { canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height); return; }
     const [vmin, vmax] = limits[Math.min(index, limits.length - 1)];
     // Synced crosshair: sky position hovered on the OTHER panel, mapped
     // through THIS frame's WCS.
@@ -186,6 +191,7 @@ export default function FrameViewer({
   }, [
     frames,
     index,
+    pixels.revision,
     limits,
     scale,
     maxW,
@@ -277,6 +283,7 @@ export default function FrameViewer({
   return (
     <section className="panel viewer">
       <h2>{title}</h2>
+      {pixels.error ? <p role="alert">{pixels.error}</p> : pixels.loading && <p role="status">Loading frame…</p>}
       <div className="frame-label">
         <span className="band">{f.label}</span>
         {f.metadata?.data_release && <span className="band">{f.metadata.data_release.toUpperCase()}</span>}

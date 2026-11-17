@@ -15,7 +15,7 @@ function wait(ms, signal) {
   });
 }
 
-export async function fetchApi(url, options, maxRetries = 8) {
+export async function fetchApi(url, options, maxRetries = Infinity) {
   for (let attempt = 0; ; attempt += 1) {
     if (options?.signal?.aborted) throw options?.signal.reason ?? new DOMException('Aborted', 'AbortError');
     const response = await fetch(url, options);

@@ -1,3 +1,4 @@
+import { useFramePixels } from '../lib/framePixels.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   astroToolboxLimits,
@@ -146,6 +147,8 @@ export default function CombinedViewer({
     [spherexFrames],
   );
 
+  const pixels = useFramePixels([frames[Math.min(index, frames.length - 1)]?.f, frames[Math.min(referenceIndex, frames.length - 1)]?.f]);
+
   // Contrast limits per mission (same algorithms as the panels above).
   const limits = useMemo(() => {
     const wiseRef = wiseFrames.length
@@ -155,7 +158,9 @@ export default function CombinedViewer({
           view.wiseContrast,
         )
       : [0, 1];
-    return frames.map((e) => {
+    return frames.map((item) => {
+      const e = { ...item, f: pixels.get(item.f) };
+      if (!e.f.sorted) return [0, 1];
       if (e.mission === 'WISE') return wiseRef;
       if (e.f.wiseStyle) {
         return astroToolboxLimits(
@@ -172,6 +177,7 @@ export default function CombinedViewer({
   }, [
     frames,
     wiseFrames,
+    pixels.revision,
     view.wiseBrightness,
     view.wiseContrast,
     view.sxScaleMode,
@@ -196,16 +202,16 @@ export default function CombinedViewer({
   }, [frames]);
 
   useEffect(() => {
-    if (!playing || frames.length < 2) return undefined;
+    if (!playing || pixels.loading || pixels.error || frames.length < 2) return undefined;
     const t = setInterval(() => setIndex((i) => (i + 1) % frames.length), speedMs);
     return () => clearInterval(t);
-  }, [playing, frames, speedMs]);
+  }, [playing, frames, speedMs, pixels.loading, pixels.error]);
 
   useEffect(() => {
     const draw = (canvas, frameIndex) => {
     if (!canvas || frames.length === 0) return;
     const i = Math.min(frameIndex, frames.length - 1);
-    const entry = frames[i];
+    const entry = { ...frames[i], f: pixels.get(frames[i].f) };
     const tf = transforms[i];
     const [vmin, vmax] = limits[i];
     const isWise = entry.mission === 'WISE';
@@ -219,7 +225,7 @@ export default function CombinedViewer({
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = invert ? '#fff' : '#000';
     ctx.fillRect(0, 0, displaySize, displaySize);
-    if (!tf) return;
+    if (!tf || !entry.f.data) return;
 
     // v19 renderer: grayscale epochs get their black/white points through
     // vmin/vmax (percentileLimits above); Lupton color frames keep the
@@ -284,7 +290,7 @@ export default function CombinedViewer({
     };
     draw(canvasRef.current, index);
     draw(referenceCanvas.current, referenceIndex);
-  }, [frames, transforms, limits, index, referenceIndex, displaySize, fov, view, pin]);
+  }, [frames, transforms, limits, pixels.revision, index, referenceIndex, displaySize, fov, view, pin]);
 
   if (frames.length === 0) return (
     <section className="panel viewer combined-viewer">
@@ -301,6 +307,7 @@ export default function CombinedViewer({
   return (
     <section className="panel viewer combined-viewer">
       <h2>Combined timeline (WISE {'\u2192'} SPHEREx)</h2>
+      {pixels.error ? <p role="alert">{pixels.error}</p> : pixels.loading && <p role="status">Loading frame…</p>}
       <div className="frame-label">
         <span className={`mission-tag ${entry.mission === 'WISE' ? 'wise' : 'spherex'}`}>
           {entry.mission}

@@ -58,7 +58,7 @@ def validate_comparison(recipe):
 
 def validate_query(query):
     bounds = {"radius_arcsec": (0, 120), "size_arcsec": (0, 240),
-              "limit": (0, 500), "pixscale_arcsec": (3.1, 24.8)}
+              "pixscale_arcsec": (3.1, 24.8)}
     for key, (low, high) in bounds.items():
         if key not in query:
             continue

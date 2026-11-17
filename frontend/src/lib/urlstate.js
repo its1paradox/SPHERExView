@@ -33,7 +33,7 @@ export const DEFAULT_FORM = {
   survey: 'wide',
   release: 'all',
   bands: [], // empty = all bands
-  limit: '500',
+  limit: '0',
   wiseBand: 'w1w2',
 };
 
@@ -45,7 +45,7 @@ export const DEFAULT_VIEW = {
   showCombined: true,
   combinedMode: 'wise',
   combinedMonths: 6,
-  combinedLimit: 500,
+  combinedLimit: 0,
   combinedBackground: 'zodi',
   combinedSigma: 5,
   combinedMaxiters: 2,
@@ -94,7 +94,7 @@ export function parseHash(hashText) {
   form.release = releaseValue(get('release'));
   if (get('survey') === 'wide' || get('survey') === 'deep') form.survey = get('survey');
   if (get('bands') !== undefined) form.bands = bandsFromHash(get('bands'));
-  if (num(get('maxframes')) !== undefined) form.limit = String(Math.round(num(get('maxframes'))));
+  // Historical maxframes/climit bookmarks no longer truncate observations.
   if (['w1', 'w2', 'w1w2'].includes(get('wiseband'))) form.wiseBand = get('wiseband');
 
   const setB = (key, hk) => {
@@ -117,7 +117,7 @@ export function parseHash(hashText) {
     view.combinedMode = get('cmode');
   }
   setN('combinedMonths', 'cmonths', 0.25, 25);
-  setI('combinedLimit', 'climit', 1, 10000);
+
   if (['zodi', 'none'].includes(get('cbg'))) view.combinedBackground = get('cbg');
   setN('combinedSigma', 'csigma', 0, 20);
   setI('combinedMaxiters', 'citers', 0, 10);
@@ -169,7 +169,7 @@ export function buildHash(form, view) {
   push('survey', form.survey);
   push('release', form.release || 'all');
   if (form.bands.length > 0) push('bands', bandsToHash(form.bands));
-  push('maxframes', form.limit);
+
   push('wiseband', form.wiseBand);
   push('wise', view.showWise ? 1 : 0);
   push('spherex', view.showSpherex ? 1 : 0);
@@ -177,7 +177,7 @@ export function buildHash(form, view) {
   push('combined', view.showCombined ? 1 : 0);
   push('cmode', view.combinedMode);
   push('cmonths', view.combinedMonths);
-  push('climit', view.combinedLimit);
+
   push('cbg', view.combinedBackground);
   push('csigma', view.combinedSigma);
   push('citers', view.combinedMaxiters);

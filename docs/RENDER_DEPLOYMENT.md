@@ -51,13 +51,14 @@ origin. Persistent paths are `/var/data/cache`, `/var/data/static`, and
 The container enables these explicit pilot controls:
 
 - One expensive API request or background comparison at a time. Busy requests
-  get HTTP 429 with Retry-After; the browser retries up to eight times, with
-  cancellation support, then shows the error. There is no server-side queue.
+  get HTTP 429 with Retry-After; the browser waits and retries, with
+  cancellation support. Other failures are shown immediately. There is no server-side queue.
 - Health, comparison status, cancellation, and completed comparison downloads
   remain available while work runs.
 - Two internal image-download threads and one numerical-library thread.
-- Image-query radius up to 120 arcsec, WISE size up to 240 arcsec, limit up to
-  500, coadd pixel scale at least 3.1 arcsec.
+- Image-query radius up to 120 arcsec, WISE size up to 240 arcsec,
+  coadd pixel scale at least 3.1 arcsec. Timeline observation counts are uncapped;
+  disk-backed batching and on-demand pixels replace the former 500-input cap.
 - Comparison field up to 240 arcsec and pixel scale at least 6.2 arcsec. Existing
   science cell budgets still apply. Excess requests are rejected explicitly;
   recipes and scientific arrays are never silently reduced.

@@ -149,6 +149,8 @@
 .timeline-app .timeline-tools button { font-size: 11px; padding: 6px 9px; }
 .panel-switch > span, .timeline-tools > span { font-size: 10px; margin-right: 2px; }
 .timeline-status { min-height: 30px; padding: 6px 0; font-size: 11px; }
+.processing-details { margin-bottom: 10px; font-size: 12px; overflow-wrap: anywhere; }
+.processing-details pre { max-height: 240px; overflow: auto; white-space: pre-wrap; }
 .timeline-app .timeline-target-bar { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: minmax(0, 1fr) 145px auto; align-items: end; gap: 10px; margin: 0 0 10px; padding: 10px; border: 1px solid #304255; border-radius: 7px; background: #0d1823; }
 .timeline-app .timeline-target-bar label { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: 12px; color: #b8c9d8; }
 .timeline-app .timeline-target-bar input { width: 100%; min-width: 0; min-height: 38px; padding: 7px 10px; border: 1px solid #344659; border-radius: 5px; background: #0b1520; color: #e0e9f2; font-size: 14px; }

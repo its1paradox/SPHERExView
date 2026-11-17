@@ -59,7 +59,8 @@ async function mount(hash = '', responseOverride) {
           short_channel: { detectors: [4], n_exposures: 2, sky_sigma_mjy_sr: 1 },
           long_channel: { detectors: [6], n_exposures: 2, sky_sigma_mjy_sr: 1 },
         } })) };
-    } else throw new Error(`Unexpected request: ${url}`);
+    } else if (parsed.pathname.startsWith('/static/cutouts/')) result = {data_b64: data};
+    else throw new Error(`Unexpected request: ${url}`);
     if (responseOverride) result = responseOverride(parsed, result);
     return { ok: true, json: async () => structuredClone(result) };
   };
@@ -79,7 +80,7 @@ test('timeline defaults and explicit bookmark panel choices survive URL round tr
   assert.equal(legacy.view.showWise, true);
   assert.equal(legacy.view.showCombined, false);
   assert.equal(legacy.view.combinedMode, 'exposures');
-  assert.equal(legacy.form.limit, '20');
+  assert.equal(legacy.form.limit, '0', 'Historical frame caps are ignored');
   assert.equal(legacy.form.wiseBand, 'w2');
   for (const mode of ['exposures', 'd6', 'wise', 'custom']) {
     const state = parseHash(`#ra=10&dec=-5&spherex=1&wise=1&combined=1&cmode=${mode}&sxstretch=log&wcontrast=67`);
@@ -137,7 +138,7 @@ test('a fresh launch shows the timeline tile with mission panels and their contr
     assert.equal(app.q('.timeline-appearance').open, false);
     assert.equal(app.q('.input-options').open, false);
     assert.equal(app.requests.length, 0, 'Changing launch presentation must not start a new query');
-    assert.equal(app.q('.input-options input[type="number"]').value, '500');
+    assert.equal(app.q('.input-options input[type="number"]'), null);
     assert.equal(app.q('.input-options select').value, 'w1w2');
     assert.equal(app.q('[data-testid="select-combined-mode"]').value, 'wise');
     for (const [name, path] of [['Epoch blink sequence', 'blink.html'], ['Detector & spectrum explorer', 'compare.html']]) {
@@ -147,7 +148,7 @@ test('a fresh launch shows the timeline tile with mission panels and their contr
     app.button('Fetch images').click();
     await settle(() => app.q('.combined-viewer canvas'));
     const queries = app.requests.map(u => new URL(u, 'http://localhost'));
-    assert.equal(queries.find(u => u.pathname === '/api/epoch-stack').searchParams.get('limit'), '500');
+    assert.equal(queries.find(u => u.pathname === '/api/epoch-stack').searchParams.get('limit'), null);
     assert.ok(queries.filter(u => u.pathname === '/api/wise-stack').every(u => u.searchParams.get('band') === 'w1w2'));
     const coadd = queries.find(u => u.pathname === '/api/epoch-coadds');
     assert.equal(coadd.searchParams.get('band'), 'SPHEREx-D6');
@@ -304,7 +305,8 @@ test('all coadd modes and scientific recipe parameters remain available with ind
   try {
     await settle(() => app.q('.combined-viewer canvas'));
     const first = new URL(app.requests.find(u => u.startsWith('/api/epoch-coadds')), 'http://localhost');
-    for (const [key, value] of Object.entries({ band: 'SPHEREx-D6', ref: 'none', bin_months: '3', limit: '87', background: 'none', sigma: '3', maxiters: '1', min_channel_exposures: '2', pixscale_arcsec: '6.2', resampling: 'nearest' })) {
+    assert.equal(first.searchParams.get('limit'), null, 'Legacy coadd cap must not survive');
+    for (const [key, value] of Object.entries({ band: 'SPHEREx-D6', ref: 'none', bin_months: '3', background: 'none', sigma: '3', maxiters: '1', min_channel_exposures: '2', pixscale_arcsec: '6.2', resampling: 'nearest' })) {
       assert.equal(first.searchParams.get(key), value);
     }
     for (const mode of ['wise', 'custom']) {
@@ -335,5 +337,63 @@ test('a missing mission leaves a useful timeline message and available individua
     await settle(() => app.q('.viewer-row canvas'));
     assert.equal(app.requests.length, 2);
     assert.deepEqual(app.errors, []);
+  } finally { app.dom.window.close(); }
+});
+
+test('all 1007 lazy frames remain navigable and pixels load only when viewed', async () => {
+  const app = await mount('#ra=10&dec=-5&cmode=exposures&speed=5000&maxframes=1', (url, result) => {
+    if (url.pathname !== '/api/epoch-stack') return result;
+    return {count:1007, n_attempted:1008, n_exposures_skipped:1,
+      omissions:[{obs_id:'missing',reason:'download failed'}],
+      cutouts:Array.from({length:1007}, (_, i) => ({...raw[0],data_b64:undefined,
+        id:`lazy-${i}`,data_url:`/static/cutouts/lazy-${i}.json`,
+        metadata:{...raw[0].metadata,mjd_mid:61000+i}}))};
+  });
+  try {
+    await settle(() => app.q('.combined-viewer canvas'));
+    assert.match(app.q('.processing-details').textContent, /download failed/);
+    assert.equal(app.requests.filter(u => u.startsWith('/static/')).length,0);
+    // Let the initial frame-set effect reset playback before scrubbing.
+    await new Promise(resolve => setTimeout(resolve, 40));
+    const slider = app.q('[aria-label="Timeline frame"]');
+    assert.equal(slider.max,'1008');
+    Object.getOwnPropertyDescriptor(app.w.HTMLInputElement.prototype,'value').set.call(slider,'1008');
+    slider.dispatchEvent(new app.w.Event('input',{bubbles:true}));
+    await settle(() => app.requests.includes('/static/cutouts/lazy-1006.json'));
+    await settle(() => app.q('.combined-viewer .frame-count').textContent === '1009/1009' && !app.q('.combined-viewer [role="status"]'));
+    assert.equal(app.q('.combined-viewer .frame-count').textContent,'1009/1009');
+    app.button('Use current as reference').click();
+    app.q('[aria-label="Previous timeline frame"]').click();
+    await settle(() => app.requests.includes('/static/cutouts/lazy-1005.json'));
+    assert.ok(app.requests.filter(u => u.startsWith('/static/')).length <= 3);
+    app.toggle('SPHEREx panel');
+    await settle(() => app.q('.viewer-row canvas'));
+    await new Promise(resolve => setTimeout(resolve, 40));
+    const rawSlider = app.q('.viewer-row input[type="range"]');
+    for (let index = 1; index <= 15; index++) {
+      Object.getOwnPropertyDescriptor(app.w.HTMLInputElement.prototype,'value').set.call(rawSlider,String(index));
+      rawSlider.dispatchEvent(new app.w.Event('input',{bubbles:true}));
+      await settle(() => app.requests.includes(`/static/cutouts/lazy-${index}.json`));
+    }
+    app.q('[aria-label="Next timeline frame"]').click();
+    await settle(() => app.q('.combined-viewer .frame-count').textContent === '1009/1009');
+    assert.equal(app.requests.filter(u => u === '/static/cutouts/lazy-1006.json').length,1,
+      'The reference pixels stay pinned while another panel churns the cache');
+    assert.ok(app.q('.timeline-target-bar'));
+    assert.deepEqual(app.errors,[]);
+  } finally { app.dom.window.close(); }
+});
+
+test('failed lazy pixels show an error rather than silently advancing playback', async () => {
+  const app = await mount('#ra=10&dec=-5&cmode=exposures&spherex=1', (url,result) => {
+    if (url.pathname === '/api/epoch-stack') return {count:1,cutouts:[{...raw[0], data_b64:undefined,data_url:'/static/cutouts/unavailable.json'}]};
+    if (url.pathname.startsWith('/static/')) throw new Error('Synthetic pixel download failed');
+    return result;
+  });
+  try {
+    await settle(() => app.q('.viewer-row [role="alert"]'));
+    assert.match(app.q('.viewer-row [role="alert"]').textContent,/Synthetic pixel download failed/);
+    assert.ok(app.q('.timeline-target-bar'));
+    assert.deepEqual(app.errors,[]);
   } finally { app.dom.window.close(); }
 });

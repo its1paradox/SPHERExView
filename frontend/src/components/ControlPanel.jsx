@@ -222,10 +222,7 @@ export default function ControlPanel({ onSubmit, loading, view, setView, form, s
               </label>
             ))}
           </div>
-          <label>
-            Max frames
-            <input type="number" min="1" value={form.limit} onChange={set('limit')} />
-          </label>
+          <p className="hint">All eligible observations are processed. Images load as you view them.</p>
           <label>
             Band
             <select
@@ -348,17 +345,7 @@ export default function ControlPanel({ onSubmit, loading, view, setView, form, s
                       data-testid="range-combined-months"
                     />
                   </label>
-                  <label>
-                    Maximum input exposures
-                    <input
-                      type="number"
-                      min="1"
-                      max="10000"
-                      value={view.combinedLimit}
-                      onChange={setV('combinedLimit')}
-                      data-testid="input-combined-limit"
-                    />
-                  </label>
+                  <p className="hint">All eligible input exposures contribute; no sampling cap is applied.</p>
                   <label>
                     Minimum exposures per channel
                     <input

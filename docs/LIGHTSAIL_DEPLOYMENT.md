@@ -19,6 +19,10 @@ then run `sudo bash deploy/lightsail/bootstrap.sh`. Installation adds 2 GiB
 swap on the included disk and uses Ubuntu's packaged Docker/Compose.
 The app runs as UID 10001 with a read-only container filesystem, temporary
 /tmp, and writable persistent /srv/spherexview/data mounted at /var/data.
+Timeline observation counts are uncapped in the updated source. See
+[full-inventory batching](TIMELINE_BATCHING.md) for storage, validation and
+failure reporting. Deploy the reviewed PR commit to activate this on AWS.
+
 Container logs rotate. The app has a 1400 MiB memory limit; this is a bounded
 pilot and large jobs can still exhaust memory. Caddy has a 128 MiB limit.
 

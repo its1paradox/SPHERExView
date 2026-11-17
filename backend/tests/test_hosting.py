@@ -34,7 +34,7 @@ def test_busy_work_keeps_health_and_existing_job_status_available(pilot):
 
 
 def test_limits_reject_instead_of_changing_science_parameters(pilot):
-    assert pilot.get("/api/epoch-stack?ra=1&dec=2&limit=501").status_code == 422
+    hosting.validate_query({"limit": "1000000"})
     assert pilot.get("/api/coadd?ra=1&dec=2&radius_arcsec=121").status_code == 422
     assert pilot.post("/api/detector-comparison", json={"ra": 1, "dec": 2, "size_arcsec": 300}).status_code == 422
     hosting.validate_comparison(dc.Recipe(ra=1, dec=2))

@@ -82,7 +82,7 @@ function parseBlinkHash() {
     survey: p.get('survey') || 'wide',
     release: releaseValue(p.get('release')),
     months: p.get('months') || '6',
-    maxframes: p.get('maxframes') || '500',
+    maxframes: '0',
     band: p.get('band') || (p.get('short') || p.get('long') ? 'custom' : 'all'),
     ref: p.get('ref') || 'auto',
     // Coadd recipe — defaults reproduce the historical blink behavior
@@ -171,7 +171,6 @@ export default function BlinkPage() {
       survey: f.survey,
       release: f.release,
       bin_months: f.months,
-      limit: f.maxframes,
       background: f.background,
       sigma: f.sigma,
       maxiters: f.maxiters,
@@ -224,7 +223,6 @@ export default function BlinkPage() {
         survey: f.survey,
         release: f.release,
         months: f.months,
-        maxframes: f.maxframes,
         ...(f.band === 'custom'
           ? { short: parseDets(f.short).join(','), long: parseDets(f.long).join(',') }
           : f.band && f.band !== 'all'
@@ -520,17 +518,7 @@ export default function BlinkPage() {
                 ))}
               </select>
             </label>
-            <label>
-              Max exposures
-              <input
-                type="number"
-                value={form.maxframes}
-                onChange={setF('maxframes')}
-                min="1"
-                max="2000"
-                step="1"
-              />
-            </label>
+            <p className="hint">All eligible observations are processed in batches.</p>
             <p className="hint">
               Epochs follow the natural SPHEREx visit structure: a new epoch starts where
               consecutive exposures are more than ~30 days apart (the unWISE gap rule scaled
