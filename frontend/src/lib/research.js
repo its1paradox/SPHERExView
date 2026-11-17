@@ -165,8 +165,7 @@ async function localAsset(target,url) {
   }
   return null;
 }
-async function saveResult(target,tool,key,response,network,options,extra={},activityId) {
-  const json=await response.clone().json();
+async function saveResult(target,tool,key,response,network,options,extra={},activityId,json) {
   const snapshot=randomId();
   const progress=(saved,done=false)=>window.dispatchEvent(new CustomEvent('research-save',{detail:{id:snapshot,saved,total:assets.length,done}}));
   const urls=[];
@@ -284,7 +283,7 @@ export async function localResearchFetch(url,options,network) {
         const spec=targetSpec(data.recipe);
         if(Object.keys(spec).some(k=>spec[k]!==target[k]))throw new Error('The saved result does not match this target or recipe.');
       }
-      await saveResult(activityTarget,tool,isResult?(job?.key || `${target.id}|${recipeKey(data.recipe)}`):key,response,network,scoped,isResult?{jobId,url}:{},activityId);
+      await saveResult(activityTarget,tool,isResult?(job?.key || `${target.id}|${recipeKey(data.recipe)}`):key,response,network,scoped,isResult?{jobId,url}:{},activityId,data);
       const incomplete=data.n_exposures_skipped || (data.n_selected!=null && (data.inputs || []).filter(i=>i.status==='accepted').length<data.n_selected);
       await report({phase:incomplete?'incomplete':'ready',message:'Results saved on this device',done:0,total:0});
     }
