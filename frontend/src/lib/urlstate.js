@@ -33,7 +33,7 @@ export const DEFAULT_FORM = {
   survey: 'wide',
   release: 'all',
   bands: [], // empty = all bands
-  limit: '1000',
+  limit: '500',
   wiseBand: 'w1w2',
 };
 

@@ -137,7 +137,7 @@ test('a fresh launch shows the timeline tile with mission panels and their contr
     assert.equal(app.q('.timeline-appearance').open, false);
     assert.equal(app.q('.input-options').open, false);
     assert.equal(app.requests.length, 0, 'Changing launch presentation must not start a new query');
-    assert.equal(app.q('.input-options input[type="number"]').value, '1000');
+    assert.equal(app.q('.input-options input[type="number"]').value, '500');
     assert.equal(app.q('.input-options select').value, 'w1w2');
     assert.equal(app.q('[data-testid="select-combined-mode"]').value, 'wise');
     for (const [name, path] of [['Epoch blink sequence', 'blink.html'], ['Detector & spectrum explorer', 'compare.html']]) {
@@ -147,11 +147,62 @@ test('a fresh launch shows the timeline tile with mission panels and their contr
     app.button('Fetch images').click();
     await settle(() => app.q('.combined-viewer canvas'));
     const queries = app.requests.map(u => new URL(u, 'http://localhost'));
-    assert.equal(queries.find(u => u.pathname === '/api/epoch-stack').searchParams.get('limit'), '1000');
+    assert.equal(queries.find(u => u.pathname === '/api/epoch-stack').searchParams.get('limit'), '500');
     assert.ok(queries.filter(u => u.pathname === '/api/wise-stack').every(u => u.searchParams.get('band') === 'w1w2'));
     const coadd = queries.find(u => u.pathname === '/api/epoch-coadds');
     assert.equal(coadd.searchParams.get('band'), 'SPHEREx-D6');
     assert.equal(coadd.searchParams.get('ref'), 'auto');
+    assert.deepEqual(app.errors, []);
+  } finally { app.dom.window.close(); }
+});
+
+test('persistent target bar edits the shared draft and submits the current coordinates and width', async () => {
+  const app = await mount();
+  const edit = async (selector, value) => {
+    const input = app.q(selector);
+    Object.getOwnPropertyDescriptor(app.w.HTMLInputElement.prototype, 'value').set.call(input, value);
+    input.dispatchEvent(new app.w.Event('input', { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 10));
+  };
+  try {
+    const bar = app.q('.timeline-target-bar');
+    assert.ok(bar && !bar.closest('dialog'), 'Target must be usable with every settings dialog closed');
+    assert.equal(bar.querySelectorAll('input').length, 2);
+    assert.equal(app.requests.length, 0);
+    await edit('.timeline-target-bar input[aria-label="Target coordinates"]', 'invalid');
+    bar.requestSubmit();
+    await settle(() => app.q('.timeline-target-bar input[aria-invalid="true"]'));
+    assert.equal(app.requests.length, 0, 'Invalid coordinates must not query either archive');
+    await edit('.timeline-target-bar input[aria-label="Target coordinates"]', '12.5, -8.25');
+    await edit('.timeline-target-bar input[type="number"]', '120');
+    assert.equal(app.q('.timeline-target-bar input[aria-invalid="true"]'), null);
+    await edit('.timeline-target-bar input[type="number"]', '');
+    assert.equal(bar.checkValidity(), false, 'An empty field width must not submit');
+    await edit('.timeline-target-bar input[type="number"]', '120');
+    app.button('Target & images').click();
+    await settle(() => app.q('dialog[open]'));
+    assert.equal(app.q('dialog input[aria-label="Target coordinates"]').value, '12.5, -8.25');
+    assert.equal(app.q('dialog input[aria-label="Field width (arcsec)"]').value, '120');
+    await edit('dialog input[aria-label="Field width (arcsec)"]', '90');
+    app.q('[aria-label="Close settings"]').click();
+    await settle(() => !app.q('dialog[open]'));
+    assert.equal(bar.querySelector('input[type="number"]').value, '90');
+    assert.equal(app.requests.length, 0, 'Editing the draft must not fetch until submitted');
+    bar.requestSubmit();
+    await settle(() => app.q('.combined-viewer canvas'));
+    const queries = app.requests.map(url => new URL(url, 'http://localhost'));
+    for (const query of queries) {
+      assert.equal(query.searchParams.get('ra'), '12.5');
+      assert.equal(query.searchParams.get('dec'), '-8.25');
+      assert.equal(query.searchParams.get(query.pathname === '/api/wise-stack' ? 'size_arcsec' : 'radius_arcsec'), query.pathname === '/api/wise-stack' ? '90' : '45');
+    }
+    assert.equal(queries.filter(u => u.pathname === '/api/epoch-stack').length, 1);
+    assert.equal(queries.filter(u => u.pathname === '/api/wise-stack').length, 2, 'Matched-color mode also refreshes W1+W2 epochs');
+    assert.equal(new URLSearchParams(app.w.location.hash.slice(1)).get('size'), '90');
+    app.toggle('Combined timeline');
+    await settle(() => !app.q('.timeline-primary'));
+    assert.ok(app.q('.timeline-target-bar'), 'Target remains available with every panel hidden');
+    assert.equal(app.q('.timeline-target-bar button').disabled, false);
     assert.deepEqual(app.errors, []);
   } finally { app.dom.window.close(); }
 });

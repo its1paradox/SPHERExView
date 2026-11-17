@@ -1,6 +1,7 @@
 import { fetchApi } from './lib/api';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ControlPanel, { parseCoords } from './components/ControlPanel.jsx';
+import TargetFields from './components/TargetFields.jsx';
 import FrameViewer from './components/FrameViewer.jsx';
 import CombinedViewer from './components/CombinedViewer.jsx';
 import { decodeB64Float32, sortPixels } from './lib/render.js';
@@ -429,6 +430,20 @@ export default function App() {
   }, []);
 
   const [settingsSection, setSettingsSection] = useState(null);
+  const submitTarget = (event) => {
+    event.preventDefault();
+    if (loading) return;
+    const coords = parseCoords(form.coords);
+    if (!coords) {
+      setCoordsError('Enter RA and Dec in decimal degrees, e.g. 11.889632 28.089606');
+      return;
+    }
+    setCoordsError(null);
+    setSettingsSection(null);
+    search({ ...coords, fov: Number(form.fov), survey: form.survey,
+      release: form.release, band: form.bands.join(','),
+      limit: parseInt(form.limit, 10), wiseBand: form.wiseBand });
+  };
   return (
     <div className="app timeline-app">
       <header className="timeline-header">
@@ -442,6 +457,10 @@ export default function App() {
       </header>
       <div className="layout">
         <main className="viewers">
+          <form className="timeline-target-bar" aria-label="Target coordinates and field width" onSubmit={submitTarget}>
+            <TargetFields form={form} setForm={setForm} coordsError={coordsError} setCoordsError={setCoordsError} />
+            <button type="submit" disabled={loading}>{loading ? 'Loading…' : 'Fetch images'}</button>
+          </form>
           <div className="timeline-toolbar">
             <section className="panel-switch" aria-label="Visible panels">
               <span>Panels</span>
@@ -587,7 +606,7 @@ export default function App() {
         <ControlPanel
           settingsSection={settingsSection}
           setSettingsSection={setSettingsSection}
-          onSearch={search}
+          onSubmit={submitTarget}
           loading={loading}
           view={view}
           setView={setView}
