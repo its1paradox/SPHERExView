@@ -277,13 +277,13 @@ def flatten_votable(content: bytes) -> dict:
 
 def filter_release(table: dict, release: str = "all") -> dict:
     """Filter measured rows by IRSA provenance; never infer calibration from date."""
-    if release not in ("all", "qr2", "qr3"):
-        raise ValueError("Release must be all, qr2 or qr3")
-    counts = {"qr2": 0, "qr3": 0, "unknown": 0}
+    if release not in ("all", "dr1", "qr3", "qr2"):
+        raise ValueError("Release must be all, dr1, qr3 or qr2")
+    counts = {"dr1": 0, "qr3": 0, "qr2": 0, "unknown": 0}
     rows = []
     for row in table["rows"]:
         value = str(row.get("data_collection") or "").strip().lower()
-        rel = next((r for r in ("qr2", "qr3")
+        rel = next((r for r in ("dr1", "qr3", "qr2")
                     if value in (r, f"spherex_{r}", f"spherex_{r}_deep")), "unknown")
         counts[rel] += 1
         if release == "all" or release == rel:

@@ -1,3 +1,4 @@
+import { fetchApi } from '../lib/api';
 import ReleaseSelect from './ReleaseSelect.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { pixelToWorld, worldToPixel } from '../lib/render.js';
@@ -6,7 +7,9 @@ import { COLOR_METHOD, colorFrame, colorPixel, colorDescription, pairSample } fr
 import { wavelengthFrame, wavelengthPixel, wavelengthDescription, wavelengthProvenance } from '../lib/wavelength.js';
 import ExpandedDetector from './ExpandedDetector.jsx';
 import LiveSpectrum from './LiveSpectrum.jsx';
-import { rgbFrame, rgbPixel, RGB_METHOD } from '../lib/liveSpectrum.js';
+import WorkspaceSettings from './WorkspaceSettings.jsx';
+import { useWorkspaceResize, useFittedImages, ResizeHandles } from './WorkspaceResize.jsx';
+import { rgbFrame, rgbDisplay, rgbPixel, RGB_METHOD } from '../lib/liveSpectrum.js';
 import '../comparison.css';
 
 const fmt = (x, digits = 5) => Number.isFinite(x) ? Number(x.toPrecision(digits)).toString() : '—';
@@ -22,7 +25,7 @@ function WavelengthKey({ strength }) {
 }
 
 async function jsonRequest(url, options) {
-  const response = await fetch(url, options);
+  const response = await fetchApi(url, options);
   const data = await response.json();
   if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : Array.isArray(data.detail) ? data.detail.map(e => `${e.loc.at(-1)}: ${e.msg}`).join('; ') : `Request failed (${response.status})`);
   return data;
@@ -169,17 +172,24 @@ function Tile({ tile, values, result, display, setDisplay, limits, pin, setPin, 
       {tile.status !== 'ok' && <div className="detector-empty"><strong>{rgb ? 'RGB needs all six detectors' : tile.status === 'missing' ? 'No observations in this epoch' : 'No usable coadd'}</strong><span>{rgb ? 'No common six-detector coverage. Individual tiles and spectra remain available.' : tile.n_accepted ? `Coverage below ${result.recipe.min_exposures} exposures per pixel` : Object.keys(tile.failures).join(' · ').replaceAll('_', ' ') || 'This detector remains empty'}</span></div>}
       {!rgb && tile.status === 'ok' && display.mode === 'color' && !referenceAvailable && <div className="detector-empty"><strong>Reference D{display.reference} unavailable</strong><span>Select another reference or use grayscale to inspect D{tile.detector}.</span></div>}
     </div>
-    <footer>{rgb && <div className="tile-color-key rgb-key"><span>R: D5+6</span><span>G: D3+4</span><span>B: D1+2</span></div>}<span>{tile.n_accepted} / {tile.n_selected} exposures used{tile.n_selected < tile.n_inventory ? ' · subset' : ''}</span><span>{date(tile.mjd_start)}{tile.mjd_end > tile.mjd_start ? ` → ${date(tile.mjd_end)}` : ''} UTC</span></footer>
+    <footer>{rgb && <div className="tile-color-key rgb-key"><span>R: (D5+6)/2</span><span>G: (D3+4)/2</span><span>B: (D1+2)/2</span></div>}<span>{tile.n_accepted} / {tile.n_selected} exposures used{tile.n_selected < tile.n_inventory ? ' · subset' : ''}</span><span title={`${date(tile.mjd_start)} → ${date(tile.mjd_end)} UTC`}>{date(tile.mjd_start)}{tile.mjd_end > tile.mjd_start ? ` → ${date(tile.mjd_end)}` : ''} UTC</span></footer>
   </article>;
 }
 
 export default function DetectorComparison() {
   const initial = useRef(readState(window.location.hash)).current;
+  const savedResult = useRef(new URLSearchParams(window.location.hash.slice(1)).get('result')).current;
   const [form, setForm] = useState(initial.form), [display, setDisplay] = useState(initial.display);
   const [result, setResult] = useState(null), [resultForm, setResultForm] = useState(null);
   const [epoch, setEpoch] = useState(initial.epoch), [pin, setPin] = useState(initial.pin), [hover, setHover] = useState(null);
   const [selected, setSelected] = useState(1), [playing, setPlaying] = useState(false), [speed, setSpeed] = useState(1000), [completeOnly, setCompleteOnly] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [settingsSection, setSettingsSection] = useState(null);
+  const imageView = display.imageView, workspaceLayout = display.workspaceLayout;
+  const workspace = useWorkspaceResize(display, setDisplay);
+  useFittedImages(workspace.ref, [result, imageView, display.mode, workspaceLayout]);
+  const setImageView = value => { setHover(null); show('imageView', value); };
+  const focusWorkspace = value => { setHover(null); show('workspaceLayout', value); };
   const expandOpener = useRef(null);
   const [busy, setBusy] = useState(false), [status, setStatus] = useState('Choose a target to build all six detector coadds.'), [error, setError] = useState('');
   const [jobId, setJobId] = useState(null), [resultJobId, setResultJobId] = useState(null);
@@ -192,6 +202,7 @@ export default function DetectorComparison() {
     event?.preventDefault();
     let recipe;
     try { recipe = recipeFromForm(form); } catch (e) { setError(e.message); return; }
+    setSettingsSection(null);
     const snapshot = structuredClone(form), current = ++generation.current;
     setBusy(true); setPlaying(false); setError(''); setStatus('Starting comparison…');
     try {
@@ -220,11 +231,32 @@ export default function DetectorComparison() {
   };
   useEffect(() => {
     mounted.current = true;
-    if (!booted.current && initial.form.coords) { booted.current = true; build(); }
+    if (!booted.current && initial.form.coords) {
+      booted.current = true;
+      if (savedResult) {
+        const current = ++generation.current;
+        setBusy(true); setStatus('Restoring completed comparison…');
+        (async () => {
+          try {
+            if (!/^[0-9a-f]{32}$/.test(savedResult)) throw new Error('Invalid saved result link. Choose Target & recipe to build a new comparison.');
+            const raw = await jsonRequest(`/api/detector-comparison/${savedResult}/result`);
+            const requested = recipeFromForm(initial.form);
+            if (Object.entries(requested).some(([key, value]) => JSON.stringify(value) !== JSON.stringify(raw.recipe?.[key]))) throw new Error('The saved result does not match this target or recipe. Choose Target & recipe to build the requested field.');
+            if (!mounted.current || current !== generation.current) return;
+            const decoded = decodeResult(raw);
+            setResult(decoded); setResultForm(structuredClone(initial.form)); setResultJobId(savedResult);
+            setEpoch(k => Math.min(k, Math.max(0, decoded.epochs.length - 1)));
+            setStatus(`${decoded.epochs.length} epochs · ${decoded.inputs.filter(i => i.status === 'accepted').length}/${decoded.n_selected} exposures accepted · saved result`);
+          } catch (e) {
+            if (mounted.current && current === generation.current) { setError(e.message); setStatus('Saved comparison could not be restored.'); }
+          } finally { if (mounted.current && current === generation.current) setBusy(false); }
+        })();
+      } else build();
+    }
     return () => { mounted.current = false; generation.current++; };
   }, []);
 
-  useEffect(() => { window.history.replaceState(null, '', stateHash(resultForm || form, display, epoch, pin)); }, [form, resultForm, display, epoch, pin]);
+  useEffect(() => { window.history.replaceState(null, '', stateHash(resultForm || form, display, epoch, pin) + ((resultJobId || savedResult) ? `&result=${encodeURIComponent(resultJobId || savedResult)}` : '')); }, [form, resultForm, display, epoch, pin, resultJobId]);
   const eligible = useMemo(() => result ? result.epochs.map((e, i) => !completeOnly || e.complete_six ? i : -1).filter(i => i >= 0) : [], [result, completeOnly]);
   const currentEpoch = result?.epochs[epoch];
   const next = delta => setEpoch(k => eligible.length ? eligible[(Math.max(0, eligible.indexOf(k)) + delta + eligible.length) % eligible.length] : k);
@@ -232,7 +264,7 @@ export default function DetectorComparison() {
   useEffect(() => { if (!playing || eligible.length < 2) return; const timer = setInterval(() => next(1), speed); return () => clearInterval(timer); }, [playing, speed, eligible]);
   useEffect(() => {
     const key = event => {
-      if (event.defaultPrevented || ['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(event.target.tagName) || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (settingsSection || event.defaultPrevented || ['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(event.target.tagName) || event.ctrlKey || event.metaKey || event.altKey) return;
       if (expanded && (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.code === 'Space')) return;
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); next(event.key === 'ArrowLeft' ? -1 : 1); }
       if (event.code === 'Space' && eligible.length > 1) { event.preventDefault(); setPlaying(v => !v); }
@@ -241,7 +273,7 @@ export default function DetectorComparison() {
       if (event.key === '0') { event.preventDefault(); setDisplay(v => ({ ...v, zoom: 1, panX: 0, panY: 0 })); }
     };
     document.addEventListener('keydown', key); return () => document.removeEventListener('keydown', key);
-  }, [eligible, expanded]);
+  }, [eligible, expanded, settingsSection]);
   const layers = useMemo(() => result?.epochs.map(e => e.tiles.map(t => layerArray(t, display.layer))) || [], [result, display.layer]);
   const automatic = useMemo(() => pooledLimits(layers.flat(), display.layer), [layers, display.layer]);
   const lo = display.vmin === '' ? automatic[0] : Number(display.vmin), hi = display.vmax === '' ? automatic[1] : Number(display.vmax);
@@ -258,7 +290,8 @@ export default function DetectorComparison() {
   const requestedPixel = requestedSky && result ? worldToPixel(result.wcs, requestedSky.ra, requestedSky.dec) : null;
   const gridSky = requestedPixel && result ? pixelToWorld(result.wcs, Math.floor(requestedPixel[0]) + .5, Math.floor(requestedPixel[1]) + .5) : null;
   const chosenSky = gridSky ? { ra: gridSky[0], dec: gridSky[1] } : null;
-  const rgbFrames = useMemo(() => result?.epochs.map(e => rgbFrame(e, result.width * result.height)) || [], [result]);
+  const rgbRawFrames = useMemo(() => result?.epochs.map(e => rgbFrame(e, result.width * result.height)) || [], [result]);
+  const rgbFrames = useMemo(() => rgbRawFrames.map(f => rgbDisplay(f, display.rgbBackground)), [rgbRawFrames, display.rgbBackground]);
   const rgbWhite = useMemo(() => Math.max(1e-9, pooledLimits(rgbFrames.map(f => f.brightness), 'intensity')[1]), [rgbFrames]);
   const rgb = rgbFrames[epoch];
   const rgbTile = useMemo(() => currentEpoch && rgb ? { detector: 7, status: rgb.coverage.some(v => v) ? 'ok' : 'unavailable',
@@ -274,7 +307,7 @@ export default function DetectorComparison() {
   const modeSwitch = <div className="view-switch" role="group" aria-label="Comparison display">{[['gray', 'Grayscale'], ['color', 'Color comparison'], ['wavelength', 'Wavelength color']].map(([mode, label]) => <button key={mode} aria-pressed={display.mode === mode} onClick={() => show('mode', mode)}>{label}</button>)}</div>;
   const openExpanded = (detector, opener) => { expandOpener.current = opener; setSelected(detector); setPlaying(false); setHover(null); setExpanded(true); };
   const tileView = (tile, expandedTile = false) => <Tile key={tile.detector} {...{ tile, result, display, setDisplay, limits, pin, setPin, hover, setHover, selected, setSelected }} values={tile.detector === 7 ? rgb.brightness : layers[epoch]?.[tile.detector - 1]} color={tile.detector === 7 ? null : colorFrames[epoch]?.[tile.detector - 1]} rgb={tile.detector === 7 ? rgb : null} colorWhite={tile.detector === 7 ? rgbWhite : colorWhite} referenceAvailable={referenceAvailable} onExpand={openExpanded} expanded={expandedTile} />;
-  const spectrumView = result && <LiveSpectrum display={display} setDisplay={setDisplay} epoch={currentEpoch} index={pixelIndex} sky={chosenSky} recipe={result.recipe} pinned={!!pin} preview={preview} previewSubset={result.preview_subset} failures={result.inputs.filter(i => i.epoch === epoch && i.spectrum_status === 'unavailable').length} onClearPin={() => setPin(null)} />;
+  const spectrumView = result && <LiveSpectrum display={display} setDisplay={setDisplay} epoch={currentEpoch} index={pixelIndex} sky={chosenSky} recipe={result.recipe} pinned={!!pin} preview={preview} previewSubset={result.preview_subset} failures={result.inputs.filter(i => i.epoch === epoch && i.spectrum_status === 'unavailable').length} onClearPin={() => setPin(null)} onFieldCenter={() => { setPin({ ra: result.recipe.ra, dec: result.recipe.dec }); setHover(null); }} />;
 
   const exportFigure = () => {
     const canvas = document.createElement('canvas'); canvas.width = 2400; canvas.height = 1590;
@@ -297,6 +330,7 @@ export default function DetectorComparison() {
       if (i < 6 && display.mode === 'wavelength') ctx.fillText('Hue: mean sampled CWAVE wavelength', x, y + 618);
     });
     ctx.fillText(`RGB: equal detector means, common ${display.stretch} scale 0–${fmt(rgbWhite)} MJy/sr; all six required.`, 28, 1365);
+    ctx.fillText(`${rgb.background.status}; offsets R/G/B: ${rgb.background.offsets_mjy_sr.map(v => fmt(v)).join(' / ')} MJy/sr`, 28, 1387);
     ctx.font = '18px sans-serif'; ctx.fillStyle = '#eef3f8';
     if (display.mode === 'color') {
       ctx.fillText(`Two-channel color · ${display.stretch} · shared brightness: 0 to ${fmt(colorWhite)} MJy/sr · strength ${fmt(display.colorStrength)}`, 28, 1405);
@@ -318,34 +352,65 @@ export default function DetectorComparison() {
     ctx.fillText(display.mode === 'color' ? 'Visual comparison; PSF and spectral/time sampling can create color. Nonpositive values clip to zero for display only. Not a calibrated excess.' : display.mode === 'wavelength' ? 'False color shows wavelength sampling, not a source spectrum. Negative values display as black; bright highlights desaturate to white.' : 'Scientific arrays and provenance remain in the accompanying FITS and JSON exports.', 28, 1550);
     canvas.toBlob(blob => saveBlob(blob, `SpherexMultiView-${display.mode}-epoch-${epoch + 1}.png`));
     const epochMetadata = { ...currentEpoch, spectra: currentEpoch.spectra.map(({ arrays, ...metadata }) => metadata), rgb_method: RGB_METHOD, tiles: currentEpoch.tiles.map(({ maps, arrays, ...metadata }) => metadata) };
-    saveBlob(new Blob([JSON.stringify({ ...result, application: 'SpherexMultiView', application_version: '0.2.0', epochs: [epochMetadata], display: { ...display, actual_limits: limits, color_method: display.mode === 'color' ? COLOR_METHOD : null, color_white: display.mode === 'color' ? colorWhite : null, color_legend: display.mode === 'color' ? colorDescription(display) : null, wavelength_color: display.mode === 'wavelength' ? wavelengthProvenance(display, colorWhite) : null }, epoch: currentEpoch.index, pin, job_id: resultJobId }, null, 2)], { type: 'application/json' }), `SpherexMultiView-${display.mode}-epoch-${epoch + 1}.json`);
+    saveBlob(new Blob([JSON.stringify({ ...result, application: 'SpherexMultiView', application_version: '0.2.0', epochs: [epochMetadata], display: { ...display, rgb: { method: RGB_METHOD, white_mjy_sr: rgbWhite, brightness: 'max(0, R, G, B) after display offsets', background: rgb.background, epoch_backgrounds: rgbFrames.map(f => f.background) }, actual_limits: limits, color_method: display.mode === 'color' ? COLOR_METHOD : null, color_white: display.mode === 'color' ? colorWhite : null, color_legend: display.mode === 'color' ? colorDescription(display) : null, wavelength_color: display.mode === 'wavelength' ? wavelengthProvenance(display, colorWhite) : null }, epoch: currentEpoch.index, pin, job_id: resultJobId }, null, 2)], { type: 'application/json' }), `SpherexMultiView-${display.mode}-epoch-${epoch + 1}.json`);
   };
 
+  const rgbControls = <label className="rgb-background-control">RGB background<select aria-label="RGB background" value={display.rgbBackground} onChange={e => show('rgbBackground', e.target.value)}><option value="shared">Shared physical zero</option><option value="neutral">Background neutralized (display only)</option></select></label>;
+  const rgbLegend = rgb && <section className="rgb-legend" aria-label="RGB display legend">
+    <details><summary>RGB display details · 0–{fmt(rgbWhite)} MJy/sr</summary>
+    <strong>{rgb.background.status}</strong>
+    <p>RGB peak-channel brightness: 0–{fmt(rgbWhite)} MJy/sr · {display.stretch} · shared across epochs.</p>
+    {rgb.background.applied ? <><p>Subtracted display offsets: R {fmt(rgb.background.offsets_mjy_sr[0])} · G {fmt(rgb.background.offsets_mjy_sr[1])} · B {fmt(rgb.background.offsets_mjy_sr[2])} MJy/sr.</p><p>Display only; can hide diffuse emission and background variability. Science data unchanged.</p></> : <p>Residual sky remains in these colors. Spectrum local-sky subtraction does not change RGB.</p>}
+    <p>{RGB_METHOD}</p><p>Background estimate: {rgb.background.retained_pixels}/{rgb.background.common_pixels} common pixels in the full field. Nonpositive display channels are black; missing data are hatched. Scientific pixels, spectra and FITS are unchanged.</p><p>{rgb.background.method}</p></details>
+  </section>;
+
   return <div className="compare-page" data-mode={display.mode}>
-    <header className="compare-header"><div><a href="index.html" className="compare-brand">SpherexMultiView</a><h1>Detector &amp; spectrum explorer</h1></div><span className="comparison-tag">QR2 + QR3 · ICRS</span></header>
+    <header className="compare-header"><div><a href="index.html" className="compare-brand">SpherexMultiView</a><h1>Detector &amp; spectrum explorer</h1></div><div className="workspace-view-switch" role="group" aria-label="Workspace view">{[['images', 'Images only'], ['split', 'Images + spectrum'], ['spectrum', 'Spectrum only']].map(([value, label]) => <button type="button" key={value} aria-pressed={workspaceLayout === value} onClick={() => focusWorkspace(value)}>{label}</button>)}</div><span className="comparison-tag">DR1 + QR3 · ICRS</span><nav className="workspace-actions" aria-label="Workspace controls"><button onClick={() => setSettingsSection('target')}>Target &amp; recipe{pending ? ' •' : ''}</button><button onClick={() => setSettingsSection('data')}>Exports &amp; provenance</button></nav></header>
     <div className="compare-layout">
       <main className="compare-main">
+        <div className="workspace-commandbar">
+        <form className="quick-target" aria-label="Target coordinates and field width" onSubmit={build}>
+          <label>RA, Dec · ICRS degrees<input aria-label="Target coordinates" value={form.coords} onChange={e => update('coords', e.target.value)} placeholder="133.7599588 -7.2449993" required disabled={busy} /></label>
+          <label>Field width (arcsec)<input aria-label="Field width (arcsec)" type="number" min="24" max="1800" step="any" required value={form.size_arcsec} onChange={e => update('size_arcsec', e.target.value)} disabled={busy} /></label>
+          <button type="submit" disabled={busy}>{busy ? 'Building…' : pending ? 'Apply & build' : 'Build coadds'}</button>
+          {pending && <span>Edits pending</span>}
+        </form>
         <section className="compare-toolbar" aria-label="Epoch playback">
           <div className="epoch-buttons"><button disabled={!eligible.length} onClick={() => next(-1)} aria-label="Previous epoch">←</button><button disabled={eligible.length < 2} onClick={() => setPlaying(v => !v)}>{playing ? 'Pause' : 'Play'}</button><button disabled={!eligible.length} onClick={() => next(1)} aria-label="Next epoch">→</button></div>
           <label className="epoch-slider">Epoch {result ? epoch + 1 : '—'} / {result?.epochs.length || '—'}<input aria-label="Epoch" type="range" min="0" max={Math.max(0, eligible.length - 1)} value={Math.max(0, eligible.indexOf(epoch))} disabled={eligible.length < 2} onChange={e => { setPlaying(false); setEpoch(eligible[Number(e.target.value)]); }} /></label>
           <label>Interval<select value={speed} onChange={e => setSpeed(Number(e.target.value))}><option value={500}>0.5 s</option><option value={1000}>1 s</option><option value={2000}>2 s</option></select></label>
           <label className="compare-check"><input type="checkbox" checked={completeOnly} onChange={e => setCompleteOnly(e.target.checked)} />Complete six only</label>
         </section>
-        <section className="view-toolbar" aria-label="Comparison display options">{modeSwitch}</section>
+        </div>
+        <div className="workspace-summary">
         <div className="compare-status" role="status">{busy && <span className="comparison-spinner" />}{status}{result?.preview_subset && <strong className="subset-badge">Preview subset</strong>}</div>
+        <button className="fit-workspace" type="button" onClick={workspace.reset} title="Restore both panels to fit the available screen">Fit workspace</button>
+        </div>
         {error && <div className="compare-error" role="alert">{error}</div>}
         {pending && <p className="compare-pending">Recipe changes pending. The displayed coadds and exports still use the last completed build.</p>}
+        <div ref={workspace.ref} className="analysis-workspace" data-image-view={imageView} data-workspace-view={workspaceLayout} style={{ '--image-share': `${display.imageFraction}fr`, '--spectrum-share': `${100 - display.imageFraction}fr`, '--image-height': `${workspace.height('image')}px`, '--spectrum-height': `${workspace.height('spectrum')}px` }}>
+        <section className="image-workspace" aria-label="Linked detector images" data-image-view={imageView} hidden={workspaceLayout === 'spectrum'}>
+          <ResizeHandles panel="image" workspace={workspace} />
+          <div className="workspace-panel-heading"><div><span className="workspace-eyebrow">01 / Spatial inspection</span><h2>Detector images</h2></div><div className="view-switch" role="group" aria-label="Image layout"><button aria-pressed={imageView === 'detectors'} onClick={() => setImageView('detectors')}>Six detectors</button><button aria-pressed={imageView === 'rgb'} onClick={() => setImageView('rgb')}>RGB composite</button></div></div>
+          <div className="image-deck">{['detectors', 'rgb'].map(view => <div key={view} className="image-deck-view" data-view={view} aria-hidden={imageView !== view} inert={imageView !== view ? '' : undefined}>
+          <section className="view-toolbar" aria-label="Comparison display options">{view === 'rgb' ? rgbControls : modeSwitch}<div className="image-actions"><button onClick={() => { setHover(null); setDisplay(v => ({ ...v, zoom: 1, panX: 0, panY: 0 })); }}>Fit field</button><button onClick={() => setSettingsSection('display')}>Adjust display</button></div></section>
         {currentEpoch && <div className="epoch-caption"><strong>{currentEpoch.datetime_start.slice(0, 10)} — {currentEpoch.datetime_end.slice(0, 10)}</strong><span>{currentEpoch.data_release?.toUpperCase()} · {currentEpoch.grouping} · UTC · actual detector times below each tile</span></div>}
-        {result && completeOnly && !eligible.length ? <div className="compare-placeholder">No epoch has usable data in all six detectors. Disable “Complete six only” to inspect available data.</div> : result ? <div className="detector-grid">{currentEpoch.tiles.map(tile => tileView(tile))}{tileView(rgbTile)}</div> : <div className="detector-grid empty-grid">{[...DETECTORS, 7].map(d => <article className="detector-tile" key={d} style={{ '--detector-color': COLORS[d - 1] }}><div className="detector-heading"><strong>{d === 7 ? 'RGB' : `D${d}`}</strong><small>{d === 7 ? 'All six detectors' : `≈ ${NOMINAL_RANGES[d - 1]} µm`}</small></div><div className="compare-placeholder">{busy ? 'Building calibrated coadds…' : 'Awaiting target'}</div></article>)}</div>}
-        {display.mode === 'gray' ? <section className="compare-scale" aria-label="Shared intensity scale"><span>{fmt(limits[0])}</span><div className={display.invert ? 'inverse' : ''} /><span>{fmt(limits[1])} {LAYERS[display.layer][1]}</span><small>{display.stretch} · shared across every detector and epoch</small></section> : display.mode === 'wavelength' ? <section className="wavelength-legend" aria-label="Wavelength color meaning"><WavelengthKey strength={display.wavelengthStrength} /><p>{wavelengthDescription}</p><p>Shared brightness: 0–{fmt(colorWhite)} MJy/sr · {display.stretch}. Bright highlights become white. Inspect the wavelength span in the readout for mixed samples.</p></section> : <section className="color-legend" aria-label="Color meaning"><div><span className="cool-text">Reference stronger</span><div className="color-ramp" style={{ background: `linear-gradient(to right, rgb(${colorPixel(colorWhite, -1, true, colorWhite, display.stretch, display.colorStrength).join(',')}), white, rgb(${colorPixel(colorWhite, 1, true, colorWhite, display.stretch, display.colorStrength).join(',')}))` }} /><span className="warm-text">Target stronger</span></div><p>{colorDescription(display)}</p><p>Shared brightness: 0–{fmt(colorWhite)} MJy/sr · {display.stretch} · native PSFs. Colors identify candidates to inspect; PSF, background and wavelength/time sampling differences also affect color.</p></section>}
-        <p className="compare-help">Hover to preview a spectrum · click to pin · wheel to zoom · drag to pan · hatching marks unavailable data. RGB uses equal detector means, one shared stretch, and requires all six detectors at each pixel.</p>
-        {spectrumView}
-        {result && <section className="source-readout"><div className="source-title"><h2>{preview ? 'Cursor position' : pin ? 'Pinned source' : 'Linked source readout'}</h2>{chosenSky && <span>{chosenSky.ra.toFixed(7)}°, {chosenSky.dec.toFixed(7)}° ICRS</span>}{pin && <button onClick={() => setPin(null)}>Clear pin</button>}</div>
+        {result && completeOnly && !eligible.length ? <div className="compare-placeholder">No epoch has usable data in all six detectors. Disable “Complete six only” to inspect available data.</div> : result ? <div className="detector-grid">{view === 'rgb' ? tileView(rgbTile) : currentEpoch.tiles.map(tile => tileView(tile))}</div> : <div className="detector-grid empty-grid">{(view === 'rgb' ? [7] : DETECTORS).map(d => <article className="detector-tile" key={d} style={{ '--detector-color': COLORS[d - 1] }}><div className="detector-heading"><strong>{d === 7 ? 'RGB' : `D${d}`}</strong><small>{d === 7 ? 'All six detectors' : `≈ ${NOMINAL_RANGES[d - 1]} µm`}</small></div><div className="compare-placeholder">{busy ? 'Building calibrated coadds…' : 'Awaiting target'}</div></article>)}</div>}
+        {view === 'rgb' ? rgbLegend : display.mode === 'gray' ? <section className="compare-scale" aria-label="Shared intensity scale"><span>{fmt(limits[0])}</span><div className={display.invert ? 'inverse' : ''} /><span>{fmt(limits[1])} {LAYERS[display.layer][1]}</span><small>{display.stretch} · shared across every detector and epoch</small></section> : display.mode === 'wavelength' ? <section className="wavelength-legend" aria-label="Wavelength color meaning"><WavelengthKey strength={display.wavelengthStrength} /><details><summary>Wavelength color details</summary><p>{wavelengthDescription}</p><p>Shared brightness: 0–{fmt(colorWhite)} MJy/sr · {display.stretch}. Bright highlights become white. Inspect the wavelength span in the readout for mixed samples.</p></details></section> : <section className="color-legend" aria-label="Color meaning"><div><span className="cool-text">Reference stronger</span><div className="color-ramp" style={{ background: `linear-gradient(to right, rgb(${colorPixel(colorWhite, -1, true, colorWhite, display.stretch, display.colorStrength).join(',')}), white, rgb(${colorPixel(colorWhite, 1, true, colorWhite, display.stretch, display.colorStrength).join(',')}))` }} /><span className="warm-text">Target stronger</span></div><details><summary>Color comparison details</summary><p>{colorDescription(display)}</p><p>Shared brightness: 0–{fmt(colorWhite)} MJy/sr · {display.stretch} · native PSFs. Colors identify candidates to inspect; PSF, background and wavelength/time sampling differences also affect color.</p></details></section>}
+        <details className="image-help"><summary>Image controls &amp; interpretation</summary><p>Hover to preview · click to pin · wheel to zoom · drag to pan. Hatching marks unavailable data.{view === 'rgb' && ' RGB uses equal detector means, one shared stretch, and requires all six detectors at each pixel.'}</p></details>
+          </div>)}</div>
+        </section>
+        <section className="spectrum-workspace" aria-label="Spectral analysis" hidden={workspaceLayout === 'images'}>
+        <ResizeHandles panel="spectrum" workspace={workspace} />
+        {spectrumView || <div className="spectrum-welcome"><span className="workspace-eyebrow">02 / Spectral analysis</span><h2>Your spectrum, beside the sky</h2><p>Build a field, then hover an image to inspect its spectrum. Click to hold a position while you compare detectors and epochs.</p><button className="compare-primary" onClick={() => setSettingsSection('target')}>Choose a target</button></div>}
+        {result && <details className="source-details"><summary>Pixel measurements &amp; uncertainties</summary><section className="source-readout"><div className="source-title"><h2>{preview ? 'Cursor position' : pin ? 'Pinned source' : 'Linked source readout'}</h2>{chosenSky && <span>{chosenSky.ra.toFixed(7)}°, {chosenSky.dec.toFixed(7)}° ICRS</span>}{pin && <button onClick={() => setPin(null)}>Clear pin</button>}</div>
           <div className="readout-scroll"><table><thead><tr><th>Detector</th><th>I (MJy/sr)</th><th>Formal σ</th><th>Exposures</th><th>λ mean [min–max], µm</th><th>Bandwidth, µm</th><th>Time range, MJD UTC</th>{display.mode === 'color' && <><th>ΔI vs ref (MJy/sr)</th><th>ΔI / formal σΔ</th></>}</tr></thead><tbody>{DETECTORS.map((d, i) => { const m = measurements?.[i]; return <tr key={d}><th>D{d}</th><td>{fmt(m?.intensity)}</td><td>{fmt(m?.variance >= 0 ? Math.sqrt(m.variance) : NaN)}</td><td>{fmt(m?.coverage)}</td><td>{m ? `${fmt(m.wavelength)} [${fmt(m.lambda_min)}–${fmt(m.lambda_max)}]` : '—'}</td><td>{fmt(m?.bandwidth)}</td><td>{m ? `${fmt(m.mjd_min, 10)}–${fmt(m.mjd_max, 10)}` : '—'}</td>{display.mode === 'color' && <><td>{fmt(colorMeasurements?.[i]?.difference)}</td><td>{fmt(colorMeasurements?.[i]?.z)}</td></>}</tr>; })}</tbody></table></div>
           <p>Readouts use the unsmoothed coadd pixel under the pin. Formal σ excludes calibration, foreground-model and input covariance errors. {display.mode === 'color' && 'ΔI uses the signed values and the reference multiplier; its formal error assumes independent detector noise. It is not a source-detection significance.'}</p>
-        </section>}
+        </section></details>}
+        </section>
+        </div>
       </main>
-      <aside className="compare-sidebar">
+      <WorkspaceSettings section={settingsSection} onSection={setSettingsSection} onClose={() => setSettingsSection(null)}>
         {display.mode === 'wavelength' && <fieldset className="wavelength-options"><legend>Wavelength color</legend>
           <p>Inspired by SPHEREx’s first-light image: violet for short infrared wavelengths through red for long wavelengths. Each pixel uses its calibrated mean sampled wavelength.</p>
           <label>Wavelength color strength · {Math.round(display.wavelengthStrength * 100)}%<input aria-label="Wavelength color strength" type="range" min="0" max="1" step=".05" value={display.wavelengthStrength} onChange={e => show('wavelengthStrength', Number(e.target.value))} /></label>
@@ -366,19 +431,20 @@ export default function DetectorComparison() {
           <p>Orange means brighter in that tile’s detector; blue means brighter in the selected reference. The same gain and scale apply to every epoch. The reference tile stays neutral at its original brightness. Colors require valid samples in both detectors.</p>
           <p>Negative values stay in FITS and readouts; only the color image clips them to zero. The threshold suppresses noisy color but excludes PSF and calibration errors.</p>
         </fieldset>}
-        <form onSubmit={build}><fieldset disabled={busy}><legend>Target &amp; coadd recipe</legend>
-          <label>RA, Dec · ICRS degrees<input value={form.coords} onChange={e => update('coords', e.target.value)} placeholder="304.693509 42.443687" required /></label>
-          <div className="compare-two">{numeric('size_arcsec', 'Field width (arcsec)', { min: 24, max: 1800 })}<label>Survey<select value={form.survey} onChange={e => update('survey', e.target.value)}><option value="wide">Wide</option><option value="deep">Deep</option></select></label></div>
+        <form data-settings-section="target" onSubmit={build}><fieldset disabled={busy}><legend>Target &amp; coadd recipe</legend>{error && <p className="compare-error" role="alert">{error}</p>}
+          <div className="compare-two"><label>Survey<select value={form.survey} onChange={e => update('survey', e.target.value)}><option value="wide">Wide</option><option value="deep">Deep</option></select></label></div>
           <ReleaseSelect value={form.release} onChange={e => update('release', e.target.value)} />
+          <label className="compare-check"><input aria-label="Precompute aperture spectra" type="checkbox" checked={form.include_spectra} onChange={e => update('include_spectra', e.target.checked)} />Precompute aperture spectra</label>
+          <p>{form.include_spectra ? 'Builds local hover spectra with extra processing and downloads.' : 'Images only: builds all seven tiles without aperture processing.'}</p>
           <div className="compare-two"><label>Epoch grouping<select value={form.grouping} onChange={e => update('grouping', e.target.value)}><option value="visit">Sky-pass visits</option><option value="fixed">Fixed MJD bins</option></select></label>{numeric('bin_months', 'Maximum span (months)', { min: .1, max: 12 })}</div>
           {form.grouping === 'fixed' && numeric('epoch_origin_mjd', 'Bin origin (MJD UTC)')}
           <details><summary>Time selection &amp; depth</summary><div className="compare-two">{numeric('mjd_start', 'Start MJD (inclusive)')}{numeric('mjd_end', 'End MJD (exclusive)')}</div>{numeric('max_per_tile', 'Max exposures per tile (0 = all)', { min: 0, max: 10000, step: 1 })}{numeric('min_exposures', 'Minimum exposures per pixel', { min: 1, max: 10000, step: 1 })}<p>Epoch membership is fixed before downloads. A cap selects a declared time-spread preview within each detector and epoch.</p></details>
-          <details><summary>Background, weights &amp; sampling</summary><label>Background<select value={form.background} onChange={e => update('background', e.target.value)}><option value="zodi">Subtract supplied ZODI model</option><option value="none">No subtraction</option></select></label><label>Sample weights<select value={form.weighting} onChange={e => update('weighting', e.target.value)}><option value="equal">Equal native-sample weights</option><option value="sky">Inverse source-free sky variance</option></select></label><label>Resampling<select value={form.resampling} onChange={e => update('resampling', e.target.value)}><option value="bin">Input-pixel binning</option><option value="nearest">Nearest neighbor</option></select></label>{numeric('pixscale_arcsec', 'Output pixel size (arcsec)', { min: 3.1, max: 24.8 })}{numeric('aperture_radius_arcsec', 'Spectrum aperture radius (arcsec)', { min: 6.2, max: 31 })}<p>Finer pixels do not improve angular resolution. Binning may leave gaps; nearest neighbor can correlate output pixels. Source flags are preserved in the science image. Additional clipping is off.</p></details>
+          <details><summary>Background, weights &amp; sampling</summary><label>Background<select value={form.background} onChange={e => update('background', e.target.value)}><option value="zodi">Subtract supplied ZODI model</option><option value="none">No subtraction</option></select></label><label>Sample weights<select value={form.weighting} onChange={e => update('weighting', e.target.value)}><option value="equal">Equal native-sample weights</option><option value="sky">Inverse source-free sky variance</option></select></label><label>Resampling<select value={form.resampling} onChange={e => update('resampling', e.target.value)}><option value="bin">Input-pixel binning</option><option value="nearest">Nearest neighbor</option></select></label>{numeric('pixscale_arcsec', 'Output pixel size (arcsec)', { min: 3.1, max: 24.8 })}{numeric('aperture_radius_arcsec', 'Spectrum aperture radius (arcsec)', { min: 6.2, max: 31, disabled: !form.include_spectra })}<p>Finer pixels do not improve angular resolution. Binning may leave gaps; nearest neighbor can correlate output pixels. Source flags are preserved in the science image. Additional clipping is off.</p></details>
           <details><summary>Calibrated wavelength selection</summary><p>Optional input-pixel central-wavelength limits in µm, lower inclusive / upper exclusive. Empty pairs use full detector depth.</p><div className="wavelength-ranges">{DETECTORS.map(d => <div key={d}><strong>D{d}</strong>{['Lower', 'Upper'].map((label, i) => <input key={label} aria-label={`D${d} ${label} wavelength`} type="number" step="any" min="0" max="10" placeholder={label} value={form.ranges[d]?.[i] ?? ''} onChange={e => setForm(f => { const bounds = [...(f.ranges[d] || ['', ''])]; bounds[i] = e.target.value; return { ...f, ranges: { ...f.ranges, [d]: bounds } }; })} />)}</div>)}</div><p>CWAVE/CBAND calibration is required. A detector is never substituted when calibration or coverage is missing.</p></details>
           <button className="compare-primary" type="submit">{busy ? 'Building…' : 'Build coadds'}</button>
         </fieldset></form>
-        {busy && <button className="compare-cancel" disabled={!jobId} onClick={async () => { try { await jsonRequest(`/api/detector-comparison/${jobId}`, { method: 'DELETE' }); setStatus('Cancelling after the current archive request…'); } catch (e) { setError(e.message); } }}>Cancel build</button>}
-        <fieldset><legend>Shared display</legend><label>Grayscale layer<select disabled={display.mode !== 'gray'} value={display.layer} onChange={e => setDisplay(v => ({ ...v, layer: e.target.value, vmin: '', vmax: '' }))}>{Object.entries(LAYERS).map(([key, [label, unit]]) => <option key={key} value={key}>{label} ({unit})</option>)}</select></label>
+        {busy && <button data-settings-section="target" className="compare-cancel" disabled={!jobId} onClick={async () => { try { await jsonRequest(`/api/detector-comparison/${jobId}`, { method: 'DELETE' }); setStatus('Cancelling after the current archive request…'); } catch (e) { setError(e.message); } }}>Cancel build</button>}
+        <fieldset><legend>RGB display</legend>{rgbControls}<p>RGB always uses detector intensity. Grayscale limits, layers and inversion do not apply to RGB. The stretch and smoothing controls below apply to both views.</p></fieldset><fieldset><legend>Shared display</legend><label>Grayscale layer<select disabled={display.mode !== 'gray'} value={display.layer} onChange={e => setDisplay(v => ({ ...v, layer: e.target.value, vmin: '', vmax: '' }))}>{Object.entries(LAYERS).map(([key, [label, unit]]) => <option key={key} value={key}>{label} ({unit})</option>)}</select></label>
           <label>Stretch<select value={display.stretch} onChange={e => show('stretch', e.target.value)}><option value="asinh">Signed asinh</option><option value="linear">Linear</option></select></label>
           <div className="compare-two"><label>Black limit<input type="number" step="any" disabled={display.mode !== 'gray'} value={display.vmin} placeholder={fmt(automatic[0])} onChange={e => show('vmin', e.target.value)} /></label><label>White limit<input type="number" step="any" disabled={display.mode !== 'gray'} value={display.vmax} placeholder={fmt(automatic[1])} onChange={e => show('vmax', e.target.value)} /></label></div>
           {display.mode === 'gray' && !scaleValid && <p role="alert" className="compare-error">White limit must exceed black limit. Showing the automatic shared range.</p>}
@@ -387,14 +453,14 @@ export default function DetectorComparison() {
           <button onClick={() => setDisplay(v => ({ ...v, zoom: 1, panX: 0, panY: 0 }))}>Reset field of view</button>
           <label className="compare-check"><input type="checkbox" disabled={display.mode !== 'gray'} checked={display.invert} onChange={e => show('invert', e.target.checked)} />Invert grayscale</label><label className="compare-check"><input type="checkbox" checked={display.smooth} onChange={e => show('smooth', e.target.checked)} />Display smoothing</label><p>A shared scale is frozen across all loaded epochs; grayscale limits and inversion apply in grayscale mode. Display adjustments never rebuild or alter scientific arrays.</p>
         </fieldset>
-        {result && <fieldset><legend>Export &amp; provenance</legend><button onClick={exportFigure}>Export tiles PNG + settings</button><a className="compare-download" href={`/api/detector-comparison/${resultJobId}/epochs/${currentEpoch.index}.fits`}>Download epoch FITS</a><a className="compare-download" href={`/api/detector-comparison/${resultJobId}/spectra/${currentEpoch.index}.fits`}>Download aperture spectra FITS</a><a className="compare-download" href={`/api/detector-comparison/${resultJobId}/manifest`}>Download full manifest</a><p>FITS includes intensity, variance, coverage, weights, wavelength/time maps, WCS and input provenance. QR2 and QR3 use their native calibrations and remain in separate coadds. PNG retains labels and display limits.</p><details><summary>{selected === 7 ? 'All detectors' : `D${selected}`} input provenance ({currentInputs.length})</summary><div className="comparison-inputs">{currentInputs.length ? currentInputs.map((input, i) => <article key={i}><a href={input.url} target="_blank" rel="noreferrer">{input.obs_id}</a><span>{input.status.replaceAll('_', ' ')}</span>{input.reason && <p>{input.reason}</p>}{input.spectrum_reason && <p>Aperture spectrum unavailable: {input.spectrum_reason}</p>}{input.pipeline_version && <small>{input.data_release?.toUpperCase()} · Pipeline {input.pipeline_version} · PSF header: {input.psf_header_status.replaceAll('_', ' ')}</small>}</article>) : <p>No observations for D{selected} in this epoch.</p>}</div></details></fieldset>}
-        <details className="comparison-science"><summary>Scientific interpretation</summary><p>Each tile averages the detector’s sampled LVF wavelengths. Different PSFs, depths and wavelength distributions affect source prominence. These images are inspection products; use exposure-level spectra for quantitative source comparisons.</p><p>PSFs are native and unmatched. A color fringe or bright core can reflect PSF mismatch. Detector coadds are not six fixed photometric filters, and color is not an object classification. Formal uncertainty is not a complete measurement error budget.</p><a href="https://caltech-ipac.github.io/spherex-archive-documentation/spherex-data-products/" target="_blank" rel="noreferrer">IRSA data-product documentation ↗</a></details>
-      </aside>
+        {result && <fieldset data-settings-section="data"><legend>Export &amp; provenance</legend><details className="advanced-photometry"><summary>Advanced: IRSA PSF-fit spectrum</summary><p>A separate extraction using IRSA’s PSF-fitting service. This is a different measurement from the local aperture spectrum and submits a remote processing job. It uses the exact pinned position, or the field center when unpinned, and can take minutes or longer.</p><a className="compare-download" href={`spectrum.html#${new URLSearchParams({ ra: pin?.ra ?? result.recipe.ra, dec: pin?.dec ?? result.recipe.dec, release: result.recipe.release })}`} target="_blank" rel="noopener noreferrer">Open IRSA PSF-fit viewer{pin ? ' at pinned position' : ' at field center'} ↗</a></details><button onClick={exportFigure}>Export tiles PNG + settings</button><a className="compare-download" href={`/api/detector-comparison/${resultJobId}/epochs/${currentEpoch.index}.fits`}>Download epoch FITS</a>{(currentEpoch.spectra_enabled || currentEpoch.spectra.length > 0) && <a className="compare-download" href={`/api/detector-comparison/${resultJobId}/spectra/${currentEpoch.index}.fits`}>Download aperture spectra FITS</a>}<a className="compare-download" href={`/api/detector-comparison/${resultJobId}/manifest`}>Download full manifest</a><p>FITS includes intensity, variance, coverage, weights, wavelength/time maps, WCS and input provenance. DR1 and QR3 share compatible calibrations; each input retains its release provenance. PNG retains labels and display limits.</p><details><summary>{selected === 7 ? 'All detectors' : `D${selected}`} input provenance ({currentInputs.length})</summary><div className="comparison-inputs">{currentInputs.length ? currentInputs.map((input, i) => <article key={i}><a href={input.url} target="_blank" rel="noreferrer">{input.obs_id}</a><span>{input.status.replaceAll('_', ' ')}</span>{input.reason && <p>{input.reason}</p>}{input.spectrum_reason && <p>Aperture spectrum unavailable: {input.spectrum_reason}</p>}{input.pipeline_version && <small>{input.data_release?.toUpperCase()} · Pipeline {input.pipeline_version} · PSF header: {input.psf_header_status.replaceAll('_', ' ')}</small>}</article>) : <p>No observations for D{selected} in this epoch.</p>}</div></details></fieldset>}
+        <details data-settings-section="data" className="comparison-science"><summary>Scientific interpretation</summary><p>Each tile averages the detector’s sampled LVF wavelengths. Different PSFs, depths and wavelength distributions affect source prominence. These images are inspection products; use exposure-level spectra for quantitative source comparisons.</p><p>PSFs are native and unmatched. A color fringe or bright core can reflect PSF mismatch. Detector coadds are not six fixed photometric filters, and color is not an object classification. Formal uncertainty is not a complete measurement error budget.</p><a href="https://caltech-ipac.github.io/spherex-archive-documentation/spherex-data-products/" target="_blank" rel="noreferrer">IRSA data-product documentation ↗</a></details>
+      </WorkspaceSettings>
     </div>
-    {expanded && currentEpoch && <ExpandedDetector detector={selected} onSelect={d => { setSelected(d); setHover(null); }} onClose={() => { setExpanded(false); setHover(null); }} returnFocus={expandOpener.current} epochLabel={`Epoch ${epoch + 1} · ${currentEpoch.datetime_start.slice(0, 10)} — ${currentEpoch.datetime_end.slice(0, 10)} UTC`} modeSwitch={modeSwitch}>
+    {expanded && currentEpoch && <ExpandedDetector detector={selected} onSelect={d => { setSelected(d); setHover(null); }} onClose={() => { setExpanded(false); setHover(null); }} returnFocus={expandOpener.current} epochLabel={`Epoch ${epoch + 1} · ${currentEpoch.datetime_start.slice(0, 10)} — ${currentEpoch.datetime_end.slice(0, 10)} UTC`} modeSwitch={selected === 7 ? rgbControls : modeSwitch}>
       {tileView(selected === 7 ? rgbTile : currentEpoch.tiles[selected - 1], true)}
-      {spectrumView}
-      {selected === 7 ? <p className="expanded-scale">{RGB_METHOD} RGB white scale: {fmt(rgbWhite)} MJy/sr.</p> : display.mode === 'wavelength' ? <div className="expanded-key"><WavelengthKey strength={display.wavelengthStrength} /><p>Hue: mean sampled CWAVE · brightness 0–{fmt(colorWhite)} MJy/sr · {display.stretch}</p></div> : <p className="expanded-scale">{display.mode === 'color' ? `${colorDescription(display)} Shared brightness 0–${fmt(colorWhite)} MJy/sr.` : `${LAYERS[display.layer][0]}: ${fmt(limits[0])}–${fmt(limits[1])} ${LAYERS[display.layer][1]} · ${display.stretch}`} · Zoom {fmt(display.zoom, 3)}×</p>}
+      {workspaceLayout !== 'images' && spectrumView}
+      {selected === 7 ? rgbLegend : display.mode === 'wavelength' ? <div className="expanded-key"><WavelengthKey strength={display.wavelengthStrength} /><p>Hue: mean sampled CWAVE · brightness 0–{fmt(colorWhite)} MJy/sr · {display.stretch}</p></div> : <p className="expanded-scale">{display.mode === 'color' ? `${colorDescription(display)} Shared brightness 0–${fmt(colorWhite)} MJy/sr.` : `${LAYERS[display.layer][0]}: ${fmt(limits[0])}–${fmt(limits[1])} ${LAYERS[display.layer][1]} · ${display.stretch}`} · Zoom {fmt(display.zoom, 3)}×</p>}
     </ExpandedDetector>}
   </div>;
 }

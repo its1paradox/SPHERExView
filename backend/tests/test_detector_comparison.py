@@ -16,7 +16,7 @@ from backend.app.spherex_client import SpherexImage
 
 
 def image(detector=1, mjd=61000, obs="synthetic", version=20):
-    return SpherexImage(f"{dc.IRSA_ROOT}/level2/2026W01_1A/l2b-v{version}-2026-001/{detector}/{obs}D{detector}.fits", f"SPHEREx-D{detector}", "wide", obs, mjd - .001, mjd + .001, 100, None, None, None, None)
+    return SpherexImage(f"https://irsa.ipac.caltech.edu/ibe/data/spherex/qr2/level2/2026W01_1A/l2b-v{version}-2026-001/{detector}/{obs}D{detector}.fits", f"SPHEREx-D{detector}", "wide", obs, mjd - .001, mjd + .001, 100, None, None, None, None)
 
 
 def samples(index=(0,), intensity=(1,), variance=(4,), wavelength=(1,), weight=1, mjd=61000):

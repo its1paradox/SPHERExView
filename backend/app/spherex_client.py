@@ -26,11 +26,13 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
-import re
+import random
 import threading
 import time
 import warnings
 from dataclasses import dataclass, asdict, field as dataclass_field
+from datetime import timezone
+from email.utils import parsedate_to_datetime
 from typing import List, Optional
 
 import astropy.units as u
@@ -42,19 +44,19 @@ from . import releases
 log = logging.getLogger("spherex-wiseview")
 
 # Map friendly survey names to IRSA obs_collection identifiers.
-COLLECTIONS = {
-    "wide": "spherex_qr2",
-    "deep": "spherex_qr2_deep",
-}
+COLLECTIONS = {survey: releases.RELEASES["dr1"][survey] for survey in ("wide", "deep")}
 
 CACHE_DIR = os.environ.get(
     "SPHEREX_CACHE_DIR",
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "cache")),
 )
 
-REQUEST_TIMEOUT = 120  # seconds
-DOWNLOAD_RETRIES = 3
-RETRY_BACKOFF_S = 1.5
+CONNECT_TIMEOUT = 15  # seconds to establish a connection
+REQUEST_TIMEOUT = 120  # seconds without response data, not a total transfer deadline
+DOWNLOAD_RETRIES = 5  # total attempts, including the first request
+RETRY_BACKOFF_S = 2
+MAX_RETRY_DELAY_S = 60
+RETRYABLE_STATUS = {408, 429, 500, 502, 503, 504}
 
 
 class CutoutNoOverlapError(Exception):
@@ -142,7 +144,7 @@ def query_sia2(
     ra: float,
     dec: float,
     radius_deg: float = 0.01,
-    collection: str = "spherex_qr2",
+    collection: str = "spherex_dr1",
     band: Optional[str] = None,
 ) -> List[SpherexImage]:
     """Cone-search SPHEREx spectral images via IRSA's SIA2 interface.
@@ -154,8 +156,8 @@ def query_sia2(
     radius_deg : float
         Search radius in degrees.
     collection : str
-        IRSA obs_collection, e.g. ``spherex_qr2`` (wide) or
-        ``spherex_qr2_deep`` (deep).
+        IRSA obs_collection, e.g. ``spherex_dr1`` (wide) or
+        ``spherex_dr1_deep`` (deep).
     band : str, optional
         Filter on SPHEREx detector/band name(s), e.g. ``SPHEREx-D1`` or a
         comma-separated list ``SPHEREx-D1,SPHEREx-D3``.  Substring match,
@@ -221,8 +223,8 @@ def query_releases(ra, dec, radius_deg=0.01, survey="wide", release="all", band=
     """Fresh discovery for every request; a failed release query is not empty coverage.
 
     Query both releases before any time sorting or preview sampling. Select one
-    processing per physical observation/detector, preferring QR3 if reprocessed
-    copies overlap, and retain the choice in exported provenance.
+    processing per physical observation/detector, preferring current processing
+    over legacy QR2, and retain superseded copies in exported provenance.
     """
     query = query or query_sia2
     images = []
@@ -233,10 +235,9 @@ def query_releases(ra, dec, radius_deg=0.01, survey="wide", release="all", band=
         rel = releases.product_release(im.access_url, im.survey)
         if release != "all" and rel != release:
             raise ValueError("Archive product does not match the requested release")
-        version = re.search(r"l2b-v(\d+)-(\d{4})-(\d{3})", im.access_url)
-        if not version or not im.obs_id or not im.band:
+        if not im.obs_id or not im.band:
             raise ValueError("Archive product lacks a reproducible exposure identity/version")
-        rank = (int(rel[-1]), *map(int, version.groups()))
+        rank = releases.processing_rank(im.access_url, rel)
         key = (im.obs_id, im.band)
         old = chosen.get(key)
         if old and rank == old[0] and im.access_url != old[1].access_url:
@@ -253,7 +254,7 @@ def query_releases(ra, dec, radius_deg=0.01, survey="wide", release="all", band=
 
 
 def preview_order(images, limit):
-    """Prioritize a time-spanning preview so early QR2 data cannot hide QR3.
+    """Prioritize a time-spanning preview so early data cannot hide later visits.
 
     Remaining candidates allow callers to replace failed cutouts. This is
     display sampling only; the six-detector science path uses its full inventory.
@@ -281,6 +282,36 @@ def _cache_path(cutout_url: str) -> str:
     return os.path.join(CACHE_DIR, f"{key}.fits")
 
 
+def _retry_after_seconds(value):
+    """Parse either HTTP Retry-After form; malformed values use local backoff."""
+    if not value:
+        return None
+    value = value.strip()
+    if value.isascii() and value.isdecimal():
+        value = value.lstrip("0") or "0"
+        # Avoid unbounded integer parsing for a malformed upstream header.
+        return int(value) if len(value) < 10 else MAX_RETRY_DELAY_S + 1
+    try:
+        date = parsedate_to_datetime(value)
+        if date.tzinfo is None:
+            date = date.replace(tzinfo=timezone.utc)
+        return max(0, date.timestamp() - time.time())
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _looks_like_fits(path):
+    """Cheap transport/cache check; science loaders validate the FITS contents."""
+    try:
+        size = os.path.getsize(path)
+        if size < 2880 or size % 2880:
+            return False
+        with open(path, "rb") as stream:
+            return stream.read(9) == b"SIMPLE  ="
+    except FileNotFoundError:
+        return False
+
+
 def download_cutout(cutout_url: str) -> str:
     """Download a FITS cutout (with on-disk caching). Returns the local path.
 
@@ -290,45 +321,68 @@ def download_cutout(cutout_url: str) -> str:
         If the service reports the cutout does not overlap the image
         (HTTP 422, typically "Arrays do not overlap").
     CutoutDownloadError
-        For any other non-200 response.
+        For permanent HTTP errors or exhausted transient retries.
     """
     os.makedirs(CACHE_DIR, exist_ok=True)
     path = _cache_path(cutout_url)
-    if os.path.exists(path) and os.path.getsize(path) >= 2880:
+    if _looks_like_fits(path):
         return path
 
-    # IRSA is flaky under load: transient 5xx ("Server busy") and broken
-    # chunked transfers (IncompleteRead) are common.  Retry with backoff and
-    # NEVER let a requests exception escape -- callers treat
-    # CutoutDownloadError as "skip this frame", keeping the API alive.
+    # Keep our own retry loop: failures can occur while consuming the body,
+    # after HTTP-level adapter retries have already finished. Never publish a
+    # partial transfer, and close the response before waiting/retrying.
     last_err = None
+    tmp = f"{path}.tmp.{os.getpid()}.{threading.get_ident()}"
     for attempt in range(DOWNLOAD_RETRIES):
-        if attempt:
-            time.sleep(RETRY_BACKOFF_S * attempt)
+        retry_after = None
         try:
-            resp = requests.get(cutout_url, timeout=REQUEST_TIMEOUT)
+            with requests.get(cutout_url, timeout=(CONNECT_TIMEOUT, REQUEST_TIMEOUT), stream=True) as resp:
+                if resp.status_code == 422:
+                    raise CutoutNoOverlapError(cutout_url)
+                if resp.status_code in RETRYABLE_STATUS:
+                    last_err = f"HTTP {resp.status_code}"
+                    retry_after = _retry_after_seconds(resp.headers.get("Retry-After"))
+                elif resp.status_code != 200:
+                    raise CutoutDownloadError(f"HTTP {resp.status_code} for {cutout_url}")
+                else:
+                    size = 0
+                    with open(tmp, "wb") as stream:
+                        for chunk in resp.iter_content(chunk_size=64 * 1024):
+                            if chunk:
+                                stream.write(chunk)
+                                size += len(chunk)
+                    # iter_content decodes HTTP content encodings. Compare
+                    # Content-Length only when it describes the decoded bytes.
+                    length = resp.headers.get("Content-Length", "")
+                    identity = resp.headers.get("Content-Encoding", "identity").lower() == "identity"
+                    if identity and length.isascii() and length.isdecimal() and str(size) != (length.lstrip("0") or "0"):
+                        last_err = f"truncated response ({size} of {length} bytes)"
+                    elif not _looks_like_fits(tmp):
+                        last_err = f"invalid or truncated FITS response ({size} bytes)"
+                    else:
+                        os.replace(tmp, path)
+                        return path
         except requests.RequestException as exc:
-            # ChunkedEncodingError / ConnectionError / Timeout / ...
             last_err = f"network error: {exc.__class__.__name__}: {exc}"
-            continue
-        if resp.status_code == 422:
-            raise CutoutNoOverlapError(cutout_url)
-        if resp.status_code in (500, 502, 503, 504):
-            last_err = f"HTTP {resp.status_code}: {resp.text[:120]}"
-            continue
-        if resp.status_code != 200:
+        finally:
+            try:
+                os.remove(tmp)
+            except FileNotFoundError:
+                pass
+        if attempt + 1 == DOWNLOAD_RETRIES:
+            break
+        # Do not shorten a server-directed delay to fit our wait limit. End
+        # this download instead of hammering an unavailable archive too early.
+        if retry_after is not None and retry_after > MAX_RETRY_DELAY_S:
             raise CutoutDownloadError(
-                f"HTTP {resp.status_code} for {cutout_url}: {resp.text[:200]}"
+                f"{last_err} for {cutout_url}; server Retry-After exceeds "
+                f"the {MAX_RETRY_DELAY_S}s retry wait limit; try again later"
             )
-        if len(resp.content) < 2880:  # smaller than one FITS block = junk
-            last_err = f"truncated response ({len(resp.content)} bytes)"
-            continue
-        # Atomic write so a crashed/partial download never poisons the cache.
-        tmp = f"{path}.tmp.{os.getpid()}.{threading.get_ident()}"
-        with open(tmp, "wb") as fh:
-            fh.write(resp.content)
-        os.replace(tmp, path)
-        return path
+        backoff = min(MAX_RETRY_DELAY_S, RETRY_BACKOFF_S * 2**attempt)
+        delay = max(backoff, retry_after or 0)
+        delay = min(MAX_RETRY_DELAY_S, delay + random.uniform(0, 1))
+        log.warning("Retrying SPHEREx download in %.1fs (%d/%d): %s", delay, attempt + 2, DOWNLOAD_RETRIES, last_err)
+        time.sleep(delay)
     raise CutoutDownloadError(
         f"giving up after {DOWNLOAD_RETRIES} attempts for {cutout_url}: {last_err}"
     )

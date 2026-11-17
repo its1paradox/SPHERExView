@@ -177,8 +177,10 @@ def test_coadd_api_keeps_release_groups_and_provenance(monkeypatch, endpoint):
     assert all(len(f['metadata']['input_calibrations']) == 1 for f in frames)
 
 
-def test_comparison_fits_exports_release_without_gain_conversion(tmp_path):
+def test_comparison_fits_exports_release_without_gain_conversion(tmp_path, monkeypatch):
     rows = [image(obs='old'), qr3(image(mjd=61000.1, obs='new'))]
+    # Historical input/export regression; QR2 is no longer discoverable at IRSA.
+    monkeypatch.setattr(sx, 'query_releases', lambda *a, **k: rows)
     def query(*a, collection, **kw):
         return [im for im in rows if f'/{collection.removeprefix("spherex_")}/' in im.access_url]
     result = dc.build(dc.Recipe(ra=10, dec=-5, size_arcsec=24.8), tmp_path, lambda *a: None,
@@ -205,7 +207,7 @@ VOTABLE = b'''<VOTABLE version="1.3" xmlns="http://www.ivoa.net/xml/VOTable/v1.3
 
 def test_spectrum_flatten_and_release_filtered_exports(monkeypatch):
     table = sp.filter_release(sp.flatten_votable(VOTABLE))
-    assert table['release_counts'] == {'qr2': 1, 'qr3': 1, 'unknown': 1}
+    assert table['release_counts'] == {'dr1': 0, 'qr2': 1, 'qr3': 1, 'unknown': 1}
     monkeypatch.setattr(sp, 'fetch_result_votable', lambda _: VOTABLE)
     client = TestClient(main.app)
     url = '/api/spectra/download/synthetic-job'

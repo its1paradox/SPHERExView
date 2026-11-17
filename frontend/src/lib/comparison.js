@@ -25,6 +25,7 @@ export function readState(hash = '') {
     max_per_tile: p.get('cap') || '0', pixscale_arcsec: p.get('pixels') || '6.2',
     resampling: p.get('resampling') || 'bin', background: p.get('background') || 'zodi',
     aperture_radius_arcsec: p.get('aperture') || '12.4',
+    include_spectra: p.get('spectra') !== '0',
     weighting: p.get('weighting') || 'equal', min_exposures: p.get('minexp') || '1', ranges,
   };
   const bounded = (key, fallback, lo, hi) => {
@@ -32,9 +33,13 @@ export function readState(hash = '') {
     return p.has(key) && Number.isFinite(x) ? Math.max(lo, Math.min(hi, x)) : fallback;
   };
   return { form, display: {
-    spectrumFrequency: p.get('specfreq') === '1', spectrumLocalSky: p.get('specsky') === '1',
-    spectrumLines: p.get('speclines') !== '0', showAperture: p.get('apertureoverlay') === '1',
-    spectrumComplete: p.get('speccomplete') === '1',
+    imageFraction: bounded('imagearea', 50, 20, 80),
+    workspaceLayout: ['images', 'spectrum'].includes(p.get('workspace')) ? p.get('workspace') : 'split',
+    imageView: p.get('images') === 'rgb' ? 'rgb' : 'detectors',
+    rgbBackground: p.get('rgbbg') === 'neutral' ? 'neutral' : 'shared',
+    spectrumFrequency: p.get('specfreq') === '1', spectrumLocalSky: p.get('specsky') !== '0',
+    spectrumLines: p.get('speclines') === '1', showAperture: p.get('apertureoverlay') === '1',
+    spectrumComplete: p.get('speccomplete') !== '0',
     mode: ['color', 'wavelength'].includes(p.get('mode')) ? p.get('mode') : 'gray',
     wavelengthStrength: bounded('wavestrength', 1, 0, 1),
     wavelengthWhite: p.get('wavewhite') || '',
@@ -58,7 +63,7 @@ export function recipeFromForm(f) {
     if (String(f[key]).trim() === '' || !Number.isFinite(Number(f[key]))) throw new Error(`Invalid ${key.replaceAll('_', ' ')}.`);
     return Number(f[key]);
   };
-  const r = { ra: coords[0], dec: coords[1], survey: f.survey, release: releaseValue(f.release), grouping: f.grouping, background: f.background, resampling: f.resampling, weighting: f.weighting, wavelength_ranges: {} };
+  const r = { ra: coords[0], dec: coords[1], survey: f.survey, release: releaseValue(f.release), grouping: f.grouping, background: f.background, resampling: f.resampling, weighting: f.weighting, include_spectra: f.include_spectra !== false, wavelength_ranges: {} };
   for (const key of ['size_arcsec', 'bin_months', 'epoch_origin_mjd', 'max_per_tile', 'pixscale_arcsec', 'min_exposures', 'aperture_radius_arcsec']) r[key] = numeric(key);
   for (const key of ['mjd_start', 'mjd_end']) r[key] = f[key] === '' ? null : numeric(key);
   for (const d of DETECTORS) {
@@ -77,12 +82,17 @@ export function stateHash(form, display, epoch, pin) {
   for (const [key, field] of Object.entries({ size: 'size_arcsec', survey: 'survey', release: 'release', months: 'bin_months', grouping: 'grouping', origin: 'epoch_origin_mjd', start: 'mjd_start', end: 'mjd_end', cap: 'max_per_tile', pixels: 'pixscale_arcsec', resampling: 'resampling', background: 'background', weighting: 'weighting', minexp: 'min_exposures' })) if (form[field] !== '') p.set(key, form[field]);
   p.set('ranges', JSON.stringify(form.ranges));
   p.set('aperture', form.aperture_radius_arcsec);
+  p.set('spectra', form.include_spectra === false ? '0' : '1');
   for (const key of ['layer', 'stretch', 'zoom', 'vmin', 'vmax', 'mode', 'reference']) if (display[key] !== '') p.set(key, display[key]);
   for (const [key, field] of Object.entries({ refgain: 'referenceGain', colorsigma: 'colorSigma', colorstrength: 'colorStrength', colorwhite: 'colorWhite', wavestrength: 'wavelengthStrength', wavewhite: 'wavelengthWhite' })) if (display[field] !== '' && display[field] !== undefined) p.set(key, display[field]);
   p.set('invert', display.invert ? '1' : '0'); p.set('smooth', display.smooth ? '1' : '0');
   p.set('specfreq', display.spectrumFrequency ? '1' : '0'); p.set('specsky', display.spectrumLocalSky ? '1' : '0');
   p.set('speclines', display.spectrumLines ? '1' : '0'); p.set('apertureoverlay', display.showAperture ? '1' : '0');
   p.set('speccomplete', display.spectrumComplete ? '1' : '0');
+  p.set('imagearea', display.imageFraction ?? 50);
+  p.set('workspace', ['images', 'spectrum'].includes(display.workspaceLayout) ? display.workspaceLayout : 'split');
+  p.set('images', display.imageView === 'rgb' ? 'rgb' : 'detectors');
+  p.set('rgbbg', display.rgbBackground === 'neutral' ? 'neutral' : 'shared');
   p.set('panx', display.panX); p.set('pany', display.panY); p.set('epoch', epoch);
   if (pin) { p.set('pinra', pin.ra); p.set('pindec', pin.dec); }
   return `#${p}`;

@@ -1,3 +1,4 @@
+import { fetchApi } from '../lib/api';
 import ReleaseSelect from './ReleaseSelect.jsx';
 import { releaseValue } from '../lib/releases.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -193,7 +194,7 @@ export default function BlinkPage() {
       params.set('ref', f.ref || 'auto');
     }
     try {
-      const d = await fetch(`/api/epoch-coadds?${params}`).then((r) =>
+      const d = await fetchApi(`/api/epoch-coadds?${params}`).then((r) =>
         r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.detail || r.statusText))),
       );
       const fr = d.frames.map((c) => ({

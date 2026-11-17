@@ -12,7 +12,7 @@ from photutils.aperture import CircularAperture
 
 from backend.app import aperture_spectrum as sp
 from backend.app import detector_comparison as dc
-from test_detector_comparison import image, samples
+from test_detector_comparison import image, samples, calibrated_cutout
 
 
 def scene(n=1):
@@ -77,6 +77,41 @@ def test_complete_and_usable_estimators_agree_when_unmasked():
     result = sp.aperture_maps(**scene())
     for key in ('flux', 'variance', 'sky_flux', 'sky_variance'):
         np.testing.assert_array_equal(result[key], result['usable_' + key])
+
+
+@pytest.mark.parametrize('resampling', ['bin', 'nearest'])
+def test_aperture_survives_without_a_valid_coadd_center(calibrated_cutout, resampling, tmp_path, monkeypatch):
+    path, cal, _, native = calibrated_cutout
+    # The only output center is the flagged native (1, 1) pixel. Its
+    # 12.4-arcsec aperture still contains usable neighbouring pixels.
+    out = native.deepcopy()
+    out.wcs.crpix -= 1
+    recipe = dc.Recipe(ra=10, dec=-5, size_arcsec=24.8, resampling=resampling)
+    s = dc.load_samples(path, image(), recipe, out, 1, lambda d: (cal, 'synthetic', 'fixture'))
+    assert s.index.size == 0
+    assert s.metadata['accepted_samples'] == 0
+    assert s.metadata['field_sample_median_wavelength_um'] is None
+    assert np.isfinite(s.spectrum['usable_flux'][0, 0])
+    assert np.isnan(s.spectrum['flux'][0, 0])
+    # Preserve the spectrum in the build, without counting an empty coadd
+    # as an exposure used by the detector tile.
+    monkeypatch.setattr(dc.cx, 'output_grid', lambda *a: (1, out))
+    result = dc.build(recipe, tmp_path / resampling, lambda *a: None, threading.Event(),
+        query=lambda *a, **k: [image()], downloader=lambda u: path, loader=lambda *a: s)
+    epoch = result['epochs'][0]
+    assert len(epoch['spectra']) == 1
+    assert epoch['tiles'][0]['n_accepted'] == 0
+    assert epoch['tiles'][0]['status'] == 'unavailable'
+    assert result['inputs'][0]['coadd_status'] == 'no_valid_samples'
+
+
+def test_empty_coadd_and_empty_aperture_still_rejected(calibrated_cutout):
+    path, cal, _, out = calibrated_cutout
+    with fits.open(path, mode='update') as hdul:
+        hdul['FLAGS'].data[:] |= 1 << 15
+    with pytest.raises(dc.InputError, match='No valid coadd pixels or usable aperture'):
+        dc.load_samples(path, image(), dc.Recipe(ra=10, dec=-5, size_arcsec=24.8), out, 4,
+            lambda d: (cal, 'synthetic', 'fixture'))
 
 
 def test_fractional_weight_variance_against_monte_carlo_and_wavelength_range():

@@ -16,8 +16,9 @@ import numpy as np
 from photutils.aperture import EllipticalAperture
 
 from . import spherex_client as sx
+from . import releases
 
-AREA_VERSIONS = {"qr2": "cal-sapm-v2-2025-164", "qr3": "cal-sapm-v3-2026-191"}
+AREA_VERSIONS = {release: config["solid_angle_calibration"] for release, config in releases.RELEASES.items()}
 MAX_SPECTRAL_CELLS = 1_000_000
 UNITS = {"flux": "uJy", "variance": "uJy2", "sky_flux": "uJy", "sky_variance": "uJy2", "wavelength": "um", "bandwidth": "um",
          "usable_flux": "uJy", "usable_variance": "uJy2", "usable_sky_flux": "uJy", "usable_sky_variance": "uJy2",
@@ -158,11 +159,12 @@ def aperture_maps(sci, variance, wavelength, bandwidth, valid, sky_valid, omega,
     return maps
 
 
-def save_spectra(path, spectra, wcs, recipe, epoch):
+def save_spectra(path, spectra, wcs, recipe, epoch, inputs=()):
     primary = fits.PrimaryHDU()
-    primary.header.update({"ALGO": METHOD["version"], "RELEASE": epoch["data_release"], "APRADIUS": recipe.aperture_radius_arcsec,
+    spectral_release = releases.release_summary(s["data_release"] for s in spectra)
+    primary.header.update({"ALGO": METHOD["version"], "RELEASE": spectral_release["data_release"], "CALFAM": spectral_release["calibration_family"], "APRADIUS": recipe.aperture_radius_arcsec,
                            "ANNIN": 1.5 * recipe.aperture_radius_arcsec, "ANNOUT": 2.5 * recipe.aperture_radius_arcsec,
-                           "PSFCORR": False, "TIMESYS": "UTC", "BKG": recipe.background})
+                           "PSFCORR": False, "GAINCONV": False, "TIMESYS": "UTC", "BKG": recipe.background})
     hdus = [primary]
     if spectra:
         for key, unit in UNITS.items():
@@ -172,8 +174,11 @@ def save_spectra(path, spectra, wcs, recipe, epoch):
         hdus.append(fits.BinTableHDU.from_columns([
             fits.Column(name="DETECTOR", format="J", array=[s["detector"] for s in spectra]),
             fits.Column(name="MJD", format="D", unit="d", array=[s["mjd"] for s in spectra]),
+            fits.Column(name="RELEASE", format="8A", array=[s["data_release"] for s in spectra]),
             fits.Column(name="OBSID", format=f'{max(len(s["obs_id"]) for s in spectra)}A', array=[s["obs_id"] for s in spectra]),
         ], name="EXPOSURES"))
     hdus.append(fits.ImageHDU(np.frombuffer(json.dumps({"method": METHOD, "recipe": recipe.model_dump(mode="json"),
-        "samples": [{k: v for k, v in s.items() if k != "arrays"} for s in spectra]}).encode(), dtype=np.uint8), name="PROVENANCE"))
+        "releases": spectral_release, "inputs": list(inputs),
+        "epoch": {k: epoch[k] for k in ("index", "mjd_start", "mjd_end")},
+        "samples": [{k: v for k, v in s.items() if k != "arrays"} for s in spectra]}, allow_nan=False).encode(), dtype=np.uint8), name="PROVENANCE"))
     fits.HDUList(hdus).writeto(path, overwrite=True, checksum=True)

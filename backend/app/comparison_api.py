@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
 import time
@@ -14,9 +15,12 @@ from fastapi.responses import FileResponse
 
 from . import detector_comparison as dc
 from . import spherex_client as sx
+from . import releases
+from . import hosting
 
 router = APIRouter(prefix="/api/detector-comparison", tags=["detector comparison"])
-_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="six-detector")
+_max_jobs = int(os.getenv("SPHEREX_MAX_COMPARISONS", "2"))
+_pool = ThreadPoolExecutor(max_workers=_max_jobs, thread_name_prefix="six-detector")
 _lock = threading.Lock()
 _jobs = {}
 
@@ -52,19 +56,40 @@ def _run(job_id, recipe, cancel):
             _jobs[job_id].update(status="error", message=str(exc))
 
 
+def _run_guarded(job_id, recipe, cancel, lease):
+    try:
+        _run(job_id, recipe, cancel)
+    finally:
+        lease.release()
+
+
 @router.post("", status_code=202)
 def start_comparison(recipe: dc.Recipe):
-    with _lock:
-        if sum(j["status"] in ("queued", "running") for j in _jobs.values()) >= 2:
-            raise HTTPException(429, "Two comparisons are already building; cancel one or wait for completion")
-        # Disk exports survive registry eviction and server restarts.
-        terminal = [key for key, value in _jobs.items() if value["status"] not in ("queued", "running")]
-        for key in terminal[:-8]:
-            _jobs.pop(key)
-        job_id, cancel = uuid.uuid4().hex, threading.Event()
-        _jobs[job_id] = {"status": "queued", "message": "Queued", "done": 0, "total": 0, "cancel": cancel, "created": time.time()}
-    _pool.submit(_run, job_id, recipe, cancel)
-    return {"job_id": job_id, "status": "queued"}
+    try:
+        releases.collections(recipe.survey, recipe.release)
+    except releases.RetiredReleaseError as exc:
+        raise HTTPException(410, str(exc)) from exc
+    hosting.validate_comparison(recipe)
+    lease = hosting.acquire()
+    job_id = None
+    try:
+        with _lock:
+            if sum(j["status"] in ("queued", "running") for j in _jobs.values()) >= _max_jobs:
+                raise HTTPException(429, "The comparison server is busy; cancel a job or wait for completion")
+            # Disk exports survive registry eviction and server restarts.
+            terminal = [key for key, value in _jobs.items() if value["status"] not in ("queued", "running")]
+            for key in terminal[:-8]:
+                _jobs.pop(key)
+            job_id, cancel = uuid.uuid4().hex, threading.Event()
+            _jobs[job_id] = {"status": "queued", "message": "Queued", "done": 0, "total": 0, "cancel": cancel, "created": time.time()}
+        _pool.submit(_run_guarded, job_id, recipe, cancel, lease)
+        return {"job_id": job_id, "status": "queued"}
+    except BaseException:
+        if job_id is not None:
+            with _lock:
+                _jobs.pop(job_id, None)
+        lease.release()
+        raise
 
 
 @router.get("/{job_id}")
@@ -88,7 +113,7 @@ def cancel_comparison(job_id: str):
             raise HTTPException(404, "Comparison not found")
         if job["status"] in ("queued", "running"):
             job["cancel"].set()
-            job["message"] = "Cancelling after the current archive request finishes"
+            job["message"] = "Cancelling after the current exposure finishes"
     return {"job_id": job_id, "status": "cancellation_requested"}
 
 

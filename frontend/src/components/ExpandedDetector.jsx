@@ -24,6 +24,6 @@ export default function ExpandedDetector({ detector, onSelect, onClose, returnFo
       <button onClick={() => move(1)} aria-label="Next detector">Next →</button>
     </div>{modeSwitch}</div>
     <div className="expanded-stage" aria-live="polite">{children}</div>
-    <p className="expanded-help">← / → change detector · Esc returns to the grid · wheel zooms · drag pans · click pins. Shared display controls remain in the grid’s side panel.</p>
+    <p className="expanded-help">← / → change detector · Esc returns to the grid · wheel zooms · drag pans · click pins. Return to the workspace and choose Adjust display for shared image controls.</p>
   </dialog>;
 }

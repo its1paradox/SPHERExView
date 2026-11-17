@@ -5,7 +5,7 @@ import { parseHash, buildHash } from '../src/lib/urlstate.js';
 import { comparisonUrl, readState, recipeFromForm, stateHash } from '../src/lib/comparison.js';
 
 test('release travels through bookmarks, comparison launch and processing recipes', () => {
-  for (const release of ['all', 'qr2', 'qr3']) {
+  for (const release of ['all', 'dr1', 'qr3', 'qr2']) {
     const state = parseHash(`#ra=10&dec=-5&release=${release}`);
     assert.equal(parseHash(buildHash(state.form, state.view)).form.release, release);
     const comparison = readState(comparisonUrl(10, -5, 240, 'deep', release).split('#')[1]);
@@ -19,6 +19,8 @@ test('release travels through bookmarks, comparison launch and processing recipe
 test('spectrum release comes from provenance, never from an observation date', () => {
   assert.equal(spectrumRelease({ data_collection: 'spherex_qr3_deep' }), 'qr3');
   assert.equal(spectrumRelease({ data_collection: 'QR2' }), 'qr2');
+  assert.equal(spectrumRelease({ data_collection: 'DR1' }), 'dr1');
+  assert.equal(spectrumRelease({ data_collection: 'spherex_dr1_deep' }), 'dr1');
   assert.equal(spectrumRelease({ mjd: 61241 }), 'unknown');
 });
 

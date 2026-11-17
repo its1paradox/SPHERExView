@@ -85,7 +85,8 @@ export default function CombinedViewer({
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [copyStatus, setCopyStatus] = useState('');
-  const canvasRef = useRef(null);
+  const canvasRef = useRef(null), referenceCanvas = useRef(null);
+  const [referenceIndex, setReferenceIndex] = useState(0);
 
   useEffect(() => setCopyStatus(''), [pin]);
 
@@ -109,7 +110,7 @@ export default function CombinedViewer({
   // Click drops (or moves) the shared pin at the clicked sky position.
   const onClick = (e) => {
     if (!onPin) return;
-    const canvas = canvasRef.current;
+    const canvas = e.currentTarget;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const x = (e.clientX - rect.left) * (canvas.width / rect.width);
@@ -190,6 +191,7 @@ export default function CombinedViewer({
 
   useEffect(() => {
     setIndex(0);
+    setReferenceIndex(0);
     setPlaying(true);
   }, [frames]);
 
@@ -200,9 +202,9 @@ export default function CombinedViewer({
   }, [playing, frames, speedMs]);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
+    const draw = (canvas, frameIndex) => {
     if (!canvas || frames.length === 0) return;
-    const i = Math.min(index, frames.length - 1);
+    const i = Math.min(frameIndex, frames.length - 1);
     const entry = frames[i];
     const tf = transforms[i];
     const [vmin, vmax] = limits[i];
@@ -279,7 +281,10 @@ export default function CombinedViewer({
         ctx.fill();
       }
     }
-  }, [frames, transforms, limits, index, displaySize, fov, view, pin]);
+    };
+    draw(canvasRef.current, index);
+    draw(referenceCanvas.current, referenceIndex);
+  }, [frames, transforms, limits, index, referenceIndex, displaySize, fov, view, pin]);
 
   if (frames.length === 0) return (
     <section className="panel viewer combined-viewer">
@@ -290,6 +295,7 @@ export default function CombinedViewer({
 
   const i = Math.min(index, frames.length - 1);
   const entry = frames[i];
+  const reference = frames[Math.min(referenceIndex, frames.length - 1)];
   const nWise = frames.filter((e) => e.mission === 'WISE').length;
 
   return (
@@ -303,7 +309,11 @@ export default function CombinedViewer({
         {entry.f.metadata?.data_release && <span className="band">{entry.f.metadata.data_release.toUpperCase()}</span>}
         <span className="datetime">{fmtDate(entry.f)}</span>
       </div>
-      <canvas ref={canvasRef} onClick={onClick} aria-label="Combined timeline image" />
+      <div className="timeline-analysis"><div className="timeline-image-pair">
+        <figure className="timeline-image-stage timeline-current"><figcaption><strong>Current frame</strong><span>{entry.mission} · {fmtDate(entry.f)}</span></figcaption><canvas ref={canvasRef} onClick={onClick} style={{ maxWidth: `min(100%, ${displaySize}px)` }} aria-label="Combined timeline image" /></figure>
+        <figure className="timeline-image-stage timeline-reference"><figcaption><strong>Reference epoch</strong><span>{reference.mission} · {fmtDate(reference.f)}</span></figcaption><canvas ref={referenceCanvas} onClick={onClick} style={{ maxWidth: `min(100%, ${displaySize}px)` }} aria-label="Reference epoch image" /></figure>
+      </div>
+      <div className="timeline-inspector"><span className="timeline-section-label">Temporal inspection</span><h3>Follow this sky position</h3><p className="timeline-target">{target.ra.toFixed(6)}°, {target.dec.toFixed(6)}° ICRS</p>
       {pin && (
         <div className="timeline-pin" aria-label="Pinned source">
           <span>{pin.ra.toFixed(7)}°, {pin.dec.toFixed(7)}° ICRS</span>
@@ -315,7 +325,7 @@ export default function CombinedViewer({
               setCopyStatus('Select the coordinates to copy them');
             }
           }}>Copy coordinates</button>
-          {onSpectrum && <button type="button" onClick={() => onSpectrum(pin.ra, pin.dec)}>Generate spectrum at pin</button>}
+          {onSpectrum && <button type="button" onClick={() => onSpectrum(pin.ra, pin.dec)}>Explore spectrum at pin</button>}
           <button type="button" onClick={() => onPin?.(null)}>Clear pin</button>
           {copyStatus && <span role="status">{copyStatus}</span>}
         </div>
@@ -323,7 +333,7 @@ export default function CombinedViewer({
       <div className="coord-readout">
         {`Shared sky frame: ${fov}\u2033 field \u00b7 north up, east left \u00b7 fixed ${(
           fov / displaySize
-        ).toFixed(2)}\u2033/px \u00b7 each frame placed via its own WCS`}
+        ).toFixed(2)}\u2033/render pixel \u00b7 each frame placed via its own WCS`}
       </div>
       <div className="controls">
         <button type="button" onClick={() => setPlaying((p) => !p)}>
@@ -364,6 +374,7 @@ export default function CombinedViewer({
           {i + 1}/{frames.length}
         </span>
       </div>
+      <div className="timeline-reference-controls"><button type="button" onClick={() => setReferenceIndex(i)}>Use current as reference</button><button type="button" onClick={() => setReferenceIndex(0)} disabled={referenceIndex === 0}>First epoch</button><p>Both images show the same sky frame. Click either image to pin a position. Different PSFs and wavelength sampling can affect apparent changes.</p></div>
       <p className="combined-note">
         {`${nWise} WISE epochs (${fmtDate(frames[0].f)} \u2192 ${
           nWise ? fmtDate(frames[nWise - 1].f) : ''
@@ -373,6 +384,7 @@ export default function CombinedViewer({
             : ''
         }`}
       </p>
+      </div></div>
     </section>
   );
 }
