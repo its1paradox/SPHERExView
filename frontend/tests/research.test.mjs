@@ -166,6 +166,19 @@ test('dashboard receives another tab’s progress without focus or manual reload
  }finally{app.close();}
 });
 
+test('reopening a timeline request replaces its abandoned progress record',async()=>{
+ const app=await setup();try{
+ const {lib}=app;await lib.beginResearch(spec);let finish;const gate=new Promise(r=>finish=r);
+ const first=lib.localResearchFetch(url,undefined,async path=>{await gate;return network(path);});
+ await wait(async()=> (await lib.researchRequest()).targets[0].busy);
+ const reopened=await import(`../src/lib/research.js?timelineReopen=${Math.random()}`);await reopened.beginResearch(spec);
+ await reopened.localResearchFetch(url,undefined,network);
+ const tool=(await lib.researchRequest()).targets[0].tools.timeline;
+ assert.equal(Object.keys(tool.activity).length,1);assert.equal(lib.toolProgress(tool).label,'Results ready');
+ finish();await first;
+ }finally{app.close();}
+});
+
 test('500 arcsec history links preserve the exact width for both tools',async()=>{
  const app=await setup();try{
  const {lib}=app,target=await lib.beginResearch({...spec,size:500});

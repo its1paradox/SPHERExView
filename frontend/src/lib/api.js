@@ -23,6 +23,7 @@ export function fetchApi(url, options, maxRetries = Infinity) {
 async function networkFetch(url, options, maxRetries) {
   for (let attempt = 0; ; attempt += 1) {
     if (options?.signal?.aborted) throw options?.signal.reason ?? new DOMException('Aborted', 'AbortError');
+    if (attempt) await options?.onResearchAttempt?.();
     const response = await fetch(url, options);
     if (response.status !== 429 || attempt >= maxRetries) return response;
     await options?.onResearchWait?.();

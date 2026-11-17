@@ -253,7 +253,9 @@ export async function localResearchFetch(url,options,network) {
   const jobId=parsed.pathname.split('/')[3], job=jobs.get(jobId);
   const isStatus=method==='GET' && /^\/api\/detector-comparison\/[a-f0-9]+$/.test(parsed.pathname);
   const isResult=method==='GET' && /\/api\/detector-comparison\/[^/]+\/result$/.test(parsed.pathname);
-  const activityId=recipe || science ? randomId() : isStatus || isResult ? (job?.activityId || target.tools.detectors?.pending?.activityId || jobId) : null;
+  // A timeline reload resumes the same scientific request's activity rather
+  // than leaving a second, abandoned heartbeat permanently ahead of readiness.
+  const activityId=science ? key : recipe ? randomId() : isStatus || isResult ? (job?.activityId || target.tools.detectors?.pending?.activityId || jobId) : null;
   const activityTarget=job?.target || target;
   const report=update=>activityId ? activity(activityTarget,tool,activityId,update) : Promise.resolve();
   let heartbeat;
@@ -262,6 +264,7 @@ export async function localResearchFetch(url,options,network) {
     if(recipe || science || isResult)await activity(activityTarget,tool,activityId,{phase:'running',message,done:0,total:0},!isResult);
     heartbeat=window.setInterval(()=>report({}).catch(()=>{}),15000);
     scoped.onResearchWait=()=>report({phase:'queued',message:'Waiting for server capacity; this request will retry automatically',done:0,total:0});
+    scoped.onResearchAttempt=()=>report({phase:'running',message,done:0,total:0});
   }
   try {
     const response=await network(url,scoped);
