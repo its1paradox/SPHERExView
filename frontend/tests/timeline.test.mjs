@@ -33,6 +33,8 @@ async function mount(hash = '', responseOverride) {
   });
   const w = dom.window, requests = [], opened = [], errors = [], copied = [];
   w.structuredClone = structuredClone;
+  w.HTMLDialogElement.prototype.showModal = function() { this.setAttribute('open', ''); };
+  w.HTMLDialogElement.prototype.close = function() { this.removeAttribute('open'); };
   w.console.error = (...args) => errors.push(args.join(' '));
   w.open = (...args) => opened.push(args);
   Object.defineProperty(w.navigator, 'clipboard', { value: { writeText: async text => copied.push(text) } });
@@ -88,10 +90,47 @@ test('timeline defaults and explicit bookmark panel choices survive URL round tr
   }
 });
 
+test('settings preserve the loaded timeline, restore focus and keep hidden controls out of the active section', async () => {
+  const app = await mount('#ra=10&dec=-5&cmode=exposures');
+  try {
+    await settle(() => app.q('.combined-viewer canvas'));
+    app.q('[aria-label="Next timeline frame"]').click();
+    await settle(() => app.q('[aria-label="Timeline frame"]').value === '1');
+    app.button('Use current as reference').click();
+    await settle(() => app.q('.timeline-reference figcaption span').textContent.includes('2010-07-01'));
+    const referenceLabel = app.q('.timeline-reference figcaption').textContent;
+    app.q('[aria-label="Next timeline frame"]').click();
+    await settle(() => app.q('[aria-label="Timeline frame"]').value === '2');
+    assert.equal(app.q('.timeline-reference figcaption').textContent, referenceLabel, 'Reference stays fixed while playback advances');
+    app.q('[aria-label="Previous timeline frame"]').click();
+    await settle(() => app.q('[aria-label="Timeline frame"]').value === '1');
+    const referenceCanvas = app.q('[aria-label="Reference epoch image"]');
+    referenceCanvas.getBoundingClientRect = () => ({left:0,top:0,width:225,height:225});
+    referenceCanvas.dispatchEvent(new app.w.MouseEvent('click',{clientX:112.5,clientY:112.5,bubbles:true}));
+    await settle(() => app.q('.timeline-pin'));
+    assert.match(app.q('.timeline-pin').textContent, /10.0000000°, -5.0000000°/, 'CSS fitting must preserve sky coordinates on the reference canvas');
+    const opener = app.button('Display settings'), before = app.requests.length;
+    opener.focus(); opener.click();
+    await settle(() => app.q('.workspace-settings[open]'));
+    assert.equal(app.w.document.body.style.overflow, 'hidden');
+    assert.equal(app.q('form[data-settings-section="target"]').parentElement.hidden, true);
+    app.q('.settings-navigation button').click();
+    await settle(() => !app.q('form[data-settings-section="target"]').parentElement.hidden);
+    app.q('.workspace-settings').dispatchEvent(new app.w.Event('cancel', {cancelable:true}));
+    await settle(() => !app.q('.workspace-settings[open]'));
+    assert.equal(app.w.document.activeElement, opener);
+    assert.equal(app.w.document.body.style.overflow, '');
+    assert.equal(app.q('[aria-label="Timeline frame"]').value, '1');
+    assert.equal(app.requests.length, before);
+    assert.deepEqual(app.errors, []);
+  } finally { app.dom.window.close(); }
+});
+
 test('a fresh launch shows the timeline tile with mission panels and their controls hidden', async () => {
   const app = await mount();
   try {
     assert.match(app.q('.combined-viewer h2').textContent, /Combined timeline/);
+    assert.equal(app.button('Generate spectrum at target'), undefined);
     assert.match(app.q('.timeline-placeholder').textContent, /Awaiting target/);
     assert.equal(app.q('[data-testid="wise-panel-controls"]'), null);
     assert.equal(app.q('[data-testid="spherex-panel-controls"]'), null);
@@ -101,7 +140,7 @@ test('a fresh launch shows the timeline tile with mission panels and their contr
     assert.equal(app.q('.input-options input[type="number"]').value, '1000');
     assert.equal(app.q('.input-options select').value, 'w1w2');
     assert.equal(app.q('[data-testid="select-combined-mode"]').value, 'wise');
-    for (const [name, path] of [['Generate spectrum at target', 'spectrum.html'], ['Epoch blink sequence', 'blink.html'], ['Six-detector comparison', 'compare.html']]) {
+    for (const [name, path] of [['Epoch blink sequence', 'blink.html'], ['Detector & spectrum explorer', 'compare.html']]) {
       app.button(name).click();
       assert.ok(app.opened.at(-1)[0].startsWith(path + '#'));
     }
@@ -126,7 +165,7 @@ for (const release of ['dr1', 'qr3']) {
       for (const path of ['/api/epoch-stack', '/api/epoch-coadds']) {
         assert.equal(queries.find(u => u.pathname === path).searchParams.get('release'), release);
       }
-      for (const name of ['Generate spectrum at target', 'Epoch blink sequence', 'Six-detector comparison']) {
+      for (const name of ['Epoch blink sequence', 'Detector & spectrum explorer']) {
         app.button(name).click();
         assert.equal(new URLSearchParams(app.opened.at(-1)[0].split('#')[1]).get('release'), release);
       }
@@ -155,7 +194,7 @@ test('hidden panels still supply the timeline; toggles retain playback, settings
     await settle(() => app.q('.combined-viewer canvas'));
     assert.equal(app.requests.filter(u => u.startsWith('/api/epoch-stack')).length, 1);
     assert.equal(app.requests.filter(u => u.startsWith('/api/wise-stack')).length, 1);
-    assert.equal(app.w.document.querySelectorAll('canvas').length, 1);
+    assert.equal(app.w.document.querySelectorAll('canvas').length, 2);
     assert.match(app.q('.combined-viewer .frame-count').textContent, /1\/4/);
     app.q('[aria-label="Next timeline frame"]').click();
     await settle(() => app.q('[aria-label="Timeline frame"]').value === '1');
@@ -165,14 +204,14 @@ test('hidden panels still supply the timeline; toggles retain playback, settings
 
     app.toggle('WISE panel');
     app.toggle('SPHEREx panel');
-    await settle(() => app.w.document.querySelectorAll('canvas').length === 3);
+    await settle(() => app.w.document.querySelectorAll('canvas').length === 4);
     assert.ok(app.q('[data-testid="wise-panel-controls"]'));
     assert.ok(app.q('[data-testid="spherex-panel-controls"]'));
     assert.equal(app.q('[aria-label="Timeline frame"]').value, current);
     assert.equal(app.requests.length, 2, 'Visibility toggles must reuse the loaded data');
     app.toggle('WISE panel');
     app.toggle('SPHEREx panel');
-    await settle(() => app.w.document.querySelectorAll('canvas').length === 1);
+    await settle(() => app.w.document.querySelectorAll('canvas').length === 2);
 
     app.q('.timeline-appearance').open = true;
     // Choose the stretch selector by its supported log option (scale is a different selector).
@@ -193,15 +232,17 @@ test('hidden panels still supply the timeline; toggles retain playback, settings
     app.button('Copy coordinates').click();
     await settle(() => app.copied.length === 1);
     assert.equal(app.copied[0], '10.0000000 -5.0000000');
-    app.button('Generate spectrum at pin').click();
+    app.button('Explore spectrum at pin').click();
     const pinUrl = new URL(app.opened.at(-1)[0], 'http://localhost/');
-    assert.equal(pinUrl.pathname, '/spectrum.html');
-    assert.equal(new URLSearchParams(pinUrl.hash.slice(1)).get('ra'), '10.000000');
+    assert.equal(pinUrl.pathname, '/compare.html');
+    assert.equal(new URLSearchParams(pinUrl.hash.slice(1)).get('pinra'), '10');
+    assert.equal(new URLSearchParams(pinUrl.hash.slice(1)).get('pindec'), '-5');
+    assert.equal(new URLSearchParams(pinUrl.hash.slice(1)).get('ra'), '10');
     app.button('Clear pin').click();
     await settle(() => !app.q('.timeline-pin'));
     app.button('Reset display settings').click();
     await settle(() => app.w.location.hash.includes('sxstretch=sqrt'));
-    assert.equal(app.w.document.querySelectorAll('canvas').length, 1);
+    assert.equal(app.w.document.querySelectorAll('canvas').length, 2);
     assert.equal(app.requests.length, 2);
     assert.deepEqual(app.errors, []);
   } finally { app.dom.window.close(); }

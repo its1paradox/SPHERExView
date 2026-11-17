@@ -1,0 +1,346 @@
+{
+  "method": "Independent 64/128-subpixel midpoint integration in the full spherical WCS (128/512 for coverage below 1%); no production aperture geometry",
+  "measurements": [
+    {
+      "detector": 1,
+      "obs_id": "2025W36_1A_0095_1",
+      "native_row": 2,
+      "col": 2,
+      "production": {
+        "usable_flux": 11250.734375,
+        "usable_variance": 13696.0625,
+        "wavelength": 1.0700932741165161,
+        "aperture_coverage": 0.9217706322669983
+      },
+      "independent": [
+        {
+          "subdivisions": 64,
+          "flux": 11246.974770486775,
+          "variance": 13691.03605878846,
+          "wavelength": 1.0700932861536832
+        },
+        {
+          "subdivisions": 128,
+          "flux": 11250.32712985397,
+          "variance": 13695.434048866733,
+          "wavelength": 1.0700933319848103
+        }
+      ],
+      "flux_relative_difference": 3.619720566290753e-05,
+      "variance_relative_difference": 4.58855333981526e-05
+    },
+    {
+      "detector": 1,
+      "obs_id": "2025W36_1A_0095_1",
+      "native_row": 9,
+      "col": 9,
+      "production": {
+        "usable_flux": 138116.65625,
+        "usable_variance": 147545.046875,
+        "wavelength": 1.0681660175323486,
+        "aperture_coverage": 0.9217864871025085
+      },
+      "independent": [
+        {
+          "subdivisions": 64,
+          "flux": 138112.88846686302,
+          "variance": 147539.10068497897,
+          "wavelength": 1.068166059120516
+        },
+        {
+          "subdivisions": 128,
+          "flux": 138115.38371543793,
+          "variance": 147543.24824136175,
+          "wavelength": 1.0681659995405919
+        }
+      ],
+      "flux_relative_difference": 9.213476467079522e-06,
+      "variance_relative_difference": 1.2190403380801523e-05
+    },
+    {
+      "detector": 2,
+      "obs_id": "2025W37_1A_0068_1",
+      "native_row": 2,
+      "col": 2,
+      "production": {
+        "usable_flux": 1106.816162109375,
+        "usable_variance": 4423.1015625,
+        "wavelength": 1.4427493810653687,
+        "aperture_coverage": 1.0
+      },
+      "independent": [
+        {
+          "subdivisions": 64,
+          "flux": 1107.1113328348893,
+          "variance": 4423.709087618737,
+          "wavelength": 1.4427493679523014
+        },
+        {
+          "subdivisions": 128,
+          "flux": 1106.7221895309822,
+          "variance": 4422.6010013735495,
+          "wavelength": 1.4427493654756787
+        }
+      ],
+      "flux_relative_difference": 8.490351117906439e-05,
+      "variance_relative_difference": 0.00011316971120319386
+    },
+    {
+      "detector": 2,
+      "obs_id": "2025W37_1A_0068_1",
+      "native_row": 9,
+      "col": 9,
+      "production": {
+        "usable_flux": 73607.9609375,
+        "usable_variance": 72973.9296875,
+        "wavelength": 1.4406918287277222,
+        "aperture_coverage": 0.8442451357841492
+      },
+      "independent": [
+        {
+          "subdivisions": 64,
+          "flux": 73614.30681240183,
+          "variance": 72984.58120480292,
+          "wavelength": 1.4406918337232346
+        },
+        {
+          "subdivisions": 128,
+          "flux": 73609.19803306277,
+          "variance": 72975.57258690316,
+          "wavelength": 1.4406918203175392
+        }
+      ],
+      "flux_relative_difference": 1.6806545746059632e-05,
+      "variance_relative_difference": 2.2513511471766185e-05
+    },
+    {
+      "detector": 3,
+      "obs_id": "2025W37_2A_0051_1",
+      "native_row": 2,
+      "col": 2,
+      "production": {
+        "usable_flux": 733.7616577148438,
+        "usable_variance": 2744.396240234375,
+        "wavelength": 2.3566408157348633,
+        "aperture_coverage": 0.9688327312469482
+      },
+      "independent": [
+        {
+          "subdivisions": 64,
+          "flux": 733.9910883998041,
+          "variance": 2745.5619851694423,
+          "wavelength": 2.356640722845488
+        },
+        {
+          "subdivisions": 128,
+          "flux": 733.7822004571603,
+          "variance": 2744.541365579604,
+          "wavelength": 2.356640844351731
+        }
+      ],
+      "flux_relative_difference": 2.7996478285018664e-05,
+      "variance_relative_difference": 5.288060925808422e-05
+    },
+    {
+      "detector": 3,
+      "obs_id": "2025W37_2A_0051_1",
+      "native_row": 9,
+      "col": 9,
+      "production": {
+        "usable_flux": 93619.9765625,
+        "usable_variance": 94065.7890625,
+        "wavelength": 2.3536438941955566,
+        "aperture_coverage": 0.6099585294723511
+      },
+      "independent": [
+        {
+          "subdivisions": 64,
+          "flux": 93608.28588865175,
+          "variance": 94034.00684732286,
+          "wavelength": 2.3536436626047235
+        },
+        {
+          "subdivisions": 128,
+          "flux": 93614.91359857997,
+          "variance": 94059.1814650289,
+          "wavelength": 2.353643854891909
+        }
+      ],
+      "flux_relative_difference": 5.407995286833081e-05,
+      "variance_relative_difference": 7.024442719242103e-05
+    },
+    {
+      "detector": 4,
+      "obs_id": "2025W36_1A_0095_1",
+      "native_row": 2,
+      "col": 2,
+      "production": {
+        "usable_flux": 1461.0037841796875,
+        "usable_variance": 2506.654541015625,
+        "wavelength": 3.658614158630371,
+        "aperture_coverage": 1.0
+      },
+      "independent": [
+        {
+          "subdivisions": 64,
+          "flux": 1461.0644142939532,
+          "variance": 2506.694273430731,
+          "wavelength": 3.6586140067817983
+        },
+        {
+          "subdivisions": 128,
+          "flux": 1460.8930279774227,
+          "variance": 2506.312986686491,
+          "wavelength": 3.6586139900071784
+        }
+      ],
+      "flux_relative_difference": 7.580829253431713e-05,
+      "variance_relative_difference": 0.00013625903511839876
+    },
+    {
+      "detector": 4,
+      "obs_id": "2025W36_1A_0095_1",
+      "native_row": 9,
+      "col": 9,
+      "production": {
+        "usable_flux": 394.5890808105469,
+        "usable_variance": 12.300924301147461,
+        "wavelength": 3.651296377182007,
+        "aperture_coverage": 0.0030670228879898787
+      },
+      "independent": [
+        {
+          "subdivisions": 128,
+          "flux": 396.2154783299908,
+          "variance": 12.402535239455682,
+          "wavelength": 3.651296377182007
+        },
+        {
+          "subdivisions": 512,
+          "flux": 394.79273253241615,
+          "variance": 12.313624156946256,
+          "wavelength": 3.651296377182007
+        }
+      ],
+      "flux_relative_difference": 0.000516110890476102,
+      "variance_relative_difference": 0.0010324310180179128
+    },
+    {
+      "detector": 5,
+      "obs_id": "2025W37_1A_0068_1",
+      "native_row": 2,
+      "col": 2,
+      "production": {
+        "usable_flux": 1952.80078125,
+        "usable_variance": 16163.1064453125,
+        "wavelength": 4.214151382446289,
+        "aperture_coverage": 1.0
+      },
+      "independent": [
+        {
+          "subdivisions": 64,
+          "flux": 1953.2679526086013,
+          "variance": 16166.940711367628,
+          "wavelength": 4.214151216563712
+        },
+        {
+          "subdivisions": 128,
+          "flux": 1952.8590139497292,
+          "variance": 16163.428533855902,
+          "wavelength": 4.214151355936201
+        }
+      ],
+      "flux_relative_difference": 2.9820092396667885e-05,
+      "variance_relative_difference": 1.9927391092290295e-05
+    },
+    {
+      "detector": 5,
+      "obs_id": "2025W37_1A_0068_1",
+      "native_row": 9,
+      "col": 9,
+      "production": {
+        "usable_flux": 223411.4375,
+        "usable_variance": 575626.0,
+        "wavelength": 4.212234973907471,
+        "aperture_coverage": 0.4679147005081177
+      },
+      "independent": [
+        {
+          "subdivisions": 64,
+          "flux": 223421.16316308247,
+          "variance": 575774.768487118,
+          "wavelength": 4.212235049820934
+        },
+        {
+          "subdivisions": 128,
+          "flux": 223405.39731496427,
+          "variance": 575550.13507008,
+          "wavelength": 4.21223471959432
+        }
+      ],
+      "flux_relative_difference": 2.7036149551341776e-05,
+      "variance_relative_difference": 0.00013179552334318813
+    },
+    {
+      "detector": 6,
+      "obs_id": "2025W37_2A_0051_1",
+      "native_row": 2,
+      "col": 2,
+      "production": {
+        "usable_flux": 4002.488037109375,
+        "usable_variance": 62994.12109375,
+        "wavelength": 4.9565043449401855,
+        "aperture_coverage": 1.0
+      },
+      "independent": [
+        {
+          "subdivisions": 64,
+          "flux": 4002.06848494938,
+          "variance": 62988.025713158226,
+          "wavelength": 4.956504621649819
+        },
+        {
+          "subdivisions": 128,
+          "flux": 4002.6591749168374,
+          "variance": 62997.16217103593,
+          "wavelength": 4.956504451870539
+        }
+      ],
+      "flux_relative_difference": 4.2757856082437596e-05,
+      "variance_relative_difference": 4.8275572912691735e-05
+    },
+    {
+      "detector": 6,
+      "obs_id": "2025W37_2A_0051_1",
+      "native_row": 9,
+      "col": 9,
+      "production": {
+        "usable_flux": 619612.0,
+        "usable_variance": 2744552.0,
+        "wavelength": 4.954143047332764,
+        "aperture_coverage": 0.6111547946929932
+      },
+      "independent": [
+        {
+          "subdivisions": 64,
+          "flux": 619563.8597940555,
+          "variance": 2744550.6420948934,
+          "wavelength": 4.954143010385411
+        },
+        {
+          "subdivisions": 128,
+          "flux": 619641.0422529851,
+          "variance": 2744762.7631905777,
+          "wavelength": 4.954142750100614
+        }
+      ],
+      "flux_relative_difference": 4.687167612160849e-05,
+      "variance_relative_difference": 7.679329470811193e-05
+    }
+  ],
+  "frontend_wcs": {
+    "points": 200,
+    "maximum_error_arcsec": 2.1422546872333857e-10,
+    "maximum_error_pixels": 2.6016522269856068e-11
+  }
+}

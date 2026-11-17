@@ -6,32 +6,33 @@ grid position; click or press Enter to pin it. Hover temporarily overrides a
 pin, which returns when the pointer leaves the image. Positions snap to output
 pixel centers, including after zooming or panning. The spectrum background
 selector switches instantly between the recipe's supplied-background choice
-and additional local-annulus subtraction. The default retains local sky;
-this remains measurable when source flags leave no clean annulus. There is
-no automatic fallback between these physically different estimators.
-Changing display settings
-does not change the measurements or make archive requests.
+and additional local-annulus subtraction. Local-annulus subtraction and
+complete apertures now default on. Unavailable local-sky estimates remain
+missing; there is no fallback to sky-contaminated flux. Explicit bookmark
+settings are preserved. Choosing ZODI-only shows a prominent explanation that
+these aperture sums include residual local background.
 
-Tiles use a small hollow ring for the pinned position. **Show measurement aperture**
-optionally displays the actual extraction radius and background annulus;
-hiding these rings does not change the photometry. **Robust smooth guide**
-defaults on. As in [AstroToolBox](https://github.com/fkiwy/AstroToolBox/blob/6dab9013c558262e99768b88d34be8fa6aa78635/src/main/java/astro/tool/box/tab/SpherexViewerTab.java),
-up to eight equal-count wavelength bins per detector supply median wavelength
-and median flux anchors (at least three samples per detector/run). A natural
-cubic spline joins the anchors across adjacent detectors within each release.
-DR1 and QR3 have independent guides (solid and dashed respectively), so a joint
-epoch cannot blend their brightness states into one median curve. Unlike the reference,
-we break the guide where adjacent measured wavelengths differ by more than
-`max(0.2 µm, 3 × larger CBAND)`. This is a display convention. Duplicate anchor
-wavelengths are merged by median flux. The spline is a broad-shape visual aid:
-it may overshoot, is not a physical spectral fit, creates no measured samples,
-and does not determine the reported maximum. Its values are not exported as
-CSV measurements. Both display choices survive bookmarks and expanded views.
+**Use field center** pins the requested field coordinate to the nearest
+precomputed grid center. The actual measurement coordinate and its angular
+offset from the field center are displayed. This does not recenter a source,
+fit its centroid, or extract at arbitrary subpixel positions.
 
-The **Aperture pixels** selector defaults to **Usable pixels (include partial)**.
-This retains measurable parts of flagged apertures, with open dots for partial
-measurements, usable-area percentages in tooltips and an explicit warning.
-**Complete apertures only** restores the stricter selection instantly.
+The six detector tiles occupy three columns. RGB is a separate spatial view.
+Images only, Images + spectrum and Spectrum only select the workspace focus.
+
+**Show measurement aperture** optionally displays the extraction radius and
+background annulus. **Median guide (display only)** defaults off. If enabled,
+it connects median anchors with straight segments, separately by release,
+using at most eight equal-count groups per detector and at least three
+complete-aperture samples per anchor. Partial measurements do not enter the
+guide. Straight segments cannot overshoot their anchors. Gaps larger than
+`max(0.2 µm, 3 × larger CBAND)` remain open. Median anchors are display aids,
+not physical fits, and do not modify or reject any measurement or enter CSV
+exports. Three samples do not guarantee resistance to multiple outliers.
+
+**Aperture pixels** defaults to **Complete apertures only**. **Usable pixels
+(include partial)** remains available for diagnostic inspection. Its open
+dots sum only surviving pixels and do not recover missing source flux.
 
 All available **selected, usable exposure wavelengths within the displayed
 epoch** are retained. There is no conversion of six broadband coadd values
@@ -82,7 +83,7 @@ The complete-aperture `flux` is `10^12 Σ(a_i Ω_i I_i)`, with variance
 `10^24 Σ((a_i Ω_i)² Var(I_i))`. This is aperture flux including local sky
 after any selected supplied-ZODI subtraction, and is labelled accordingly.
 
-For the optional `sky_flux`, valid, source-free annulus pixels define `q_i = b_i Ω_i / Σ(b_j Ω_j)`.
+For the default displayed `sky_flux`, valid, source-free annulus pixels define `q_i = b_i Ω_i / Σ(b_j Ω_j)`.
 With `A = Σ(a_i Ω_i)`, the linear flux estimator is:
 
 ```
@@ -103,7 +104,7 @@ positive; the local-background subtraction uses only that usable aperture's
 solid angle. They never divide by coverage, infer a missing core, or insert
 zero-valued measurements when no pixels survive. CWAVE, wavelength range and
 CBAND describe the pixels actually used. With a complete aperture the two
-estimators are identical. The optional local-sky estimator requires at least
+estimators are identical. The local-sky estimator requires at least
 50% usable annulus area and ten effective annulus pixels in either mode.
 A uniform sky therefore cancels even for a partial aperture with unequal
 pixel solid angles; without local subtraction it intentionally remains.
@@ -123,7 +124,7 @@ We inspected the public implementation at commit
 and `SpherexViewerTab.createGuideData`. Its aperture sums surviving pixels
 rather than requiring a complete aperture. That explains why it can show
 many more points on a masked bright star. Our usable-pixel mode adopts that
-selection principle and our guide adopts its median-anchor approach.
+selection principle and the revised optional guide uses median anchors without cubic interpolation.
 Attribution and the MIT license are in `THIRD_PARTY_NOTICES.md`.
 
 This is not numerical parity with its full pipeline. AstroToolBox defaults
@@ -144,10 +145,10 @@ aperture, not the instrumental bandpass. CBAND is available in the point
 tooltip, CSV and FITS. The frequency axis uses `ν [THz] = 299.792458 / λ [µm]`;
 the ordinate remains Fν in either view.
 
-The highlighted maximum is the **highest measured Fν sample**, not a fitted
+The highlighted maximum is the **largest plotted Fν sample**, not a fitted
 line, statistically established feature, or peak in Fλ. When partial apertures
 are present it is labelled the largest plotted value instead of a source peak.
-The optional spline is only a visual aid for these non-simultaneous samples.
+The optional median guide is only a visual aid for these non-simultaneous samples.
 Wavelength-dependent PSF losses, neighbour contamination and local-background
 subtraction can change the shape. Extended emission in the annulus is removed;
 uncatalogued neighbours are not automatically deblended.

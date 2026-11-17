@@ -1,3 +1,4 @@
+import WorkspaceSettings from './WorkspaceSettings.jsx';
 import ReleaseSelect from './ReleaseSelect.jsx';
 import { DEFAULT_DISPLAY } from '../lib/urlstate.js';
 
@@ -156,7 +157,7 @@ function WiseDisplayControls({ view, setV }) {
   </>;
 }
 
-export default function ControlPanel({ onSearch, loading, view, setView, form, setForm, coordsError, setCoordsError }) {
+export default function ControlPanel({ onSearch, loading, view, setView, form, setForm, coordsError, setCoordsError, settingsSection, setSettingsSection }) {
   const set = (key) => (e) => {
     setForm({ ...form, [key]: e.target.value });
     if (key === 'coords') setCoordsError(null);
@@ -196,6 +197,7 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
       setCoordsError('Enter RA and Dec in decimal degrees, e.g. 11.889632 28.089606');
       return;
     }
+    setSettingsSection(null);
     onSearch({
       ra: coords.ra,
       dec: coords.dec,
@@ -209,8 +211,8 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
   };
 
   return (
-    <aside className="sidebar timeline-sidebar" aria-label="Viewer settings">
-      <form onSubmit={submit}>
+    <WorkspaceSettings section={settingsSection} onSection={setSettingsSection} onClose={() => setSettingsSection(null)} contentClassName="sidebar timeline-sidebar" sections={[["target", "Target & images"], ["timeline", "Timeline recipe"], ["display", "Playback & display"]]}>
+      <form data-settings-section="target" onSubmit={submit}>
         <fieldset>
           <legend>Target &amp; images</legend>
           <label>
@@ -279,8 +281,9 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
 
         </fieldset>
 
+      </form>
       {view.showCombined && (
-        <fieldset data-testid="timeline-controls">
+        <fieldset data-settings-section="timeline" data-testid="timeline-controls">
           <legend>Combined timeline</legend>
               <label>
                 SPHEREx frames after WISE
@@ -464,12 +467,11 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
               )}
         </fieldset>
       )}
-      </form>
 
       <fieldset>
         <legend>Playback &amp; display</legend>
         <label>
-          Zoom ({view.displaySize}px)
+          Image size limit ({view.displaySize}px)
           <input
             type="range"
             min="150"
@@ -528,6 +530,6 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
           </label>
         </fieldset>
       )}
-    </aside>
+    </WorkspaceSettings>
   );
 }

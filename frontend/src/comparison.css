@@ -146,8 +146,7 @@ body { margin: 0; }
 .compare-header { padding-top: 10px; padding-bottom: 10px; }
 .compare-header h1 { font-size: 22px; }
 .compare-toolbar { padding: 8px 10px; }
-.detector-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.detector-grid .detector-image { width: min(100%, 180px); margin: auto; }
+.detector-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .detector-grid .detector-heading { padding: 6px; }
 .detector-grid .detector-key { display: none; }
 .detector-grid .detector-heading small { display: block; margin: 0; font-size: 9px; }
@@ -183,7 +182,7 @@ body { margin: 0; }
 .spectrum-availability { color: #e4c58b; background: #24231f; border-left: 2px solid #a48650; padding: 8px 10px; margin-top: 10px; font-size: 11px; line-height: 1.5; }
 .expanded-stage > .live-spectrum { max-width: 960px; flex-shrink: 0; }
 .empty-grid .compare-placeholder { min-height: 130px; }
-@media (min-width: 1650px) { .detector-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); } .detector-grid .detector-image { width: min(100%, 200px); } }
+/* Three detector tiles per row at every desktop width. RGB follows D1–D6. */
 @media (max-width: 1050px) { .detector-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 600px) {
   .detector-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -194,4 +193,228 @@ body { margin: 0; }
   .live-spectrum { padding: 9px; }
   .spectrum-actions { gap: 4px; }
   .detector-tabs { flex-wrap: wrap; }
+}
+/* Research workspace: a single document surface, linked spatial/spectral panels. */
+.compare-header { min-height: 64px; gap: 18px; padding: 12px 20px; }
+.compare-header > div { display: flex; align-items: baseline; gap: 18px; }
+.compare-header h1 { font-size: 18px; margin: 0; }
+.compare-brand { font-size: 10px; white-space: nowrap; color: #88c8ef; }
+.comparison-tag { margin-left: auto; white-space: nowrap; font-size: 10px; }
+.workspace-actions { display: flex; gap: 6px; }
+.compare-page .workspace-actions button { font-size: 11px; }
+.compare-layout { display: block; max-width: 2300px; padding: 12px 20px 16px; }
+.compare-toolbar { gap: 12px; padding: 7px 10px; border-color: #263c4e; }
+.compare-toolbar .epoch-slider { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 16px; }
+.compare-toolbar label { font-size: 11px; }
+.compare-toolbar > label:not(.epoch-slider) { flex-direction: row; align-items: center; white-space: nowrap; }
+.compare-toolbar select { width: auto; padding: 5px; }
+.compare-page .epoch-buttons button { padding: 6px 12px; font-size: 12px; }
+.compare-status { min-height: 28px; font-size: 11px; }
+.analysis-workspace { display: grid; grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr); gap: 16px; align-items: start; }
+.image-workspace, .spectrum-workspace { min-width: 0; }
+.image-workspace { padding: 12px; border: 1px solid #2a4052; border-radius: 9px; background: #0d1823; }
+.workspace-panel-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.workspace-panel-heading h2, .spectrum-heading h2, .spectrum-welcome h2 { font-size: 17px; letter-spacing: -.02em; margin: 4px 0 0; }
+.workspace-eyebrow { display: block; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .14em; color: #7fa6bc; }
+.compare-page .view-switch button { padding: 5px 8px; font-size: 10px; }
+.view-switch { gap: 3px; }
+.view-toolbar { gap: 8px; padding: 10px 0 6px; }
+.compare-page .view-toolbar > button { font-size: 10px; padding: 5px 8px; background: transparent; }
+.epoch-caption { padding: 4px 0 9px; font-size: 11px; flex-wrap: wrap; gap: 3px 10px; }
+.epoch-caption span { font-size: 9px; }
+.detector-grid { gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.detector-grid .detector-topline { min-height: 38px; }
+.detector-grid .detector-heading { padding: 4px 7px; }
+.detector-grid .detector-heading strong { font-size: 13px; }
+.detector-grid .expand-tile { padding: 4px; margin: 3px 4px 3px 0; }
+.detector-grid .expand-tile svg { width: 14px; height: 14px; }
+.detector-grid .detector-tile footer { min-height: 36px; padding: 4px 6px; line-height: 1.3; font-size: 8px; }
+.detector-grid .detector-tile footer span:first-child { font-size: 10px; }
+/* Retain mounted canvases for shared export/selection state, but expose only the chosen view. */
+.image-deck-view[data-view=rgb] .detector-grid { grid-template-columns: 1fr; }
+
+.compare-scale { padding: 9px 0 3px; gap: 7px; font-size: 9px; }
+.compare-scale div { width: 90px; height: 7px; }
+.compare-scale small { font-size: 9px; }
+.compare-help { font-size: 10px; line-height: 1.5; margin: 6px 0 0; color: #91a9bd; }
+.color-legend, .wavelength-legend { padding: 8px; margin-top: 8px; }
+.color-legend p, .wavelength-legend p { font-size: 10px; }
+.live-spectrum { margin: 0; border-radius: 9px; padding: 12px; }
+.spectrum-heading { gap: 10px; }
+.spectrum-heading > div:first-child { width: 100%; }
+.spectrum-heading p { font-size: 10px; margin-top: 5px; }
+.spectrum-actions { gap: 5px; width: 100%; }
+.compare-page .spectrum-actions button { padding: 5px 7px; font-size: 10px; }
+.spectrum-actions label { flex: 1; min-width: 160px; }
+.compare-page .spectrum-actions select { font-size: 10px; padding: 5px; }
+.spectrum-options { gap: 14px; margin-top: 9px; }
+.compare-page .spectrum-options label { font-size: 10px; }
+.spectrum-availability { font-size: 10px; padding: 7px 9px; margin-top: 9px; }
+.spectrum-plot svg { height: clamp(240px, calc(100dvh - 535px), 360px); }
+.spectrum-summary { font-size: 10px; gap: 7px; }
+.spectrum-detectors { gap: 10px; }
+.spectrum-summary strong { font-size: 10px; }
+.spectrum-method-summary { font-size: 10px; color: #a7c4d5; line-height: 1.5; margin: 10px 0; }
+.compare-page .spectrum-method { padding-top: 8px; font-size: 10px; }
+.spectrum-note { font-size: 10px; }
+.spectrum-workspace > .source-details { margin-top: 10px; padding: 10px 12px; border: 1px solid #283e51; border-radius: 7px; background: #0d1823; font-size: 11px; }
+.source-readout { border: 0; background: transparent; padding: 12px 0 0; }
+.source-readout th, .source-readout td { padding: 7px 5px; }
+.spectrum-welcome { border: 1px solid #2a4052; border-radius: 9px; min-height: 350px; padding: 32px; display: flex; flex-direction: column; justify-content: center; }
+.spectrum-welcome p { font-size: 13px; line-height: 1.7; color: #9ab3c6; max-width: 380px; }
+.spectrum-welcome .compare-primary { width: auto; align-self: flex-start; }
+.workspace-settings { width: min(780px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 0; border: 1px solid #466178; border-radius: 12px; background: #101b27; color: #e0e9f2; overflow-y: auto; overscroll-behavior: contain; box-shadow: 0 24px 100px #0009; }
+.workspace-settings::backdrop { background: #030912b8; backdrop-filter: blur(3px); }
+.settings-header { display: flex; justify-content: space-between; align-items: center; padding: 18px 22px 14px; gap: 16px; }
+.settings-header h2 { margin: 5px 0 0; font-size: 20px; }
+.settings-navigation { display: flex; gap: 7px; padding: 0 22px 16px; border-bottom: 1px solid #2a4052; }
+.compare-page .settings-navigation button { font-size: 12px; }
+.settings-navigation button[aria-pressed=true] { background: #2a607e; border-color: #80bcde; }
+.compare-sidebar.settings-content { display: block; position: static; max-height: none; overflow: visible; padding: 20px 22px; }
+.settings-content > div:not([hidden]) + div:not([hidden]) { margin-top: 15px; }
+.settings-content fieldset { background: transparent; border: 0; padding: 0; gap: 13px; }
+.settings-content legend { padding: 0 0 14px; }
+.settings-content .comparison-inputs { max-height: none; overflow: visible; }
+.settings-content .comparison-science { margin-top: 15px; }
+.compare-page [hidden] { display: none !important; }
+.compare-page summary:focus-visible { outline: 2px solid #9bdcff; outline-offset: 4px; }
+@media (max-width: 1200px) {
+  .compare-header > div { display: block; }
+  .compare-header h1 { margin-top: 4px; font-size: 16px; }
+  .comparison-tag { display: none; }
+  .workspace-actions { margin-left: auto; }
+  .analysis-workspace { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 10px; }
+  .compare-layout { padding: 10px 12px; }
+  .workspace-panel-heading { flex-wrap: wrap; }
+  .image-workspace, .live-spectrum { padding: 10px; }
+}
+@media (max-width: 900px) {
+  .analysis-workspace { grid-template-columns: 1fr; }
+  .spectrum-plot svg { height: 290px; }
+  .compare-toolbar { flex-wrap: wrap; }
+  .compare-toolbar .epoch-slider { min-width: 180px; }
+  .workspace-panel-heading { flex-wrap: nowrap; }
+}
+@media (max-width: 600px) {
+  .compare-header { padding: 12px; flex-wrap: wrap; gap: 10px; }
+  .workspace-actions { margin: 0; }
+  .compare-header h1 { font-size: 17px; }
+  .detector-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .workspace-panel-heading { flex-wrap: wrap; }
+  .compare-toolbar .epoch-slider { display: flex; }
+  .spectrum-actions label { min-width: 140px; }
+  .spectrum-plot { overflow: visible; }
+  .spectrum-plot svg { min-width: 0; }
+  .settings-navigation { flex-wrap: wrap; padding: 0 14px 12px; }
+  .settings-header, .compare-sidebar.settings-content { padding: 14px; }
+  .workspace-settings { width: calc(100vw - 16px); max-height: calc(100dvh - 24px); }
+}
+@media (prefers-reduced-motion: reduce) { .comparison-spinner { animation: none; } }
+/* Keep the default desktop view within the viewport without clipping detail views. */
+.compare-layout { padding-bottom: 8px; }
+.compare-help { font-size: 11px; }
+
+.rgb-legend { font-size: 11px; line-height: 1.5; color: #afc4d4; padding: 10px 0 0; overflow-wrap: anywhere; }
+.rgb-legend p { margin: 5px 0; }
+.rgb-legend strong { color: #e1edf5; }
+.rgb-legend details { margin: 0; }
+.rgb-legend summary { cursor: pointer; font-size: 11px; color: #afc4d4; }
+.rgb-legend details[open] > strong { display: block; margin-top: 8px; }
+.rgb-background-control { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 11px; min-width: 0; }
+.rgb-background-control select { min-width: 0; max-width: 100%; font-size: 11px; padding: 6px; }
+.expanded-stage .rgb-legend { width: 100%; max-width: 960px; }
+
+.quick-target { position: sticky; top: 0; z-index: 3; display: flex; align-items: end; gap: 10px; background: #0d1823; border: 1px solid #2a4052; border-radius: 7px; padding: 7px 10px; margin: 0 0 8px; }
+.quick-target label { display: flex; flex-direction: column; gap: 3px; font-size: 10px; }
+.quick-target label:first-child { flex: 1 1 260px; max-width: 430px; }
+.quick-target label:nth-child(2) { flex: 0 1 140px; }
+.compare-page .quick-target input { width: 100%; min-width: 0; padding: 5px 8px; font-size: 12px; }
+.compare-page .quick-target button { font-size: 11px; padding: 6px 12px; white-space: nowrap; }
+.quick-target span { align-self: center; font-size: 10px; color: #a7bdcf; }
+@media (max-width: 600px) { .quick-target { flex-wrap: wrap; gap: 7px; } .quick-target label:first-child { flex-basis: 100%; max-width: none; } .quick-target span { flex-basis: 100%; } }
+
+.compare-page .quick-target label { margin: 0; gap: 3px; font-size: 10px; }
+.compare-page .quick-target input:not([type=checkbox]):not([type=range]) { padding: 5px 8px; margin: 0; font-size: 12px; }
+.compare-page .rgb-background-control { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 11px; }
+.compare-page .rgb-background-control select { width: auto; max-width: 100%; padding: 5px; font-size: 11px; }
+
+.image-workspace[data-image-view=rgb] .workspace-eyebrow { display: none; }
+.image-workspace[data-image-view=rgb] .workspace-panel-heading h2 { margin: 0; font-size: 16px; }
+
+.image-deck-view[data-view=rgb] .view-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+.compare-page .image-deck-view[data-view=rgb] .rgb-background-control { flex-direction: column; align-items: stretch; gap: 2px; }
+.compare-page .image-deck-view[data-view=rgb] .rgb-background-control select { width: 100%; }
+
+/* Size the six-detector column for two square-image rows, without side gutters. */
+.image-workspace[data-image-view=detectors] .workspace-eyebrow { display: none; }
+.image-workspace[data-image-view=detectors] .workspace-panel-heading h2 { margin: 0; font-size: 16px; }
+
+/* Stable spatial workspace: both layouts share one intrinsic-size deck. */
+.workspace-view-switch { display: flex; gap: 3px; margin-left: auto; align-self: center; padding: 3px; border: 1px solid #31495c; border-radius: 6px; }
+.compare-page .workspace-view-switch button { border: 0; padding: 6px 9px; background: transparent; }
+.compare-page .workspace-view-switch button[aria-pressed=true] { background: #2a607e; color: #fff; }
+.image-workspace .workspace-eyebrow { display: none; }
+.image-workspace .workspace-panel-heading { min-height: 28px; }
+.image-workspace .workspace-panel-heading h2 { margin: 0; font-size: 16px; }
+.image-deck { display: grid; }
+.image-deck-view { grid-area: 1 / 1; min-width: 0; align-self: start; }
+.image-deck-view[aria-hidden=true] { visibility: hidden; pointer-events: none; }
+.image-deck .detector-grid .detector-image { width: 100%; }
+.image-deck .detector-grid { align-items: start; }
+.image-help { margin: 7px 0 0; color: #afc4d4; font-size: 11px; }
+.image-help p { line-height: 1.5; margin: 6px 0; }
+.analysis-workspace[data-workspace-view=images], .analysis-workspace[data-workspace-view=spectrum] { grid-template-columns: minmax(0, 1fr); }
+.analysis-workspace[data-workspace-view=images] .image-workspace { width: 100%; justify-self: stretch; box-sizing: border-box; }
+.analysis-workspace[data-workspace-view=spectrum] .spectrum-plot svg { height: clamp(290px, calc(100dvh - 450px), 700px); }
+@media (min-width: 901px) {
+  .analysis-workspace[data-workspace-view=split] { grid-template-columns: minmax(0, var(--image-share)) minmax(0, var(--spectrum-share)); }
+  .spectrum-plot svg { height: clamp(190px, calc(100dvh - 605px), 360px); }
+}
+@media (max-width: 1200px) { .quick-target { flex-wrap: wrap; } .workspace-view-switch { margin-left: 0; } }
+@media (max-width: 600px) { .workspace-view-switch { width: 100%; justify-content: space-between; } .compare-page .workspace-view-switch button { font-size: 10px; padding: 6px; } }
+
+.image-deck-view[data-view=detectors] .detector-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.workspace-balance { display: flex; align-items: center; justify-content: flex-end; gap: 9px; margin: -2px 0 8px; }
+.compare-page .workspace-balance label { margin: 0; display: flex; align-items: center; flex-direction: row; gap: 7px; font-size: 11px; }
+.workspace-balance input { width: 100px; }
+.workspace-balance output { min-width: 3ch; font-variant-numeric: tabular-nums; }
+.compare-page .workspace-balance button { padding: 3px 6px; font-size: 10px; background: transparent; }
+@media (min-width: 901px) { .analysis-workspace[data-workspace-view=split] .spectrum-workspace { position: sticky; top: 76px; } }
+@media (max-width: 900px) { .workspace-balance { display: none; } }
+
+.compare-page .workspace-balance label { white-space: nowrap; width: auto; flex-wrap: nowrap; }
+.workspace-balance input[type=range] { width: 100px; flex: 0 0 100px; padding: 0; }
+.image-actions { display: flex; gap: 5px; flex-wrap: wrap; }
+.compare-page .image-actions button { font-size: 10px; padding: 5px 8px; background: transparent; }
+
+/* Compact command area: no separate full-width row for each control group. */
+.compare-header { padding: 8px 20px; gap: 12px; }
+.compare-header h1 { font-size: 17px; }
+.compare-header .workspace-view-switch { display: flex; margin-left: auto; flex-shrink: 0; }
+.compare-header .workspace-actions { margin-left: 0; }
+.workspace-commandbar { position: sticky; top: 0; z-index: 4; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); align-items: center; gap: 14px; padding: 8px 10px; background: #0d1823; border: 1px solid #2a4052; border-radius: 7px; }
+.workspace-commandbar .quick-target { position: static; z-index: auto; margin: 0; padding: 0; border: 0; background: transparent; gap: 7px; flex-wrap: nowrap; }
+.workspace-commandbar .quick-target label:first-child { max-width: none; flex: 1 1 220px; }
+.workspace-commandbar .quick-target label:nth-child(2) { flex: 0 0 90px; }
+.workspace-commandbar .quick-target span { display: none; }
+.workspace-commandbar .compare-toolbar { margin: 0; padding: 0; border: 0; background: transparent; gap: 8px; }
+.workspace-commandbar .epoch-slider { min-width: 100px; }
+.workspace-commandbar .compare-toolbar button, .workspace-commandbar .compare-toolbar select { font-size: 11px; padding: 5px 7px; }
+.workspace-commandbar .compare-toolbar label { font-size: 10px; }
+.workspace-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 14px; padding: 5px 0; }
+.workspace-summary .compare-status { min-height: 0; margin: 0; }
+.workspace-summary .workspace-balance { margin: 0; }
+@media (max-width: 1200px) {
+  .compare-header { flex-wrap: wrap; }
+  .compare-header .workspace-view-switch { margin-left: auto; }
+  .workspace-commandbar { grid-template-columns: 1fr; gap: 8px; }
+}
+@media (max-width: 600px) {
+  .compare-header { padding: 8px 12px; gap: 6px; }
+  .compare-header .workspace-view-switch { order: 3; width: 100%; }
+  .compare-header .workspace-actions { margin-left: auto; }
+  .workspace-commandbar .quick-target { flex-wrap: wrap; }
+  .workspace-commandbar .quick-target label:first-child { flex-basis: 100%; }
+  .workspace-commandbar .compare-toolbar { flex-wrap: wrap; }
 }

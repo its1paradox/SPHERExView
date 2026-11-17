@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rgbFrame, rgbPixel, spectrumAt, frequencyTHz, spectrumCsv, spectrumGuides, spectrumDiagnostics } from '../src/lib/liveSpectrum.js';
-import { decodeResult } from '../src/lib/comparison.js';
+import { rgbFrame, rgbDisplay, rgbPixel, spectrumAt, frequencyTHz, spectrumCsv, spectrumGuides, spectrumDiagnostics, separationArcsec } from '../src/lib/liveSpectrum.js';
+import { decodeResult, readState, stateHash, recipeFromForm } from '../src/lib/comparison.js';
 
 test('RGB includes all six, preserves channel ratios and never invents missing coverage', () => {
   const epoch = { tiles: [1,2,3,4,5,6].map(d => ({ arrays: { intensity: Float64Array.of(d, -d, d), coverage: [1,1,d === 6 ? 0 : 1] } })) };
@@ -12,6 +12,45 @@ test('RGB includes all six, preserves channel ratios and never invents missing c
   assert.deepEqual(rgbPixel(rgb, 1, 10, 'asinh'), [0,0,0]);
   assert.equal(rgb.coverage[2], 0); assert.ok(Number.isNaN(rgb.brightness[2]));
   assert.equal(epoch.tiles[0].arrays.intensity[1], -1, 'Display must not clip science arrays');
+});
+
+test('RGB neutralization removes known offsets on copies, preserves source differences and is reversible', () => {
+  const epoch = { tiles: [1,2,3,4,5,6].map(d => ({ arrays: {
+    intensity: Float64Array.from({length:101}, (_,i) => d + (i < 100 ? (i%10-4.5)*.01 : 100)),
+    coverage: new Uint32Array(101).fill(1), variance: new Float64Array(101).fill(.04),
+  } })), spectra: [] };
+  const before = structuredClone(epoch), raw = rgbFrame(epoch,101), rawBefore = structuredClone(raw);
+  const neutral = rgbDisplay(raw,'neutral');
+  assert.equal(neutral.background.applied,true);
+  assert.deepEqual(neutral.background.offsets_mjy_sr,[5.5,3.5,1.5]);
+  assert.equal(neutral.background.retained_pixels,100);
+  assert.deepEqual(neutral.channels.map(c=>c[100]),[100,100,100]);
+  assert.deepEqual(rgbPixel(neutral,100,100,'linear'),[255,255,255]);
+  assert.deepEqual(neutral.coverage,raw.coverage);
+  assert.deepEqual(raw,rawBefore); assert.deepEqual(epoch,before);
+  const restored=rgbDisplay(raw,'shared');
+  assert.deepEqual(restored.channels,raw.channels);
+  assert.deepEqual(restored.brightness,raw.brightness);
+  neutral.channels[0][0]=999; neutral.coverage[0]=0;
+  assert.deepEqual(raw,rawBefore,'Derived display arrays must not alias even RGB input arrays');
+});
+
+test('RGB neutralization refuses insufficient coverage and never fills missing pixels', () => {
+  const epoch={tiles:[1,2,3,4,5,6].map(d=>({arrays:{intensity:new Float64Array(16).fill(d),coverage:Uint32Array.from({length:16},(_,i)=>i===15&&d===6?0:1)}}))};
+  const raw=rgbFrame(epoch,16), neutral=rgbDisplay(raw,'neutral');
+  assert.equal(neutral.background.applied,false);
+  assert.equal(neutral.background.common_pixels,15);
+  assert.deepEqual(neutral.background.offsets_mjy_sr,[0,0,0]);
+  assert.equal(neutral.coverage[15],0); assert.ok(Number.isNaN(neutral.brightness[15]));
+  assert.deepEqual(neutral.channels,raw.channels);
+});
+
+test('RGB background URL round trips without changing the scientific recipe', () => {
+  const initial=readState('#ra=10&dec=-5');
+  const changed=readState(stateHash(initial.form,{...initial.display,rgbBackground:'neutral'},0,null));
+  assert.equal(changed.display.rgbBackground,'neutral');
+  assert.deepEqual(recipeFromForm(changed.form),recipeFromForm(initial.form));
+  assert.equal(readState('#rgbbg=invalid').display.rgbBackground,'shared');
 });
 
 test('spectrum retains separate exposures, signed flux, exact frequency and wavelength range', () => {
@@ -47,28 +86,30 @@ test('nonfinite uncertainties and wavelengths are excluded consistently from plo
   }
 });
 
-test('robust guide uses median anchors, joins adjacent detectors and preserves measurements', () => {
-  const points = Array.from({length:32}, (_,i) => ({detector:1,wavelength:1+i*.005,bandwidth:.03,flux:i===1?10000:2,mjd:61000}));
-  points.push(...Array.from({length:8}, (_,i)=>({detector:2,wavelength:1.17+i*.01,bandwidth:.03,flux:2,mjd:61000})));
-  const original = structuredClone(points), guides = spectrumGuides(points);
-  assert.equal(guides.length,1);
-  assert.equal(guides[0].anchors.length,16);
-  assert.ok(guides[0].anchors.every(p=>p.flux===2),'Median anchors resist an isolated outlier');
-  assert.ok(guides[0].curve.every(p=>Math.abs(p.flux-2)<1e-10));
-  assert.deepEqual(points,original,'Spline must not edit, reject or insert measurements');
+test('sparse median guide resists the screenshot outlier without altering data or adding extrema', () => {
+  const points=Array.from({length:13},(_,i)=>({detector:1,release:'dr1',wavelength:.75+i*.026,bandwidth:.03,flux:i===12?21975.914:100}));
+  const copy=structuredClone(points), [guide]=spectrumGuides(points);
+  assert.equal(guide.anchors.length,4);
+  assert.ok(guide.curve.every(p=>p.flux===100));
+  assert.deepEqual(points,copy);
   assert.deepEqual(spectrumGuides(points.slice(0,2)),[]);
+  assert.deepEqual(spectrumGuides(points.map(p=>({...p,partial:true}))),[]);
+  const mixed=[...points,...points.map(p=>({...p,release:'qr3',flux:200}))];
+  assert.equal(spectrumGuides(mixed).length,2);
+  assert.ok(spectrumGuides(mixed).every(g=>g.curve.every(p=>p.flux===(g.release==='dr1'?100:200))));
 });
 
-test('natural cubic spline agrees with analytic midpoint and leaves large gaps open', () => {
-  const points = [0,1,0].map((flux,i)=>({detector:1,wavelength:1+i*.1,bandwidth:.03,flux}));
-  const [guide] = spectrumGuides(points);
-  assert.ok(Math.abs(guide.curve[6].flux-.6875)<1e-12);
-  assert.equal(guide.curve[0].flux,0); assert.equal(guide.curve.at(-1).flux,0);
-  const separated = [...points,...points.map(p=>({...p,detector:3,wavelength:p.wavelength+1}))];
-  assert.equal(spectrumGuides(separated).length,2);
-  const repeated = spectrumGuides([...points,...points]);
-  assert.equal(repeated[0].anchors.length,3);
-  assert.ok(repeated[0].curve.every(p=>Number.isFinite(p.flux)));
+test('median guide preserves negative flux, leaves large gaps and cannot overshoot', () => {
+  const points=Array.from({length:12},(_,i)=>({detector:1,wavelength:1+i*.01,bandwidth:.03,flux:i<6?-10:20}));
+  const [guide]=spectrumGuides(points);
+  assert.ok(guide.curve.every(p=>p.flux>=-10&&p.flux<=20));
+  assert.equal(guide.curve[0].flux,-10);
+  assert.equal(spectrumGuides([...points,...points.map(p=>({...p,wavelength:p.wavelength+1}))]).length,2);
+});
+
+test('coordinate discrepancy is measured on the sphere including RA wrap', () => {
+  assert.ok(Math.abs(separationArcsec({ra:133.7599588,dec:-7.2449993},{ra:133.7599588,dec:-7.2432771})-6.19992)<1e-7);
+  assert.ok(Math.abs(separationArcsec({ra:359.999,dec:0},{ra:.001,dec:0})-7.2)<1e-6);
 });
 
 test('partial pixel flux is explicit, never rescaled, and complete filtering keeps its old meaning', () => {
@@ -97,4 +138,13 @@ test('availability explains bad apertures and missing clean sky without substitu
   assert.deepEqual(spectrumDiagnostics(epoch,0),{total:4,usable:2,partial:0,aperture:1,sky:0,other:1});
   assert.deepEqual(spectrumDiagnostics(epoch,0,true),{total:4,usable:1,partial:0,aperture:1,sky:1,other:1});
   assert.equal(spectrumDiagnostics(epoch,null).total,0);
+});
+
+// Background diagnostics follow the selected usable/complete estimator.
+test('reported local background equals the raw minus local-sky aperture sum', () => {
+  const arrays={flux:[21975.914],variance:[4],sky_flux:[1109.5135],sky_variance:[9],wavelength:[1.08905],bandwidth:[.03],lambda_min:[1.08],lambda_max:[1.10],aperture_coverage:[1],sky_coverage:[1]};
+  for (const subtract of [false,true]) {
+    const [point]=spectrumAt({spectra:[{arrays}]},0,subtract,true);
+    assert.ok(Math.abs(point.background_flux-20866.4005)<1e-8);
+  }
 });
