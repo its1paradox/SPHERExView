@@ -1,5 +1,11 @@
 # SPHEREx QR3 support
 
+**Historical record of the September 2026 implementation.** The current
+release selector, discovery and coaddition policy are documented in
+[DR1 support](DR1_SUPPORT.md). Since November 12, DR1 + QR3 supersede QR2;
+QR2 is no longer searchable. The validation evidence below describes the
+archive at the original check date, not its current coverage.
+
 Scientific and archive documentation checked on **2026-09-24**. QR3 became
 available on 2026-09-16. This implementation supports discovery, cutouts,
 visualization coadds, six-detector comparison maps and IRSA spectrophotometry.

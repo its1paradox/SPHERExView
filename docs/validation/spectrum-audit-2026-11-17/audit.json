@@ -1,0 +1,800 @@
+{
+  "result": "C:\\Science\\SphereXViewDR1\\SPHERExView\\backend\\cache\\comparisons\\a678c919d023428cbc63aa0f94469371",
+  "algorithm": "six-detector-1.5-dr1-aperture",
+  "recipe": {
+    "ra": 133.7599588,
+    "dec": -7.2449993,
+    "size_arcsec": 240.0,
+    "survey": "wide",
+    "release": "all",
+    "bin_months": 6.0,
+    "grouping": "visit",
+    "epoch_origin_mjd": 60000.0,
+    "mjd_start": null,
+    "mjd_end": null,
+    "max_per_tile": 0,
+    "pixscale_arcsec": 6.2,
+    "resampling": "bin",
+    "background": "zodi",
+    "weighting": "equal",
+    "min_exposures": 1,
+    "aperture_radius_arcsec": 12.4,
+    "include_spectra": true,
+    "wavelength_ranges": {}
+  },
+  "manifest_sha256": "c613a7fc8e2de790a4d0a9d5333617147c5cceb67a27c9df6766133f7232d5e1",
+  "separation_arcsec": 6.199919999999333,
+  "positions": {
+    "target_epoch_0": {
+      "ra": 133.7599588,
+      "dec": -7.2449993000000035,
+      "total": 30,
+      "complete": 21,
+      "peak": {
+        "position": "target",
+        "epoch": 0,
+        "ra": 133.7599588,
+        "dec": -7.2449993000000035,
+        "detector": 1,
+        "obs_id": "2025W19_1B_0241_4",
+        "mjd": 60801.519319893,
+        "data_release": "dr1",
+        "input_index": 3,
+        "flux": 4113.65771484375,
+        "variance": 6023.53857421875,
+        "sky_flux": 90.64701843261719,
+        "sky_variance": 8267.9453125,
+        "usable_flux": 4113.65771484375,
+        "usable_variance": 6023.53857421875,
+        "usable_sky_flux": 90.64701843261719,
+        "usable_sky_variance": 8267.9453125,
+        "wavelength": 1.0648349523544312,
+        "aperture_coverage": 1.0,
+        "sky_coverage": 0.6731117367744446
+      },
+      "detector_medians": [
+        {
+          "detector": 1,
+          "flux": 598.7371215820312,
+          "sky_flux": 121.97908020019531
+        },
+        {
+          "detector": 2,
+          "flux": 473.54759216308594,
+          "sky_flux": 172.58411407470703
+        },
+        {
+          "detector": 3,
+          "flux": 239.94219970703125,
+          "sky_flux": 54.04146957397461
+        },
+        {
+          "detector": 4,
+          "flux": 248.71038818359375,
+          "sky_flux": 46.728885650634766
+        },
+        {
+          "detector": 5,
+          "flux": 419.8738098144531,
+          "sky_flux": 299.5445251464844
+        },
+        {
+          "detector": 6,
+          "flux": 787.7203063964844,
+          "sky_flux": 329.19915771484375
+        }
+      ]
+    },
+    "screenshot_epoch_0": {
+      "ra": 133.7599588,
+      "dec": -7.243277077778316,
+      "total": 30,
+      "complete": 22,
+      "peak": {
+        "position": "screenshot",
+        "epoch": 0,
+        "ra": 133.7599588,
+        "dec": -7.243277077778316,
+        "detector": 1,
+        "obs_id": "2025W19_1B_0241_4",
+        "mjd": 60801.519319893,
+        "data_release": "dr1",
+        "input_index": 3,
+        "flux": 5006.41455078125,
+        "variance": 6904.84326171875,
+        "sky_flux": 747.9935913085938,
+        "sky_variance": 8981.046875,
+        "usable_flux": 5006.41455078125,
+        "usable_variance": 6904.84326171875,
+        "usable_sky_flux": 747.9935913085938,
+        "usable_sky_variance": 8981.046875,
+        "wavelength": 1.0650761127471924,
+        "aperture_coverage": 1.0,
+        "sky_coverage": 0.7530295252799988
+      },
+      "detector_medians": [
+        {
+          "detector": 1,
+          "flux": 1203.7960205078125,
+          "sky_flux": 747.9935913085938
+        },
+        {
+          "detector": 2,
+          "flux": 1009.3331604003906,
+          "sky_flux": 759.2537841796875
+        },
+        {
+          "detector": 3,
+          "flux": 611.937255859375,
+          "sky_flux": 428.79237365722656
+        },
+        {
+          "detector": 4,
+          "flux": 355.2809143066406,
+          "sky_flux": 167.7185516357422
+        },
+        {
+          "detector": 5,
+          "flux": 792.0801391601562,
+          "sky_flux": 689.715087890625
+        },
+        {
+          "detector": 6,
+          "flux": 709.1730346679688,
+          "sky_flux": 350.7122802734375
+        }
+      ]
+    },
+    "target_epoch_1": {
+      "ra": 133.7599588,
+      "dec": -7.2449993000000035,
+      "total": 128,
+      "complete": 84,
+      "peak": {
+        "position": "target",
+        "epoch": 1,
+        "ra": 133.7599588,
+        "dec": -7.2449993000000035,
+        "detector": 2,
+        "obs_id": "2025W45_2A_0164_1",
+        "mjd": 60986.241655321,
+        "data_release": "dr1",
+        "input_index": 50,
+        "flux": 1031.34326171875,
+        "variance": 3654.207275390625,
+        "sky_flux": 39.381874084472656,
+        "sky_variance": 5072.0068359375,
+        "usable_flux": 1031.34326171875,
+        "usable_variance": 3654.207275390625,
+        "usable_sky_flux": 39.381874084472656,
+        "usable_sky_variance": 5072.0068359375,
+        "wavelength": 1.101003646850586,
+        "aperture_coverage": 1.0,
+        "sky_coverage": 0.6603084802627563
+      },
+      "detector_medians": [
+        {
+          "detector": 1,
+          "flux": 507.2884521484375,
+          "sky_flux": 171.79190063476562
+        },
+        {
+          "detector": 2,
+          "flux": 550.71728515625,
+          "sky_flux": 223.16344451904297
+        },
+        {
+          "detector": 3,
+          "flux": 376.07177734375,
+          "sky_flux": 155.21261596679688
+        },
+        {
+          "detector": 4,
+          "flux": 233.69104766845703,
+          "sky_flux": 67.32875061035156
+        },
+        {
+          "detector": 5,
+          "flux": 424.94873046875,
+          "sky_flux": 290.0598449707031
+        },
+        {
+          "detector": 6,
+          "flux": 773.9498291015625,
+          "sky_flux": 490.5429992675781
+        }
+      ]
+    },
+    "screenshot_epoch_1": {
+      "ra": 133.7599588,
+      "dec": -7.243277077778316,
+      "total": 128,
+      "complete": 87,
+      "peak": {
+        "position": "screenshot",
+        "epoch": 1,
+        "ra": 133.7599588,
+        "dec": -7.243277077778316,
+        "detector": 1,
+        "obs_id": "2025W44_2B_0339_1",
+        "mjd": 60979.857397601,
+        "data_release": "dr1",
+        "input_index": 40,
+        "flux": 21975.9140625,
+        "variance": 21661.365234375,
+        "sky_flux": 1109.5135498046875,
+        "sky_variance": 30909.662109375,
+        "usable_flux": 21975.9140625,
+        "usable_variance": 21661.365234375,
+        "usable_sky_flux": 1109.5135498046875,
+        "usable_sky_variance": 30909.662109375,
+        "wavelength": 1.0890529155731201,
+        "aperture_coverage": 1.0,
+        "sky_coverage": 0.5573804974555969
+      },
+      "detector_medians": [
+        {
+          "detector": 1,
+          "flux": 1155.65673828125,
+          "sky_flux": 838.6204833984375
+        },
+        {
+          "detector": 2,
+          "flux": 1093.6104736328125,
+          "sky_flux": 745.0142517089844
+        },
+        {
+          "detector": 3,
+          "flux": 749.1326293945312,
+          "sky_flux": 526.1217651367188
+        },
+        {
+          "detector": 4,
+          "flux": 431.4235534667969,
+          "sky_flux": 265.48126220703125
+        },
+        {
+          "detector": 5,
+          "flux": 716.6007690429688,
+          "sky_flux": 427.47642517089844
+        },
+        {
+          "detector": 6,
+          "flux": 912.2319946289062,
+          "sky_flux": 713.635498046875
+        }
+      ]
+    },
+    "target_epoch_2": {
+      "ra": 133.7599588,
+      "dec": -7.2449993000000035,
+      "total": 102,
+      "complete": 77,
+      "peak": {
+        "position": "target",
+        "epoch": 2,
+        "ra": 133.7599588,
+        "dec": -7.2449993000000035,
+        "detector": 1,
+        "obs_id": "2026W18_2A_0264_1",
+        "mjd": 61161.655839742,
+        "data_release": "dr1",
+        "input_index": 164,
+        "flux": 12623.5703125,
+        "variance": 12969.296875,
+        "sky_flux": 149.65237426757812,
+        "sky_variance": 17827.84375,
+        "usable_flux": 12623.5703125,
+        "usable_variance": 12969.296875,
+        "usable_sky_flux": 149.65237426757812,
+        "usable_sky_variance": 17827.84375,
+        "wavelength": 1.0902024507522583,
+        "aperture_coverage": 1.0,
+        "sky_coverage": 0.6643701791763306
+      },
+      "detector_medians": [
+        {
+          "detector": 1,
+          "flux": 410.1368865966797,
+          "sky_flux": 167.49105834960938
+        },
+        {
+          "detector": 2,
+          "flux": 420.24798583984375,
+          "sky_flux": 174.26600646972656
+        },
+        {
+          "detector": 3,
+          "flux": 320.6239929199219,
+          "sky_flux": 134.55944061279297
+        },
+        {
+          "detector": 4,
+          "flux": 254.87759399414062,
+          "sky_flux": 14.141281127929688
+        },
+        {
+          "detector": 5,
+          "flux": 362.03131103515625,
+          "sky_flux": 150.09342193603516
+        },
+        {
+          "detector": 6,
+          "flux": 585.6707153320312,
+          "sky_flux": 240.80259704589844
+        }
+      ]
+    },
+    "screenshot_epoch_2": {
+      "ra": 133.7599588,
+      "dec": -7.243277077778316,
+      "total": 102,
+      "complete": 84,
+      "peak": {
+        "position": "screenshot",
+        "epoch": 2,
+        "ra": 133.7599588,
+        "dec": -7.243277077778316,
+        "detector": 1,
+        "obs_id": "2026W18_2A_0264_1",
+        "mjd": 61161.655839742,
+        "data_release": "dr1",
+        "input_index": 164,
+        "flux": 13110.8310546875,
+        "variance": 13810.6630859375,
+        "sky_flux": 781.8060302734375,
+        "sky_variance": 18213.689453125,
+        "usable_flux": 13110.8310546875,
+        "usable_variance": 13810.6630859375,
+        "usable_sky_flux": 781.8060302734375,
+        "usable_sky_variance": 18213.689453125,
+        "wavelength": 1.0903995037078857,
+        "aperture_coverage": 1.0,
+        "sky_coverage": 0.751023530960083
+      },
+      "detector_medians": [
+        {
+          "detector": 1,
+          "flux": 1029.7191162109375,
+          "sky_flux": 780.2594604492188
+        },
+        {
+          "detector": 2,
+          "flux": 1009.3046264648438,
+          "sky_flux": 726.7702026367188
+        },
+        {
+          "detector": 3,
+          "flux": 690.4798583984375,
+          "sky_flux": 496.2207336425781
+        },
+        {
+          "detector": 4,
+          "flux": 436.90380859375,
+          "sky_flux": 265.3213806152344
+        },
+        {
+          "detector": 5,
+          "flux": 651.044677734375,
+          "sky_flux": 365.1766357421875
+        },
+        {
+          "detector": 6,
+          "flux": 894.7793579101562,
+          "sky_flux": 547.1716918945312
+        }
+      ]
+    }
+  },
+  "independent_checks": [
+    {
+      "position": "target",
+      "obs_id": "2025W44_2B_0305_1",
+      "detector": 1,
+      "direct": {
+        "usable_flux": 597.0183885269823,
+        "usable_variance": 3308.8712783365672,
+        "usable_sky_flux": 248.35199072175814,
+        "usable_sky_variance": 4453.90630990405,
+        "wavelength": 0.8612509859284556
+      },
+      "production": {
+        "usable_flux": 597.0095825195312,
+        "usable_variance": 3308.86767578125,
+        "usable_sky_flux": 248.34783935546875,
+        "usable_sky_variance": 4453.88427734375,
+        "wavelength": 0.8612509965896606
+      },
+      "relative_difference": {
+        "usable_flux": 1.4750194484184619e-05,
+        "usable_variance": 1.0887577474305693e-06,
+        "usable_sky_flux": 1.6715934795993744e-05,
+        "usable_sky_variance": 4.946819209584673e-06,
+        "wavelength": 1.0661205029904863e-08
+      }
+    },
+    {
+      "position": "target",
+      "obs_id": "2025W45_2A_0164_1",
+      "detector": 2,
+      "direct": {
+        "usable_flux": 1031.2835931177235,
+        "usable_variance": 3654.177011374456,
+        "usable_sky_flux": 39.324257173932054,
+        "usable_sky_variance": 5071.974881106384,
+        "wavelength": 1.101003694146049
+      },
+      "production": {
+        "usable_flux": 1031.34326171875,
+        "usable_variance": 3654.207275390625,
+        "usable_sky_flux": 39.381874084472656,
+        "usable_sky_variance": 5072.0068359375,
+        "wavelength": 1.101003646850586
+      },
+      "relative_difference": {
+        "usable_flux": 5.785522942870528e-05,
+        "usable_variance": 8.281964838940333e-06,
+        "usable_sky_flux": 0.0014630312010295962,
+        "usable_sky_variance": 6.3002342366524936e-06,
+        "wavelength": 4.295668160295128e-08
+      }
+    },
+    {
+      "position": "target",
+      "obs_id": "2025W46_1A_0075_4",
+      "detector": 3,
+      "direct": {
+        "usable_flux": 424.44961913578663,
+        "usable_variance": 2994.678343122652,
+        "usable_sky_flux": 165.82973683699237,
+        "usable_sky_variance": 4068.3599036825763,
+        "wavelength": 1.6311086872613816
+      },
+      "production": {
+        "usable_flux": 424.4526672363281,
+        "usable_variance": 2994.620361328125,
+        "usable_sky_flux": 165.8329620361328,
+        "usable_sky_variance": 4068.26318359375,
+        "wavelength": 1.6311086416244507
+      },
+      "relative_difference": {
+        "usable_flux": 7.181249587469698e-06,
+        "usable_variance": 1.9361985003503878e-05,
+        "usable_sky_flux": 1.9448480572531342e-05,
+        "usable_sky_variance": 2.377429494146461e-05,
+        "wavelength": 2.7979087190373983e-08
+      }
+    },
+    {
+      "position": "target",
+      "obs_id": "2025W44_2B_0305_1",
+      "detector": 4,
+      "direct": {
+        "usable_flux": 227.5611974259695,
+        "usable_variance": 1412.6579469756316,
+        "usable_sky_flux": 33.98326852709323,
+        "usable_sky_variance": 1962.4288797193203,
+        "wavelength": 2.854371202799854
+      },
+      "production": {
+        "usable_flux": 227.5592498779297,
+        "usable_variance": 1412.694091796875,
+        "usable_sky_flux": 33.9752311706543,
+        "usable_sky_variance": 1962.4918212890625,
+        "wavelength": 2.8543713092803955
+      },
+      "relative_difference": {
+        "usable_flux": 8.558421777482157e-06,
+        "usable_variance": 2.5585738238221584e-05,
+        "usable_sky_flux": 0.00023656517298035343,
+        "usable_sky_variance": 3.207227110930631e-05,
+        "wavelength": 3.7304376403675007e-08
+      }
+    },
+    {
+      "position": "target",
+      "obs_id": "2025W45_2A_0164_1",
+      "detector": 5,
+      "direct": {
+        "usable_flux": 344.09205277933546,
+        "usable_variance": 8747.914902996637,
+        "usable_sky_flux": 127.48615542783948,
+        "usable_sky_variance": 11542.757928463008,
+        "wavelength": 3.8216320782220556
+      },
+      "production": {
+        "usable_flux": 344.07940673828125,
+        "usable_variance": 8747.8515625,
+        "usable_sky_flux": 127.47823333740234,
+        "usable_sky_variance": 11542.607421875,
+        "wavelength": 3.821632146835327
+      },
+      "relative_difference": {
+        "usable_flux": 3.675326336466824e-05,
+        "usable_variance": 7.240691749845355e-06,
+        "usable_sky_flux": 6.214465191219145e-05,
+        "usable_sky_variance": 1.3039219173568266e-05,
+        "wavelength": 1.79539183449889e-08
+      }
+    },
+    {
+      "position": "target",
+      "obs_id": "2025W46_1A_0076_1",
+      "detector": 6,
+      "direct": {
+        "usable_flux": 801.5569620625671,
+        "usable_variance": 20829.491393150456,
+        "usable_sky_flux": 452.4932622599794,
+        "usable_sky_variance": 27566.686567681205,
+        "wavelength": 4.449295157174429
+      },
+      "production": {
+        "usable_flux": 801.5891723632812,
+        "usable_variance": 20829.60546875,
+        "usable_sky_flux": 452.53240966796875,
+        "usable_sky_variance": 27566.953125,
+        "wavelength": 4.4492950439453125
+      },
+      "relative_difference": {
+        "usable_flux": 4.0183053644788045e-05,
+        "usable_variance": 5.476608748783587e-06,
+        "usable_sky_flux": 8.650741284597929e-05,
+        "usable_sky_variance": 9.66945159250689e-06,
+        "wavelength": 2.544877685813729e-08
+      }
+    },
+    {
+      "position": "screenshot",
+      "obs_id": "2025W44_2B_0305_1",
+      "detector": 1,
+      "direct": {
+        "usable_flux": 1219.4923109550655,
+        "usable_variance": 3970.42598688309,
+        "usable_sky_flux": 887.2365776100607,
+        "usable_sky_variance": 4973.942510612648,
+        "wavelength": 0.8610957827203946
+      },
+      "production": {
+        "usable_flux": 1219.4857177734375,
+        "usable_variance": 3970.4248046875,
+        "usable_sky_flux": 887.2252807617188,
+        "usable_sky_variance": 4973.958984375,
+        "wavelength": 0.8610957860946655
+      },
+      "relative_difference": {
+        "usable_flux": 5.406526318336178e-06,
+        "usable_variance": 2.977504040864185e-07,
+        "usable_sky_flux": 1.2732784544079116e-05,
+        "usable_sky_variance": 3.312002049781567e-06,
+        "wavelength": 3.374270973743876e-09
+      }
+    },
+    {
+      "position": "screenshot",
+      "obs_id": "2025W45_2A_0164_1",
+      "detector": 2,
+      "direct": {
+        "usable_flux": 1838.0858125871434,
+        "usable_variance": 4529.36507761869,
+        "usable_sky_flux": 811.4116421356612,
+        "usable_sky_variance": 5976.710430306852,
+        "wavelength": 1.100856095732193
+      },
+      "production": {
+        "usable_flux": 1838.1744384765625,
+        "usable_variance": 4529.52392578125,
+        "usable_sky_flux": 811.4984741210938,
+        "usable_sky_variance": 5976.892578125,
+        "wavelength": 1.100856065750122
+      },
+      "relative_difference": {
+        "usable_flux": 4.821407999368894e-05,
+        "usable_variance": 3.506950513193083e-05,
+        "usable_sky_flux": 0.00010700203167556983,
+        "usable_sky_variance": 3.0475337437863857e-05,
+        "wavelength": 2.72352324330624e-08
+      }
+    },
+    {
+      "position": "screenshot",
+      "obs_id": "2025W46_1A_0075_4",
+      "detector": 3,
+      "direct": {
+        "usable_flux": 878.3586593229627,
+        "usable_variance": 3365.7363524416046,
+        "usable_sky_flux": 603.268230872637,
+        "usable_sky_variance": 4366.497500100786,
+        "wavelength": 1.6308161726066877
+      },
+      "production": {
+        "usable_flux": 878.3783569335938,
+        "usable_variance": 3365.682373046875,
+        "usable_sky_flux": 603.296875,
+        "usable_sky_variance": 4366.40625,
+        "wavelength": 1.630816102027893
+      },
+      "relative_difference": {
+        "usable_flux": 2.242497265053282e-05,
+        "usable_variance": 1.6038172574415713e-05,
+        "usable_sky_flux": 4.747932328177387e-05,
+        "usable_sky_variance": 2.0898215961021847e-05,
+        "wavelength": 4.327820561664307e-08
+      }
+    },
+    {
+      "position": "screenshot",
+      "obs_id": "2025W44_2B_0305_1",
+      "detector": 4,
+      "direct": {
+        "usable_flux": 393.5384553454225,
+        "usable_variance": 1536.5224418568184,
+        "usable_sky_flux": 211.53040892759202,
+        "usable_sky_variance": 2064.211597207723,
+        "wavelength": 2.8535768234564896
+      },
+      "production": {
+        "usable_flux": 393.53564453125,
+        "usable_variance": 1536.4808349609375,
+        "usable_sky_flux": 211.53175354003906,
+        "usable_sky_variance": 2064.14404296875,
+        "wavelength": 2.853576898574829
+      },
+      "relative_difference": {
+        "usable_flux": 7.142463996758529e-06,
+        "usable_variance": 2.7079345823398898e-05,
+        "usable_sky_flux": 6.356551319315147e-06,
+        "usable_sky_variance": 3.272748295024827e-05,
+        "wavelength": 2.632427378640775e-08
+      }
+    },
+    {
+      "position": "screenshot",
+      "obs_id": "2025W45_2A_0164_1",
+      "detector": 5,
+      "direct": {
+        "usable_flux": 540.1810224937116,
+        "usable_variance": 8922.179143380205,
+        "usable_sky_flux": 316.30987660075994,
+        "usable_sky_variance": 11706.553020871339,
+        "wavelength": 3.8213463809670922
+      },
+      "production": {
+        "usable_flux": 540.1861572265625,
+        "usable_variance": 8922.111328125,
+        "usable_sky_flux": 316.3135986328125,
+        "usable_sky_variance": 11706.44921875,
+        "wavelength": 3.8213462829589844
+      },
+      "relative_difference": {
+        "usable_flux": 9.505487658729656e-06,
+        "usable_variance": 7.600808005026525e-06,
+        "usable_sky_flux": 1.1766904959674175e-05,
+        "usable_sky_variance": 8.867088508161849e-06,
+        "wavelength": 2.5647533773297342e-08
+      }
+    },
+    {
+      "position": "screenshot",
+      "obs_id": "2025W46_1A_0076_1",
+      "detector": 6,
+      "direct": {
+        "usable_flux": 1070.0846252721092,
+        "usable_variance": 22780.28691443272,
+        "usable_sky_flux": 738.081386124272,
+        "usable_sky_variance": 29346.989402937805,
+        "wavelength": 4.449041863525087
+      },
+      "production": {
+        "usable_flux": 1070.0814208984375,
+        "usable_variance": 22779.798828125,
+        "usable_sky_flux": 738.0841064453125,
+        "usable_sky_variance": 29346.412109375,
+        "wavelength": 4.449041843414307
+      },
+      "relative_difference": {
+        "usable_flux": 2.9945138838017687e-06,
+        "usable_variance": 2.1426278230211007e-05,
+        "usable_sky_flux": 3.6856518339858496e-06,
+        "usable_sky_variance": 1.9671691403129853e-05,
+        "wavelength": 4.520249821015263e-09
+      }
+    },
+    {
+      "position": "screenshot",
+      "obs_id": "2025W44_2B_0339_1",
+      "detector": 1,
+      "direct": {
+        "usable_flux": 21976.12489744022,
+        "usable_variance": 21661.731114267823,
+        "usable_sky_flux": 1109.5581548410414,
+        "usable_sky_variance": 30910.355876807975,
+        "wavelength": 1.0890529325191007
+      },
+      "production": {
+        "usable_flux": 21975.9140625,
+        "usable_variance": 21661.365234375,
+        "usable_sky_flux": 1109.5135498046875,
+        "usable_sky_variance": 30909.662109375,
+        "wavelength": 1.0890529155731201
+      },
+      "relative_difference": {
+        "usable_flux": 9.593909933354979e-06,
+        "usable_variance": 1.6890897174019287e-05,
+        "usable_sky_flux": 4.020233584507945e-05,
+        "usable_sky_variance": 2.2445002165335473e-05,
+        "wavelength": 1.5560291310386318e-08
+      }
+    }
+  ],
+  "matched_count": 222,
+  "matched_complete_statistics": [
+    {
+      "detector": 1,
+      "n": 21,
+      "median_our_minus_atb_uJy": 8.288903123676278,
+      "median_wavelength_difference_um": -0.0005446197716910683
+    },
+    {
+      "detector": 2,
+      "n": 30,
+      "median_our_minus_atb_uJy": 12.887188271512045,
+      "median_wavelength_difference_um": -0.0006429864959778264
+    },
+    {
+      "detector": 3,
+      "n": 34,
+      "median_our_minus_atb_uJy": -3.220930178988752,
+      "median_wavelength_difference_um": -0.000992521567071969
+    },
+    {
+      "detector": 4,
+      "n": 22,
+      "median_our_minus_atb_uJy": -6.810901460662578,
+      "median_wavelength_difference_um": -0.0013847049131743283
+    },
+    {
+      "detector": 5,
+      "n": 24,
+      "median_our_minus_atb_uJy": 15.745719634163365,
+      "median_wavelength_difference_um": -0.0005275747108961504
+    },
+    {
+      "detector": 6,
+      "n": 26,
+      "median_our_minus_atb_uJy": 41.46479642749753,
+      "median_wavelength_difference_um": -0.0005785254275165741
+    }
+  ],
+  "solid_angle_arrays": [
+    {
+      "detector": 1,
+      "identical": true,
+      "units": "arcsec2"
+    },
+    {
+      "detector": 2,
+      "identical": true,
+      "units": "arcsec2"
+    },
+    {
+      "detector": 3,
+      "identical": true,
+      "units": "arcsec2"
+    },
+    {
+      "detector": 4,
+      "identical": true,
+      "units": "arcsec2"
+    },
+    {
+      "detector": 5,
+      "identical": true,
+      "units": "arcsec2"
+    },
+    {
+      "detector": 6,
+      "identical": true,
+      "units": "arcsec2"
+    }
+  ]
+}

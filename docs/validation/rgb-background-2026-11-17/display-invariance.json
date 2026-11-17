@@ -1,0 +1,52 @@
+{
+  "science_arrays_sha256": "82e453166d0f07f5f39fb4e3d2567f0f01740f92dbf395b9d72ea9ab120c2f31",
+  "arrays_identical": true,
+  "spectrum_csv_identical": true,
+  "result_file_identical": true,
+  "shared_white_mjy_sr": 1.170725792646408,
+  "neutral_white_mjy_sr": 1.155336793512106,
+  "epochs": [
+    {
+      "epoch": 0,
+      "requested": "neutral",
+      "applied": true,
+      "offsets_mjy_sr": [
+        0.03344526793807745,
+        0.0182937306817621,
+        0.06587048852816224
+      ],
+      "common_pixels": 1511,
+      "retained_pixels": 1320,
+      "method": "Display only: per-epoch, full-field RGB medians on common six-detector coverage; joint symmetric 3-sigma clipping using 1.4826 MAD, up to 5 iterations. At least 16 pixels and 25% of the common coverage must remain. Offsets do not depend on pin, pan or zoom. This is not a source-masked sky model and can remove diffuse emission and background variability.",
+      "status": "Background neutralized — display only"
+    },
+    {
+      "epoch": 1,
+      "requested": "neutral",
+      "applied": true,
+      "offsets_mjy_sr": [
+        0.022906923200935125,
+        0.01538899913430214,
+        0.09483214979991317
+      ],
+      "common_pixels": 1521,
+      "retained_pixels": 1028,
+      "method": "Display only: per-epoch, full-field RGB medians on common six-detector coverage; joint symmetric 3-sigma clipping using 1.4826 MAD, up to 5 iterations. At least 16 pixels and 25% of the common coverage must remain. Offsets do not depend on pin, pan or zoom. This is not a source-masked sky model and can remove diffuse emission and background variability.",
+      "status": "Background neutralized — display only"
+    },
+    {
+      "epoch": 2,
+      "requested": "neutral",
+      "applied": true,
+      "offsets_mjy_sr": [
+        0.02476579276844859,
+        0.01774051273241639,
+        0.06036659004166722
+      ],
+      "common_pixels": 1521,
+      "retained_pixels": 1030,
+      "method": "Display only: per-epoch, full-field RGB medians on common six-detector coverage; joint symmetric 3-sigma clipping using 1.4826 MAD, up to 5 iterations. At least 16 pixels and 25% of the common coverage must remain. Offsets do not depend on pin, pan or zoom. This is not a source-masked sky model and can remove diffuse emission and background variability.",
+      "status": "Background neutralized — display only"
+    }
+  ]
+}
