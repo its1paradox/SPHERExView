@@ -21,3 +21,11 @@ node_modules/
 # Env
 .env
 backend/cache
+
+# Isolated deployment validation artifacts
+.test-tools/
+.validation/
+.review/
+*.log
+
+.pytest_cache/

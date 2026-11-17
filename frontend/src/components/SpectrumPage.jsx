@@ -1,3 +1,4 @@
+import { fetchApi } from '../lib/api';
 import ReleaseSelect from './ReleaseSelect.jsx';
 import { releaseValue, releaseLabel, spectrumRelease, hasQualityFlags } from '../lib/releases.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -91,7 +92,7 @@ export default function SpectrumPage() {
     const tick = () => setElapsed(Math.round((Date.now() - t0) / 1000));
 
     const loadTable = async (id) => {
-      const res = await fetch(`/api/spectra/table/${id}`);
+      const res = await fetchApi(`/api/spectra/table/${id}`);
       const body = await res.json();
       if (!res.ok) throw new Error(body.detail || res.statusText);
       if (!stop) {
@@ -102,7 +103,7 @@ export default function SpectrumPage() {
 
     const poll = async (id) => {
       while (!stop) {
-        const res = await fetch(`/api/spectra/status/${id}`);
+        const res = await fetchApi(`/api/spectra/status/${id}`);
         const body = await res.json();
         if (!res.ok) throw new Error(body.detail || res.statusText);
         if (stop) return;
@@ -131,7 +132,7 @@ export default function SpectrumPage() {
             dec: params.dec,
             bkg_region: Math.round(params.bkg),
           });
-          const res = await fetch(`/api/spectra/submit?${query}`, { method: 'POST' });
+          const res = await fetchApi(`/api/spectra/submit?${query}`, { method: 'POST' });
           const body = await res.json();
           if (!res.ok) throw new Error(body.detail || res.statusText);
           id = body.job_id;

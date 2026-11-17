@@ -1,3 +1,4 @@
+import { fetchApi } from '../lib/api';
 import ReleaseSelect from './ReleaseSelect.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { pixelToWorld, worldToPixel } from '../lib/render.js';
@@ -24,7 +25,7 @@ function WavelengthKey({ strength }) {
 }
 
 async function jsonRequest(url, options) {
-  const response = await fetch(url, options);
+  const response = await fetchApi(url, options);
   const data = await response.json();
   if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : Array.isArray(data.detail) ? data.detail.map(e => `${e.loc.at(-1)}: ${e.msg}`).join('; ') : `Request failed (${response.status})`);
   return data;

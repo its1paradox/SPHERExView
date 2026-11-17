@@ -18,6 +18,8 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import json
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Literal
 
@@ -31,6 +33,8 @@ from astropy.io import fits
 
 from . import coadd as cx
 from . import releases
+from . import hosting
+from . import batching
 from . import imaging
 from . import spectra_client as spx
 from . import spherex_client as sx
@@ -48,10 +52,11 @@ os.makedirs(os.path.join(STATIC_DIR, "cutouts"), exist_ok=True)
 
 app = FastAPI(title="SPHERExView", version="0.4.0")
 app.include_router(comparison_router)
+app.add_middleware(hosting.PublicAdmissionMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[origin for origin in os.getenv("SPHEREX_CORS_ORIGINS", "*").split(",") if origin],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -89,12 +94,11 @@ def _build_stack(
 
     # Time-sort for blinking; images with no timestamp go last.
     images.sort(key=lambda im: (im.mjd_mid is None, im.mjd_mid or 0.0))
-    images = sx.preview_order(images, limit)
 
     size_arcsec = 2 * radius_arcsec
 
     def fetch_one(im: sx.SpherexImage):
-        """Download + reproject one cutout. Returns dict or None (= skip).
+        """Download + reproject one cutout, or return a recorded exclusion.
 
         Never raises: ANY failure on a single frame (transient 503, broken
         chunked transfer, corrupt FITS, WCS trouble) skips that frame
@@ -105,6 +109,8 @@ def _build_stack(
         # north-up reprojection below needs extra margin to fill the
         # requested FoV without blank corners.
         cutout_url = sx.get_cutout_url(im.access_url, ra, dec, size_arcsec * 1.45)
+        def failure(reason):
+            return {"failure": {"obs_id": im.obs_id, "access_url": im.access_url, "reason": reason}}
         try:
             fits_path = sx.download_cutout(cutout_url)
             with fits.open(fits_path) as hdul:
@@ -112,13 +118,13 @@ def _build_stack(
         except sx.CutoutNoOverlapError:
             # Footprint matched the cone search but does not contain the
             # exact position (SPHEREx footprints are elongated/rotated).
-            return None
+            return failure("no_overlap")
         except sx.CutoutDownloadError as exc:
             log.warning("Cutout download failed, skipping: %s", exc)
-            return None
+            return failure(f"download: {exc}")
         except Exception as exc:
             log.warning("Unexpected cutout error, skipping: %s", exc)
-            return None
+            return failure(f"invalid_fits: {exc}")
 
         uid = hashlib.md5(cutout_url.encode()).hexdigest()
         try:
@@ -129,7 +135,7 @@ def _build_stack(
             )
         except Exception as exc:
             log.warning("Pixel extraction failed, skipping: %s", exc)
-            return None
+            return failure(f"pixel_extraction: {exc}")
 
         meta = im.to_dict()
         meta.update(header_meta)
@@ -148,19 +154,37 @@ def _build_stack(
             "metadata": meta,
         }
 
-    # Download cutouts in parallel batches until we have `limit` frames.
-    # Serial downloads are the bottleneck (IRSA cutouts take seconds each).
+    # Process every candidate with bounded in-flight downloads. Pixel payloads
+    # live on disk and are fetched by the browser only when displayed.
     cutouts = []
+    omissions = []
     skipped = 0
     idx = 0
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        while len(cutouts) < limit and idx < len(images):
-            batch = images[idx : idx + max(8, limit - len(cutouts))]
+    workers = max(1, int(os.getenv("SPHEREX_FETCH_WORKERS", "2")))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        while idx < len(images):
+            batching.check_space(STATIC_DIR)
+            batch = images[idx : idx + workers]
             idx += len(batch)
             for res in pool.map(fetch_one, batch):
-                if res is None:
+                if "failure" in res:
+                    omissions.append(res["failure"])
                     skipped += 1
-                elif len(cutouts) < limit:
+                else:
+                    payload = {"data_b64": res.pop("data_b64")}
+                    encoded = json.dumps(payload)
+                    name = f"timeline-{hashlib.sha256(encoded.encode()).hexdigest()}.json"
+                    destination = os.path.join(STATIC_DIR, "cutouts", name)
+                    if not os.path.exists(destination):
+                        temporary = destination + f".{uuid.uuid4().hex}.tmp"
+                        try:
+                            with open(temporary, "w") as output:
+                                output.write(encoded)
+                            os.replace(temporary, destination)
+                        finally:
+                            if os.path.exists(temporary):
+                                os.unlink(temporary)
+                    res["data_url"] = f"/static/cutouts/{name}"
                     cutouts.append(res)
 
     cutouts.sort(key=lambda c: (c["metadata"].get("mjd_mid") is None, c["metadata"].get("mjd_mid") or 0))
@@ -173,8 +197,11 @@ def _build_stack(
         "release_policy": releases.RELEASE_POLICY,
         "count": len(cutouts),
         "n_inventory": len(images),
-        "preview_subset": len(cutouts) < len(images),
-        "skipped_no_overlap": skipped,
+        "preview_subset": False,
+        "n_attempted": len(images),
+        "n_exposures_skipped": skipped,
+        "complete": skipped == 0,
+        "omissions": omissions,
         "cutouts": cutouts,
     }
 
@@ -187,7 +214,7 @@ def get_cutouts(
     survey: str = "wide",
     release: releases.ReleaseSelection = "all",
     band: Optional[str] = None,
-    limit: int = Query(20, gt=0),
+    limit: Optional[int] = Query(None, ge=0, deprecated=True),
 ):
     return _build_stack(ra, dec, radius_arcsec, survey, band, limit, release)
 
@@ -292,7 +319,7 @@ def get_wise_stack(
             frame["data2_b64"] = imaging.array_to_b64(data2)
         return frame
 
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with ThreadPoolExecutor(max_workers=int(os.getenv("SPHEREX_FETCH_WORKERS", "8"))) as pool:
         results = list(pool.map(fetch_epoch, epochs))
 
     frames = [r for r in results if r is not None]
@@ -317,18 +344,18 @@ def get_epoch_stack(
     survey: str = "wide",
     release: releases.ReleaseSelection = "all",
     band: Optional[str] = None,
-    limit: int = Query(50, gt=0),
+    limit: Optional[int] = Query(None, ge=0, deprecated=True),
 ):
     """Time-ordered stack of cutouts for Wiseview-style blinking.
 
-    ``limit`` is uncapped: fetching hundreds of frames simply takes longer
-    (IRSA cutouts download in parallel and are cached on disk).
+    All observations are attempted. Legacy ``limit`` is accepted but ignored.
+    Pixel payloads are served separately for bounded browser memory.
     """
     return _build_stack(ra, dec, radius_arcsec, survey, band, limit, release)
 
 
 def _query_sorted_images(ra, dec, radius_arcsec, survey, band, limit, release="all"):
-    """Discover every selected release before applying a display input limit."""
+    """Discover every selected release; legacy limit never truncates science."""
     try:
         releases.collections(survey, release)
     except releases.RetiredReleaseError as exc:
@@ -341,7 +368,7 @@ def _query_sorted_images(ra, dec, radius_arcsec, survey, band, limit, release="a
     except Exception as exc:
         log.exception("SIA2 query failed")
         raise HTTPException(502, f"SIA2 query failed: {exc}") from exc
-    return sorted(sx.preview_order(images, limit)[:limit], key=lambda im: (im.mjd_mid is None, im.mjd_mid or 0))
+    return sorted(images, key=lambda im: (im.mjd_mid is None, im.mjd_mid or 0))
 
 
 def _fetch_aligned(
@@ -359,7 +386,11 @@ def _fetch_aligned(
     never raised.  Returns (exposures, n_skipped).
     """
 
+    omissions = []
     def fetch_one(im: sx.SpherexImage):
+        def failure(reason):
+            omissions.append({"obs_id": im.obs_id, "access_url": im.access_url, "reason": reason})
+            return None
         cutout_url = sx.get_cutout_url(im.access_url, ra, dec, size_arcsec * 1.45)
         try:
             fits_path = sx.download_cutout(cutout_url)
@@ -374,49 +405,52 @@ def _fetch_aligned(
                 expected_release=releases.product_release(im.access_url, im.survey),
             )
         except sx.CutoutNoOverlapError:
-            return None
+            return failure("no_overlap")
         except Exception as exc:
             log.warning("Coadd input skipped: %s", exc)
-            return None
+            return failure(f"alignment_or_download: {exc}")
         exp.obs_id = im.obs_id
         exp.did = str(im.extra.get("obs_publisher_did", "") or "")
         if exp.mjd is None:
             exp.mjd = im.mjd_mid
         elif im.mjd_mid is not None and abs(exp.mjd - im.mjd_mid) > 1 / 86400:
             log.warning("FITS and archive exposure time disagree: %s", im.obs_id)
-            return None
+            return failure("FITS/archive time disagreement")
         exp.extras["access_url"] = im.access_url
         exp.extras["superseded_products"] = im.extra.get("superseded_products", [])
         if exp.detector is None:  # header stripped -> fall back to band name
             try:
                 exp.detector = int(str(im.band).rsplit("D", 1)[-1])
             except Exception:
-                return None
+                return failure("missing detector identity")
         exp.extras["band"] = im.band
         return exp
 
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        results = list(pool.map(fetch_one, images))
-    exposures = [r for r in results if r is not None]
-    return exposures, len(results) - len(exposures)
+    workers = max(1, int(os.getenv("SPHEREX_FETCH_WORKERS", "2")))
+    exposures = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for start in range(0, len(images), workers):
+            for result in pool.map(fetch_one, images[start:start + workers]):
+                if result is not None:
+                    exposures.append(batching.spill(result, len(exposures)))
+    return exposures, batching.Skipped(omissions)
 
 
 MAX_COADD_SIDE = 1024
-MAX_ALIGNED_CELLS = 30_000_000
 
 
 def _validate_coadd_workload(n_px: int, n_images: int):
-    """Reject recipes that would exhaust memory while retaining aligned inputs."""
-    cells = n_px * n_px * max(1, n_images)
-    if n_px > MAX_COADD_SIDE or cells > MAX_ALIGNED_CELLS:
+    """Bound single-image dimensions; input count is handled with disk batching."""
+    if n_px > MAX_COADD_SIDE:
         raise HTTPException(
             413,
             "Requested coadd is too large; reduce the field of view, increase "
-            "the output pixel scale, or lower the exposure limit",
+            "the output pixel scale. No observations were discarded.",
         )
 
 
 @app.get("/api/coadd")
+@batching.workspace
 def get_coadd(
     ra: float,
     dec: float,
@@ -424,7 +458,7 @@ def get_coadd(
     survey: str = "wide",
     release: releases.ReleaseSelection = "all",
     band: Optional[str] = None,
-    limit: int = Query(200, gt=0),
+    limit: Optional[int] = Query(None, ge=0, deprecated=True),
     background: str = Query("zodi", pattern="^(zodi|none)$"),
     sigma: float = Query(5.0, ge=0),
     maxiters: int = Query(2, ge=0, le=10),
@@ -465,12 +499,12 @@ def get_coadd(
     for family, det in sorted({(releases.calibration_family(e.extras["data_release"]), e.detector) for e in exposures}):
         group = [e for e in exposures if e.detector == det and releases.calibration_family(e.extras["data_release"]) == family]
         try:
-            img, var, coverage, n_rej, lam = cx.combine(
+            img, var, coverage, n_rej, lam = batching.combine(
                 group, sigma=clip_sigma, maxiters=maxiters
             )
-        except Exception as exc:
-            log.warning("Coadd failed for D%s: %s", det, exc)
-            continue
+        except Exception:
+            log.exception("Coadd failed for D%s", det)
+            raise
         finite = img[np.isfinite(img)]
         if finite.size == 0:
             continue
@@ -527,19 +561,22 @@ def get_coadd(
         "resampling": resampling,
         "n_exposures_input": len(images),
         "n_exposures_skipped": skipped,
+        "omissions": getattr(skipped, "records", []),
+        "complete": skipped == 0,
         "count": len(coadds),
         "coadds": coadds,
     }
 
 
 @app.get("/api/epoch-coadds")
+@batching.workspace
 def get_epoch_coadds(
     ra: float,
     dec: float,
     radius_arcsec: float = Query(120.0, gt=0, le=3600),
     survey: str = "wide",
     release: releases.ReleaseSelection = "all",
-    limit: int = Query(500, gt=0),
+    limit: Optional[int] = Query(None, ge=0, deprecated=True),
     bin_months: float = Query(6.0, ge=0.25, le=25),
     background: str = Query("zodi", pattern="^(zodi|none)$"),
     sigma: float = Query(5.0, ge=0),
@@ -655,18 +692,12 @@ def get_epoch_coadds(
         long_dets = {6} if ref in ("auto", "excess") else {5, 6}
     wanted_bands = {f"SPHEREx-D{d}" for d in short_dets | long_dets}
 
-    # No truncation at query time: when more exposures exist than ``limit``,
-    # subsample EVENLY ACROSS TIME so the blink sequence still spans every epoch
-    # (plain head-truncation would keep only the earliest days and collapse
-    # the sequence to one bin — deep fields have thousands of exposures).
+    # Inventory and coadds include all observations in the selected channels.
     query_band = band if (band and ref == "none") else None
-    images = _query_sorted_images(ra, dec, radius_arcsec, survey, query_band, 10 ** 9, release)
+    images = _query_sorted_images(ra, dec, radius_arcsec, survey, query_band, None, release)
     images = [im for im in images if str(im.band) in wanted_bands]
     if not images:
         raise HTTPException(404, "No SPHEREx exposures in the requested bands cover this position")
-    if len(images) > limit:
-        idx = np.unique(np.linspace(0, len(images) - 1, limit).round().astype(int))
-        images = [images[i] for i in idx]
     size_arcsec = 2 * radius_arcsec
     n_px, wcs_out = cx.output_grid(ra, dec, size_arcsec, pixscale_arcsec)
     _validate_coadd_workload(n_px, len(images))
@@ -680,6 +711,10 @@ def get_epoch_coadds(
         pixscale_arcsec,
         resampling,
     )
+    invalid = [e for e in exposures if e.mjd is None or not e.detector]
+    omissions = list(getattr(skipped, "records", [])) + [
+        {"obs_id": e.obs_id, "reason": "missing time or detector"} for e in invalid]
+    skipped += len(invalid)
     exposures = [e for e in exposures if e.mjd is not None and e.detector]
     if not exposures:
         raise HTTPException(404, "No usable SPHEREx exposures cover this position")
@@ -738,12 +773,12 @@ def get_epoch_coadds(
             if len(sub) < min_channel_exposures:
                 continue
             try:
-                img, var, coverage, n_rej, lam = cx.combine(
+                img, var, coverage, n_rej, lam = batching.combine(
                     sub, sigma=clip_sigma, maxiters=maxiters
                 )
-            except Exception as exc:
-                log.warning("Epoch-coadd bin %d channel %s failed: %s", k, name, exc)
-                continue
+            except Exception:
+                log.exception("Epoch-coadd bin %d channel %s failed", k, name)
+                raise
             finite = img[np.isfinite(img)]
             if finite.size == 0:
                 continue
@@ -863,6 +898,9 @@ def get_epoch_coadds(
         },
         "n_exposures_input": len(images),
         "n_exposures_skipped": skipped,
+        "omissions": omissions,
+        "complete": skipped == 0,
+        "n_exposures_contributing": sum(frame["metadata"]["n_exposures"] for frame in frames),
         "count": len(frames),
         "frames": frames,
     }

@@ -10,6 +10,7 @@ import base64
 import hashlib
 import importlib.metadata
 import json
+import os
 import math
 import re
 import threading
@@ -492,7 +493,7 @@ def save_epoch(path, epoch, products, wcs, recipe, provenance):
 
 def prefetch_downloads(images, recipe, downloader, cancelled):
     """At most four in-flight downloads; consume in deterministic input order."""
-    pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="comparison-fits")
+    pool = ThreadPoolExecutor(max_workers=int(os.getenv("SPHEREX_FETCH_WORKERS", "4")), thread_name_prefix="comparison-fits")
     queue, remaining = deque(), iter(images)
     def fill():
         if cancelled.is_set():

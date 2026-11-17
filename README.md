@@ -36,8 +36,15 @@ respect for the archive's requested wait time. See
 
 Enter **RA and Dec in decimal degrees**, choose a field of view in arcseconds,
 and click **Fetch images**. The default view combines WISE W1+W2 color epochs
-with SPHEREx D4+D6 color coadds. Max frames starts at 1000. Individual WISE
+with SPHEREx D4+D6 color coadds. All eligible observations are processed; there
+is no frame or input-exposure cap. Individual WISE
 and SPHEREx panels can be enabled from the panel controls.
+
+Coordinates and field width remain visible above the WISE → SPHEREx timeline,
+including while scrolling. The same values are available in Target & images.
+Aligned inputs are processed in disk-backed batches and individual image pixels
+load on demand. Observation processing details report attempted inputs and
+exclusions. See [full-inventory processing and validation](docs/TIMELINE_BATCHING.md).
 
 Choose **DR1 + QR3** (the default), **DR1** or **QR3** with the Data release
 selector. DR1 covers reprocessed surveys 1–2; QR3 adds surveys 3–4 as released.
@@ -108,6 +115,13 @@ python -m pip install pytest httpx
 python -m pytest -q backend/tests
 ```
 
+
+## Public hosting
+
+See [the Lightsail deployment guide](docs/LIGHTSAIL_DEPLOYMENT.md) for the
+$12/month public pilot, HTTPS setup, persistent storage, resource limits and
+operational checks. [The Render guide](docs/RENDER_DEPLOYMENT.md) records the
+alternative deployment package and its validation.
 
 ## Data sources
 

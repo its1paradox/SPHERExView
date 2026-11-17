@@ -1,0 +1,55 @@
+name: spherexview
+services:
+  app:
+    build:
+      context: ../..
+    restart: unless-stopped
+    init: true
+    user: "10001:10001"
+    mem_limit: 1400m
+    memswap_limit: 2400m
+    pids_limit: 256
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    volumes:
+      - /srv/spherexview/data:/var/data
+    ports:
+      - "127.0.0.1:10000:10000"
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:10000/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    stop_grace_period: 130s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    mem_limit: 128m
+    pids_limit: 128
+    security_opt: [no-new-privileges:true]
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /srv/spherexview/caddy-data:/data
+      - /srv/spherexview/caddy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"

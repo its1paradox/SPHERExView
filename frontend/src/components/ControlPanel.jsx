@@ -1,5 +1,6 @@
 import WorkspaceSettings from './WorkspaceSettings.jsx';
 import ReleaseSelect from './ReleaseSelect.jsx';
+import TargetFields from './TargetFields.jsx';
 import { DEFAULT_DISPLAY } from '../lib/urlstate.js';
 
 const SPHEREX_BANDS = [
@@ -157,7 +158,7 @@ function WiseDisplayControls({ view, setV }) {
   </>;
 }
 
-export default function ControlPanel({ onSearch, loading, view, setView, form, setForm, coordsError, setCoordsError, settingsSection, setSettingsSection }) {
+export default function ControlPanel({ onSubmit, loading, view, setView, form, setForm, coordsError, setCoordsError, settingsSection, setSettingsSection }) {
   const set = (key) => (e) => {
     setForm({ ...form, [key]: e.target.value });
     if (key === 'coords') setCoordsError(null);
@@ -190,45 +191,13 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
     });
   };
 
-  const submit = (e) => {
-    e.preventDefault();
-    const coords = parseCoords(form.coords);
-    if (!coords) {
-      setCoordsError('Enter RA and Dec in decimal degrees, e.g. 11.889632 28.089606');
-      return;
-    }
-    setSettingsSection(null);
-    onSearch({
-      ra: coords.ra,
-      dec: coords.dec,
-      fov: parseFloat(form.fov),
-      survey: form.survey,
-      release: form.release,
-      band: form.bands.join(','),
-      limit: parseInt(form.limit, 10),
-      wiseBand: form.wiseBand,
-    });
-  };
-
   return (
     <WorkspaceSettings section={settingsSection} onSection={setSettingsSection} onClose={() => setSettingsSection(null)} contentClassName="sidebar timeline-sidebar" sections={[["target", "Target & images"], ["timeline", "Timeline recipe"], ["display", "Playback & display"]]}>
-      <form data-settings-section="target" onSubmit={submit}>
+      <form data-settings-section="target" onSubmit={onSubmit}>
         <fieldset>
           <legend>Target &amp; images</legend>
-          <label>
-            Coordinates (RA Dec, deg)
-            <input
-              value={form.coords}
-              onChange={set('coords')}
-              placeholder="11.889632 28.089606"
-              required
-            />
-          </label>
+          <TargetFields form={form} setForm={setForm} coordsError={coordsError} setCoordsError={setCoordsError} />
           {coordsError && <p className="field-error" role="alert">{coordsError}</p>}
-          <label>
-            Field of view (arcsec)
-            <input type="number" min="30" max="800" value={form.fov} onChange={set('fov')} />
-          </label>
           <label>
             Survey
             <select value={form.survey} onChange={set('survey')}>
@@ -253,10 +222,7 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
               </label>
             ))}
           </div>
-          <label>
-            Max frames
-            <input type="number" min="1" value={form.limit} onChange={set('limit')} />
-          </label>
+          <p className="hint">All eligible observations are processed. Images load as you view them.</p>
           <label>
             Band
             <select
@@ -379,17 +345,7 @@ export default function ControlPanel({ onSearch, loading, view, setView, form, s
                       data-testid="range-combined-months"
                     />
                   </label>
-                  <label>
-                    Maximum input exposures
-                    <input
-                      type="number"
-                      min="1"
-                      max="10000"
-                      value={view.combinedLimit}
-                      onChange={setV('combinedLimit')}
-                      data-testid="input-combined-limit"
-                    />
-                  </label>
+                  <p className="hint">All eligible input exposures contribute; no sampling cap is applied.</p>
                   <label>
                     Minimum exposures per channel
                     <input

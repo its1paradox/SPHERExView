@@ -1,0 +1,164 @@
+{
+  "date": "2026-11-17",
+  "backend_tests": 151,
+  "frontend_tests": 71,
+  "production_build": "passed",
+  "science": {
+    "mode": "offline cached real DR1/QR3 FITS; full-array reference versus disk batching",
+    "inventory": 268,
+    "accepted": 259,
+    "excluded": [
+      {
+        "obs_id": "2025W45_1A_0273_4",
+        "reason": "no valid pixels on the output grid"
+      },
+      {
+        "obs_id": "2025W45_1A_0317_1",
+        "reason": "no valid pixels on the output grid"
+      },
+      {
+        "obs_id": "2025W46_2A_0289_2",
+        "reason": "no valid pixels on the output grid"
+      },
+      {
+        "obs_id": "2025W45_1A_0095_3",
+        "reason": "no valid pixels on the output grid"
+      },
+      {
+        "obs_id": "2025W45_1A_0273_4",
+        "reason": "no valid pixels on the output grid"
+      },
+      {
+        "obs_id": "2025W45_2A_0136_3",
+        "reason": "Recorded FITS file unavailable in the local read-only cache"
+      },
+      {
+        "obs_id": "2026W19_1A_0034_1",
+        "reason": "no valid pixels on the output grid"
+      },
+      {
+        "obs_id": "2026W18_2A_0264_2",
+        "reason": "no valid pixels on the output grid"
+      },
+      {
+        "obs_id": "2026W19_1A_0034_1",
+        "reason": "no valid pixels on the output grid"
+      }
+    ],
+    "field_arcsec": 120,
+    "pixel_scale_arcsec": 3.1,
+    "groups": [
+      {
+        "detector": 1,
+        "inputs": 37,
+        "rejected_pixels": 1023,
+        "wavelength": {
+          "min_um": 0.7437,
+          "max_um": 1.1152,
+          "weighted_mean_um": 0.8989,
+          "n_sampled": 36
+        },
+        "max_image_difference": 0.0,
+        "max_variance_difference": 0.0
+      },
+      {
+        "detector": 2,
+        "inputs": 48,
+        "rejected_pixels": 508,
+        "wavelength": {
+          "min_um": 1.1015,
+          "max_um": 1.6307,
+          "weighted_mean_um": 1.3748,
+          "n_sampled": 48
+        },
+        "max_image_difference": 0.0,
+        "max_variance_difference": 0.0
+      },
+      {
+        "detector": 3,
+        "inputs": 45,
+        "rejected_pixels": 0,
+        "wavelength": {
+          "min_um": 1.6318,
+          "max_um": 2.3861,
+          "weighted_mean_um": 2.0386,
+          "n_sampled": 44
+        },
+        "max_image_difference": 0.0,
+        "max_variance_difference": 0.0
+      },
+      {
+        "detector": 4,
+        "inputs": 36,
+        "rejected_pixels": 27,
+        "wavelength": {
+          "min_um": 2.4394,
+          "max_um": 3.8329,
+          "weighted_mean_um": 3.0851,
+          "n_sampled": 35
+        },
+        "max_image_difference": 0.0,
+        "max_variance_difference": 0.0
+      },
+      {
+        "detector": 5,
+        "inputs": 48,
+        "rejected_pixels": 75,
+        "wavelength": {
+          "min_um": 3.822,
+          "max_um": 4.4086,
+          "weighted_mean_um": 4.1033,
+          "n_sampled": 48
+        },
+        "max_image_difference": 0.0,
+        "max_variance_difference": 0.0
+      },
+      {
+        "detector": 6,
+        "inputs": 45,
+        "rejected_pixels": 78,
+        "wavelength": {
+          "min_um": 4.4182,
+          "max_um": 5.0029,
+          "weighted_mean_um": 4.6763,
+          "n_sampled": 45
+        },
+        "max_image_difference": 0.0,
+        "max_variance_difference": 0.0
+      }
+    ],
+    "seconds": 19.46
+  },
+  "stress": {
+    "inputs": 1200,
+    "shape": [
+      78,
+      78
+    ],
+    "peak_process_rss_mib": 144.84,
+    "seconds": 56.54,
+    "mean_variance_coverage_match": true,
+    "platform": "Windows Python 3.14; not an AWS memory measurement"
+  },
+  "browser": {
+    "widths": [
+      320,
+      390,
+      768,
+      1440
+    ],
+    "horizontal_overflow": false,
+    "sticky_coordinates": true,
+    "console_errors": 0,
+    "raw_inventory": 268,
+    "raw_frames": 267,
+    "raw_missing_downloads": 1,
+    "combined_raw_frames": 258,
+    "raw_frames_without_target_coverage": 9,
+    "wise_epochs": 23,
+    "matched_coadd_inputs": 84,
+    "matched_coadd_skipped": 3,
+    "matched_coadd_epochs": 3,
+    "source": "Recorded real SPHEREx FITS and live WISE, localhost application"
+  }
+}

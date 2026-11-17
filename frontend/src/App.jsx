@@ -1,5 +1,7 @@
+import { fetchApi } from './lib/api';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ControlPanel, { parseCoords } from './components/ControlPanel.jsx';
+import TargetFields from './components/TargetFields.jsx';
 import FrameViewer from './components/FrameViewer.jsx';
 import CombinedViewer from './components/CombinedViewer.jsx';
 import { decodeB64Float32, sortPixels } from './lib/render.js';
@@ -9,6 +11,7 @@ import { comparisonUrl } from './lib/comparison.js';
 export { DEFAULT_DISPLAY };
 
 function toFrame(base) {
+  if (base.data_url) return base;
   const data = decodeB64Float32(base.data_b64);
   const frame = { ...base, data, sorted: sortPixels(data) };
   if (base.data2_b64) {
@@ -128,7 +131,6 @@ export function openBlinkTab(ra, dec, fov, survey, limit, release = 'all') {
     survey,
     release,
     months: 6,
-    maxframes: limit,
   });
   window.open(`blink.html#${params}`, '_blank', 'noopener');
 }
@@ -146,6 +148,7 @@ export default function App() {
   const combinedCoaddAbort = useRef(null);
   const wiseMatchAbort = useRef(null);
   const [status, setStatus] = useState(null);
+  const [processing, setProcessing] = useState({});
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState(initial.form);
@@ -185,7 +188,6 @@ export default function App() {
             };
     const key = JSON.stringify({ queried, recipe, view: {
       months: view.combinedMonths,
-      limit: view.combinedLimit,
       background: view.combinedBackground,
       sigma: view.combinedSigma,
       maxiters: view.combinedMaxiters,
@@ -208,7 +210,6 @@ export default function App() {
       survey: queried.survey,
       release: queried.release,
       bin_months: view.combinedMonths,
-      limit: view.combinedLimit,
       background: view.combinedBackground,
       sigma: view.combinedSigma,
       maxiters: view.combinedMaxiters,
@@ -224,19 +225,23 @@ export default function App() {
       params.set('long_detectors', recipe.long.join(','));
     }
     const timer = window.setTimeout(() => {
-      fetch(`/api/epoch-coadds?${params}`, { signal: controller.signal })
+      fetchApi(`/api/epoch-coadds?${params}`, { signal: controller.signal })
         .then((r) =>
           r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.detail || r.statusText))),
         )
         .then((d) => {
           if (combinedCoaddKey.current !== key) return;
+          setProcessing(previous => ({ ...previous, coadds: {
+            attempted: d.n_exposures_input, contributing: d.n_exposures_contributing,
+            skipped: d.n_exposures_skipped || 0, omissions: d.omissions || [],
+          } }));
           const mapped = d.frames.map((frame) => toCombinedCoaddFrame(frame, recipe));
           setCombinedCoadds(
             recipe.wiseStyle ? mapped : attachLuptonScale(mapped, { sat: 1.25 }),
           );
           setCombinedCoaddStatus(
             d.count
-              ? null
+              ? `Processed all ${d.n_exposures_input ?? ''} selected observations${d.n_exposures_skipped ? `; ${d.n_exposures_skipped} unavailable or excluded (see processing details)` : ''}.`
               : `No ${recipe.label.toLowerCase()} frames are available for this field.`,
           );
         })
@@ -285,7 +290,7 @@ export default function App() {
       band: 'w1w2',
       gaia: 'true',
     });
-    fetch(`/api/wise-stack?${params}`, { signal: controller.signal })
+    fetchApi(`/api/wise-stack?${params}`, { signal: controller.signal })
       .then((r) =>
         r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.detail || r.statusText))),
       )
@@ -311,7 +316,8 @@ export default function App() {
   const search = async ({ ra, dec, fov, survey, release = 'all', band, limit, wiseBand }) => {
     setLoading(true);
     setError(null);
-    setStatus('Querying SPHEREx + WiseView\u2026 first fetch of a field can take a minute.');
+    setProcessing({});
+    setStatus('Querying SPHEREx + WiseView\u2026 processing all observations in batches; large fields can take several minutes.');
     setSpherexFrames([]);
     setWiseFrames([]);
     setCombinedCoadds([]);
@@ -327,7 +333,6 @@ export default function App() {
       survey,
       release,
       band: band || '',
-      limit,
     });
 
     const sxParams = new URLSearchParams({
@@ -336,7 +341,6 @@ export default function App() {
       radius_arcsec: fov / 2,
       survey,
       release,
-      limit,
     });
     if (band) sxParams.set('band', band);
     const wiseParams = new URLSearchParams({
@@ -349,10 +353,10 @@ export default function App() {
 
     try {
       const [sxRes, wiseRes] = await Promise.allSettled([
-        fetch(`/api/epoch-stack?${sxParams}`).then((r) =>
+        fetchApi(`/api/epoch-stack?${sxParams}`).then((r) =>
           r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.detail || r.statusText))),
         ),
-        fetch(`/api/wise-stack?${wiseParams}`).then((r) =>
+        fetchApi(`/api/wise-stack?${wiseParams}`).then((r) =>
           r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.detail || r.statusText))),
         ),
       ]);
@@ -360,6 +364,10 @@ export default function App() {
       const messages = [];
       if (sxRes.status === 'fulfilled') {
         const d = sxRes.value;
+        setProcessing(previous => ({ ...previous, individualFrames: {
+          attempted: d.n_attempted ?? d.n_inventory, available: d.count,
+          skipped: d.n_exposures_skipped || 0, omissions: d.omissions || [],
+        } }));
         setSpherexFrames(
           d.cutouts.map((c) =>
             toFrame({
@@ -373,7 +381,7 @@ export default function App() {
         );
         messages.push(
           `SPHEREx: ${d.count} frames` +
-            (d.skipped_no_overlap ? ` (${d.skipped_no_overlap} skipped, no overlap)` : ''),
+            (d.n_exposures_skipped ? ` (${d.n_exposures_skipped} unavailable or excluded; see processing details)` : ' · all observations processed'),
         );
       } else {
         messages.push(`SPHEREx failed: ${sxRes.reason.message}`);
@@ -428,6 +436,20 @@ export default function App() {
   }, []);
 
   const [settingsSection, setSettingsSection] = useState(null);
+  const submitTarget = (event) => {
+    event.preventDefault();
+    if (loading) return;
+    const coords = parseCoords(form.coords);
+    if (!coords) {
+      setCoordsError('Enter RA and Dec in decimal degrees, e.g. 11.889632 28.089606');
+      return;
+    }
+    setCoordsError(null);
+    setSettingsSection(null);
+    search({ ...coords, fov: Number(form.fov), survey: form.survey,
+      release: form.release, band: form.bands.join(','),
+      limit: parseInt(form.limit, 10), wiseBand: form.wiseBand });
+  };
   return (
     <div className="app timeline-app">
       <header className="timeline-header">
@@ -441,6 +463,10 @@ export default function App() {
       </header>
       <div className="layout">
         <main className="viewers">
+          <form className="timeline-target-bar" aria-label="Target coordinates and field width" onSubmit={submitTarget}>
+            <TargetFields form={form} setForm={setForm} coordsError={coordsError} setCoordsError={setCoordsError} />
+            <button type="submit" disabled={loading}>{loading ? 'Loading…' : 'Fetch images'}</button>
+          </form>
           <div className="timeline-toolbar">
             <section className="panel-switch" aria-label="Visible panels">
               <span>Panels</span>
@@ -491,6 +517,11 @@ export default function App() {
             {loading && <span className="timeline-spinner" aria-hidden="true" />}
             {status || 'Choose a sky position and fetch images to begin.'}
           </div>
+          {Object.keys(processing).length > 0 && <details className="processing-details">
+            <summary>Observation processing details</summary>
+            <p>All discovered observations matching the selected release and channels are attempted. Download failures, missing metadata and no-overlap exclusions are listed below. Channel thresholds and quality masks still apply.</p>
+            <pre>{JSON.stringify(processing, null, 2)}</pre>
+          </details>}
           {error && <p className="status error" role="alert">{error}</p>}
           {coordsError && <p className="status error" role="alert">{coordsError}</p>}
           {view.showCombined && (
@@ -586,7 +617,7 @@ export default function App() {
         <ControlPanel
           settingsSection={settingsSection}
           setSettingsSection={setSettingsSection}
-          onSearch={search}
+          onSubmit={submitTarget}
           loading={loading}
           view={view}
           setView={setView}
