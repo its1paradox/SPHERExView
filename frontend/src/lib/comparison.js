@@ -33,7 +33,7 @@ export function readState(hash = '') {
     return p.has(key) && Number.isFinite(x) ? Math.max(lo, Math.min(hi, x)) : fallback;
   };
   return { form, display: {
-    imageFraction: bounded('imagearea', 60, 40, 70),
+    imageFraction: bounded('imagearea', 50, 20, 80),
     workspaceLayout: ['images', 'spectrum'].includes(p.get('workspace')) ? p.get('workspace') : 'split',
     imageView: p.get('images') === 'rgb' ? 'rgb' : 'detectors',
     rgbBackground: p.get('rgbbg') === 'neutral' ? 'neutral' : 'shared',
@@ -89,7 +89,7 @@ export function stateHash(form, display, epoch, pin) {
   p.set('specfreq', display.spectrumFrequency ? '1' : '0'); p.set('specsky', display.spectrumLocalSky ? '1' : '0');
   p.set('speclines', display.spectrumLines ? '1' : '0'); p.set('apertureoverlay', display.showAperture ? '1' : '0');
   p.set('speccomplete', display.spectrumComplete ? '1' : '0');
-  p.set('imagearea', display.imageFraction ?? 60);
+  p.set('imagearea', display.imageFraction ?? 50);
   p.set('workspace', ['images', 'spectrum'].includes(display.workspaceLayout) ? display.workspaceLayout : 'split');
   p.set('images', display.imageView === 'rgb' ? 'rgb' : 'detectors');
   p.set('rgbbg', display.rgbBackground === 'neutral' ? 'neutral' : 'shared');

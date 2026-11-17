@@ -1,3 +1,5 @@
+> Sizing findings superseded by [the panel resize and viewport-fit review](../ui-resize-2026-11-17/README.md).
+
 # Final research workspace UI review
 
 Verified the installed DR1 production build with the saved field at ICRS

@@ -140,13 +140,25 @@ test('real React entry builds seven tiles with a local spectrum, links pins and 
     const spectrumPlot = w.document.querySelector('.spectrum-plot').innerHTML;
     const fitsLink = w.document.querySelector('a[href$="epochs/0.fits"]').href;
     const pinnedBeforeLayout = readState(w.location.hash).pin;
-    const balance = w.document.querySelector('[aria-label="Image area"]');
-    assert.equal(balance.value, '60');
-    Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype, 'value').set.call(balance, '70'); balance.dispatchEvent(new w.Event('input', {bubbles: true}));
-    await settle(() => readState(w.location.hash).display.imageFraction === 70);
+    assert.equal(w.document.querySelector('[aria-label="Image area"]'), null, 'No detached layout slider');
+    const workspace = w.document.querySelector('.analysis-workspace');
+    workspace.getBoundingClientRect = () => ({width:1000,top:160});
+    const resize = w.document.querySelector('[aria-label="Resize image panel e"]');
+    resize.dispatchEvent(new w.KeyboardEvent('keydown', {key:'ArrowRight',bubbles:true}));
+    await settle(() => readState(w.location.hash).display.imageFraction === 52);
     assert.equal(w.document.querySelector('.spectrum-plot').innerHTML, spectrumPlot);
-    [...w.document.querySelectorAll('button')].find(b => b.textContent === 'Reset layout').click();
+    resize.dispatchEvent(new w.KeyboardEvent('keydown', {key:'Home',bubbles:true}));
+    await settle(() => readState(w.location.hash).display.imageFraction === 50);
+    assert.equal(w.document.querySelectorAll('.panel-resize').length,10);
+    resize.setPointerCapture = () => {}; resize.hasPointerCapture = () => true; resize.releasePointerCapture = () => {};
+    const pointer = (type,x) => {const e=new w.Event(type,{bubbles:true});Object.assign(e,{button:0,clientX:x,clientY:300,pointerId:1});resize.dispatchEvent(e);};
+    pointer('pointerdown',500); pointer('pointermove',600);
     await settle(() => readState(w.location.hash).display.imageFraction === 60);
+    pointer('pointercancel',600); pointer('pointermove',700);
+    await new Promise(r=>setTimeout(r,20));
+    assert.equal(readState(w.location.hash).display.imageFraction,60,'Cancelled drag cannot keep resizing');
+    [...w.document.querySelectorAll('button')].find(b => b.textContent === 'Fit workspace').click();
+    await settle(() => readState(w.location.hash).display.imageFraction === 50);
 
     const workspaceButtons = [...w.document.querySelectorAll('.workspace-view-switch button')];
     for (const [label, value] of [['Images only', 'images'], ['Spectrum only', 'spectrum'], ['Images + spectrum', 'split']]) {

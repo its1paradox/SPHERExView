@@ -7,6 +7,7 @@ import { wavelengthFrame, wavelengthPixel, wavelengthDescription, wavelengthProv
 import ExpandedDetector from './ExpandedDetector.jsx';
 import LiveSpectrum from './LiveSpectrum.jsx';
 import WorkspaceSettings from './WorkspaceSettings.jsx';
+import { useWorkspaceResize, useFittedImages, ResizeHandles } from './WorkspaceResize.jsx';
 import { rgbFrame, rgbDisplay, rgbPixel, RGB_METHOD } from '../lib/liveSpectrum.js';
 import '../comparison.css';
 
@@ -170,7 +171,7 @@ function Tile({ tile, values, result, display, setDisplay, limits, pin, setPin, 
       {tile.status !== 'ok' && <div className="detector-empty"><strong>{rgb ? 'RGB needs all six detectors' : tile.status === 'missing' ? 'No observations in this epoch' : 'No usable coadd'}</strong><span>{rgb ? 'No common six-detector coverage. Individual tiles and spectra remain available.' : tile.n_accepted ? `Coverage below ${result.recipe.min_exposures} exposures per pixel` : Object.keys(tile.failures).join(' · ').replaceAll('_', ' ') || 'This detector remains empty'}</span></div>}
       {!rgb && tile.status === 'ok' && display.mode === 'color' && !referenceAvailable && <div className="detector-empty"><strong>Reference D{display.reference} unavailable</strong><span>Select another reference or use grayscale to inspect D{tile.detector}.</span></div>}
     </div>
-    <footer>{rgb && <div className="tile-color-key rgb-key"><span>R: (D5+6)/2</span><span>G: (D3+4)/2</span><span>B: (D1+2)/2</span></div>}<span>{tile.n_accepted} / {tile.n_selected} exposures used{tile.n_selected < tile.n_inventory ? ' · subset' : ''}</span><span>{date(tile.mjd_start)}{tile.mjd_end > tile.mjd_start ? ` → ${date(tile.mjd_end)}` : ''} UTC</span></footer>
+    <footer>{rgb && <div className="tile-color-key rgb-key"><span>R: (D5+6)/2</span><span>G: (D3+4)/2</span><span>B: (D1+2)/2</span></div>}<span>{tile.n_accepted} / {tile.n_selected} exposures used{tile.n_selected < tile.n_inventory ? ' · subset' : ''}</span><span title={`${date(tile.mjd_start)} → ${date(tile.mjd_end)} UTC`}>{date(tile.mjd_start)}{tile.mjd_end > tile.mjd_start ? ` → ${date(tile.mjd_end)}` : ''} UTC</span></footer>
   </article>;
 }
 
@@ -184,6 +185,8 @@ export default function DetectorComparison() {
   const [expanded, setExpanded] = useState(false);
   const [settingsSection, setSettingsSection] = useState(null);
   const imageView = display.imageView, workspaceLayout = display.workspaceLayout;
+  const workspace = useWorkspaceResize(display, setDisplay);
+  useFittedImages(workspace.ref, [result, imageView, display.mode, workspaceLayout]);
   const setImageView = value => { setHover(null); show('imageView', value); };
   const focusWorkspace = value => { setHover(null); show('workspaceLayout', value); };
   const expandOpener = useRef(null);
@@ -380,12 +383,13 @@ export default function DetectorComparison() {
         </div>
         <div className="workspace-summary">
         <div className="compare-status" role="status">{busy && <span className="comparison-spinner" />}{status}{result?.preview_subset && <strong className="subset-badge">Preview subset</strong>}</div>
-        <div className="workspace-balance" hidden={workspaceLayout !== 'split'}><label>Image area <input aria-label="Image area" type="range" min="40" max="70" step="5" value={display.imageFraction} onChange={event => show('imageFraction', Number(event.target.value))} /><output>{display.imageFraction}%</output></label><button type="button" onClick={() => show('imageFraction', 60)}>Reset layout</button></div>
+        <button className="fit-workspace" type="button" onClick={workspace.reset} title="Restore both panels to fit the available screen">Fit workspace</button>
         </div>
         {error && <div className="compare-error" role="alert">{error}</div>}
         {pending && <p className="compare-pending">Recipe changes pending. The displayed coadds and exports still use the last completed build.</p>}
-        <div className="analysis-workspace" data-image-view={imageView} data-workspace-view={workspaceLayout} style={{ '--image-share': `${display.imageFraction}fr`, '--spectrum-share': `${100 - display.imageFraction}fr` }}>
+        <div ref={workspace.ref} className="analysis-workspace" data-image-view={imageView} data-workspace-view={workspaceLayout} style={{ '--image-share': `${display.imageFraction}fr`, '--spectrum-share': `${100 - display.imageFraction}fr`, '--image-height': `${workspace.height('image')}px`, '--spectrum-height': `${workspace.height('spectrum')}px` }}>
         <section className="image-workspace" aria-label="Linked detector images" data-image-view={imageView} hidden={workspaceLayout === 'spectrum'}>
+          <ResizeHandles panel="image" workspace={workspace} />
           <div className="workspace-panel-heading"><div><span className="workspace-eyebrow">01 / Spatial inspection</span><h2>Detector images</h2></div><div className="view-switch" role="group" aria-label="Image layout"><button aria-pressed={imageView === 'detectors'} onClick={() => setImageView('detectors')}>Six detectors</button><button aria-pressed={imageView === 'rgb'} onClick={() => setImageView('rgb')}>RGB composite</button></div></div>
           <div className="image-deck">{['detectors', 'rgb'].map(view => <div key={view} className="image-deck-view" data-view={view} aria-hidden={imageView !== view} inert={imageView !== view ? '' : undefined}>
           <section className="view-toolbar" aria-label="Comparison display options">{view === 'rgb' ? rgbControls : modeSwitch}<div className="image-actions"><button onClick={() => { setHover(null); setDisplay(v => ({ ...v, zoom: 1, panX: 0, panY: 0 })); }}>Fit field</button><button onClick={() => setSettingsSection('display')}>Adjust display</button></div></section>
@@ -396,6 +400,7 @@ export default function DetectorComparison() {
           </div>)}</div>
         </section>
         <section className="spectrum-workspace" aria-label="Spectral analysis" hidden={workspaceLayout === 'images'}>
+        <ResizeHandles panel="spectrum" workspace={workspace} />
         {spectrumView || <div className="spectrum-welcome"><span className="workspace-eyebrow">02 / Spectral analysis</span><h2>Your spectrum, beside the sky</h2><p>Build a field, then hover an image to inspect its spectrum. Click to hold a position while you compare detectors and epochs.</p><button className="compare-primary" onClick={() => setSettingsSection('target')}>Choose a target</button></div>}
         {result && <details className="source-details"><summary>Pixel measurements &amp; uncertainties</summary><section className="source-readout"><div className="source-title"><h2>{preview ? 'Cursor position' : pin ? 'Pinned source' : 'Linked source readout'}</h2>{chosenSky && <span>{chosenSky.ra.toFixed(7)}°, {chosenSky.dec.toFixed(7)}° ICRS</span>}{pin && <button onClick={() => setPin(null)}>Clear pin</button>}</div>
           <div className="readout-scroll"><table><thead><tr><th>Detector</th><th>I (MJy/sr)</th><th>Formal σ</th><th>Exposures</th><th>λ mean [min–max], µm</th><th>Bandwidth, µm</th><th>Time range, MJD UTC</th>{display.mode === 'color' && <><th>ΔI vs ref (MJy/sr)</th><th>ΔI / formal σΔ</th></>}</tr></thead><tbody>{DETECTORS.map((d, i) => { const m = measurements?.[i]; return <tr key={d}><th>D{d}</th><td>{fmt(m?.intensity)}</td><td>{fmt(m?.variance >= 0 ? Math.sqrt(m.variance) : NaN)}</td><td>{fmt(m?.coverage)}</td><td>{m ? `${fmt(m.wavelength)} [${fmt(m.lambda_min)}–${fmt(m.lambda_max)}]` : '—'}</td><td>{fmt(m?.bandwidth)}</td><td>{m ? `${fmt(m.mjd_min, 10)}–${fmt(m.mjd_max, 10)}` : '—'}</td>{display.mode === 'color' && <><td>{fmt(colorMeasurements?.[i]?.difference)}</td><td>{fmt(colorMeasurements?.[i]?.z)}</td></>}</tr>; })}</tbody></table></div>

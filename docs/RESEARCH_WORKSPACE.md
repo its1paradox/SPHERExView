@@ -13,14 +13,15 @@ stay mounted when switching sections, preserving draft settings.
   display mode, with recorded offsets and explicit scientific limitations. See
   [the field investigation and invariance checks](validation/rgb-background-2026-11-17/README.md).
 - The desktop workspace pairs a three-column, two-row detector grid with the
-  aperture spectrum. Images receive 60% of the available split width by default;
-  Image area adjusts this from 40–70%, and Reset layout restores 60%.
+  aperture spectrum. The default split is equal width.
+  Drag panel sides or lower corners to resize; Fit workspace restores the split
+  and viewport-fitted heights. Keyboard arrows resize and Home resets.
 - Images only and Spectrum only use the full available workspace width.
   Images + spectrum restores the split. Focus, image view and balance persist
   in the URL. These controls do not rebuild or change scientific products.
 - Both image views share stable panel dimensions. Every canvas remains square,
-  and Fit field resets only display zoom and pan. The panel reserves the larger
-  view height to avoid moving adjacent content when switching.
+  and Fit field resets only display zoom and pan. The image stage constrains both width and height so the full field fits
+  without stretching or cropping. Switching views preserves panel dimensions.
 - Six detectors / RGB composite switches the spatial view without rebuilding
   scientific arrays or changing the sky pin, epoch, zoom or background choice.
 - Target & recipe opens build controls; Adjust display opens image controls;
@@ -38,8 +39,8 @@ stay mounted when switching sections, preserving draft settings.
 - Below 900 px, the panels stack in document flow. The six-detector grid keeps
   three columns; individual tiles can be expanded for closer inspection.
   Large images and expanded details can require ordinary vertical scrolling.
-- Target and playback share a compact sticky command bar; status and image-area
-  controls share one row. The focus selector is in the header.
+- Target and playback share a compact sticky command bar; status and Fit workspace
+  share one row. The image-area slider has been removed. The focus selector is in the header.
 
 ## WISE → SPHEREx timeline
 
