@@ -22,6 +22,12 @@ The app runs as UID 10001 with a read-only container filesystem, temporary
 Container logs rotate. The app has a 1400 MiB memory limit; this is a bounded
 pilot and large jobs can still exhaust memory. Caddy has a 128 MiB limit.
 
+Lightsail wraps launch scripts with `/bin/sh`: a Bash shebang inside the
+dashboard script does not select Bash. Invoke `bash -c '...'` explicitly,
+or connect using browser SSH and run the bootstrap with `sudo bash`.
+After installation, reboot if /var/run/reboot-required exists, then verify
+the services recover and /api/health returns 200.
+
 Open TCP 80/443 in the Lightsail firewall. Keep port 10000 private (only bound
 to host loopback). Restrict SSH to Lightsail browser SSH or the operator IP.
 Attach the static IP before publishing DNS.
@@ -35,6 +41,19 @@ In deploy/lightsail/.env write `SITE_ADDRESS=your.actual.hostname` and run
 renew TLS certificates; keep TCP 80 and 443 open. The default :80 address
 allows initial HTTP checks before DNS is ready. Domain registration is a
 separate, unapproved cost; cosmiccodex.com is a requested name, not owned yet.
+
+## Deployed instance (2026-11-17)
+
+- Instance: spherexview-pilot, us-west-2a, Ubuntu 24.04.
+- Static IP: 52.11.76.174 (resource spherexview-public-ip).
+- Temporary HTTPS: https://spherexview.52-11-76-174.sslip.io
+- Initial application image built from commit ed76a5b0f3a0e3bf2830efd40d27deec928ef7ee.
+- Firewall: HTTP 80; HTTPS 443 IPv4; SSH only through Lightsail browser SSH.
+- Caddy certificates persist under /srv/spherexview/caddy-data.
+- No snapshots, CDN, load balancer, extra disk or domain were purchased.
+- cosmiccodex.com is already registered according to Verisign RDAP; choose
+  another domain or arrange an ownership transfer before configuring it.
+- sslip.io is a third-party DNS service, suitable as a temporary address.
 
 ## Operations
 
