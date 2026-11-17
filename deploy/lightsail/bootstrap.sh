@@ -3,7 +3,7 @@
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get upgrade -y
+apt-get --with-new-pkgs upgrade -y
 apt-get install -y docker.io docker-compose-v2 ca-certificates curl unattended-upgrades
 systemctl enable --now docker
 
