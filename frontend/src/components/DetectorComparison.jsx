@@ -1,4 +1,5 @@
 import { fetchApi } from '../lib/api';
+import { beginResearch, saveResearchView } from '../lib/research.js';
 import ReleaseSelect from './ReleaseSelect.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { pixelToWorld, worldToPixel } from '../lib/render.js';
@@ -197,6 +198,21 @@ export default function DetectorComparison() {
   const update = (key, value) => setForm(f => ({ ...f, [key]: value }));
   const show = (key, value) => setDisplay(v => ({ ...v, [key]: value }));
   const pending = resultForm && JSON.stringify(form) !== JSON.stringify(resultForm);
+  useEffect(() => {
+    if (!resultForm || busy) return;
+    const timer = setTimeout(() => saveResearchView(recipeFromForm(resultForm), 'detectors', stateHash(resultForm, display, epoch, pin))
+      .catch(e => setError(`History could not be saved: ${e.message}`)), 600);
+    return () => clearTimeout(timer);
+  }, [resultForm, busy, display, epoch, pin]);
+
+  const downloadSaved = async (event, url, filename) => {
+    event.preventDefault();
+    try {
+      const response = await fetchApi(url);
+      if (!response.ok) throw new Error('Saved export is unavailable. Reopen the target from the dashboard.');
+      saveBlob(await response.blob(), filename);
+    } catch (e) { setError(e.message); }
+  };
 
   const build = async (event) => {
     event?.preventDefault();
@@ -206,6 +222,8 @@ export default function DetectorComparison() {
     const snapshot = structuredClone(form), current = ++generation.current;
     setBusy(true); setPlaying(false); setError(''); setStatus('Starting comparison…');
     try {
+      await beginResearch(recipe);
+      await saveResearchView(recipe, 'detectors', stateHash(snapshot, display, 0, pin));
       const started = await jsonRequest('/api/detector-comparison', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(recipe) });
       if (!mounted.current || current !== generation.current) return;
       setJobId(started.job_id);
@@ -238,6 +256,7 @@ export default function DetectorComparison() {
         setBusy(true); setStatus('Restoring completed comparison…');
         (async () => {
           try {
+            await beginResearch(recipeFromForm(initial.form));
             if (!/^[0-9a-f]{32}$/.test(savedResult)) throw new Error('Invalid saved result link. Choose Target & recipe to build a new comparison.');
             const raw = await jsonRequest(`/api/detector-comparison/${savedResult}/result`);
             const requested = recipeFromForm(initial.form);
@@ -365,7 +384,7 @@ export default function DetectorComparison() {
   </section>;
 
   return <div className="compare-page" data-mode={display.mode}>
-    <header className="compare-header"><div><a href="index.html" className="compare-brand">SpherexMultiView</a><h1>Detector &amp; spectrum explorer</h1></div><div className="workspace-view-switch" role="group" aria-label="Workspace view">{[['images', 'Images only'], ['split', 'Images + spectrum'], ['spectrum', 'Spectrum only']].map(([value, label]) => <button type="button" key={value} aria-pressed={workspaceLayout === value} onClick={() => focusWorkspace(value)}>{label}</button>)}</div><span className="comparison-tag">DR1 + QR3 · ICRS</span><nav className="workspace-actions" aria-label="Workspace controls"><button onClick={() => setSettingsSection('target')}>Target &amp; recipe{pending ? ' •' : ''}</button><button onClick={() => setSettingsSection('data')}>Exports &amp; provenance</button></nav></header>
+    <header className="compare-header"><div><a href="index.html" className="compare-brand" title="Return to research library">SPHERExView · Library</a><h1>Detector &amp; spectrum explorer</h1></div><div className="workspace-view-switch" role="group" aria-label="Workspace view">{[['images', 'Images only'], ['split', 'Images + spectrum'], ['spectrum', 'Spectrum only']].map(([value, label]) => <button type="button" key={value} aria-pressed={workspaceLayout === value} onClick={() => focusWorkspace(value)}>{label}</button>)}</div><span className="comparison-tag">DR1 + QR3 · ICRS</span><nav className="workspace-actions" aria-label="Workspace controls"><button onClick={() => setSettingsSection('target')}>Target &amp; recipe{pending ? ' •' : ''}</button><button onClick={() => setSettingsSection('data')}>Exports &amp; provenance</button></nav></header>
     <div className="compare-layout">
       <main className="compare-main">
         <div className="workspace-commandbar">
@@ -453,7 +472,7 @@ export default function DetectorComparison() {
           <button onClick={() => setDisplay(v => ({ ...v, zoom: 1, panX: 0, panY: 0 }))}>Reset field of view</button>
           <label className="compare-check"><input type="checkbox" disabled={display.mode !== 'gray'} checked={display.invert} onChange={e => show('invert', e.target.checked)} />Invert grayscale</label><label className="compare-check"><input type="checkbox" checked={display.smooth} onChange={e => show('smooth', e.target.checked)} />Display smoothing</label><p>A shared scale is frozen across all loaded epochs; grayscale limits and inversion apply in grayscale mode. Display adjustments never rebuild or alter scientific arrays.</p>
         </fieldset>
-        {result && <fieldset data-settings-section="data"><legend>Export &amp; provenance</legend><details className="advanced-photometry"><summary>Advanced: IRSA PSF-fit spectrum</summary><p>A separate extraction using IRSA’s PSF-fitting service. This is a different measurement from the local aperture spectrum and submits a remote processing job. It uses the exact pinned position, or the field center when unpinned, and can take minutes or longer.</p><a className="compare-download" href={`spectrum.html#${new URLSearchParams({ ra: pin?.ra ?? result.recipe.ra, dec: pin?.dec ?? result.recipe.dec, release: result.recipe.release })}`} target="_blank" rel="noopener noreferrer">Open IRSA PSF-fit viewer{pin ? ' at pinned position' : ' at field center'} ↗</a></details><button onClick={exportFigure}>Export tiles PNG + settings</button><a className="compare-download" href={`/api/detector-comparison/${resultJobId}/epochs/${currentEpoch.index}.fits`}>Download epoch FITS</a>{(currentEpoch.spectra_enabled || currentEpoch.spectra.length > 0) && <a className="compare-download" href={`/api/detector-comparison/${resultJobId}/spectra/${currentEpoch.index}.fits`}>Download aperture spectra FITS</a>}<a className="compare-download" href={`/api/detector-comparison/${resultJobId}/manifest`}>Download full manifest</a><p>FITS includes intensity, variance, coverage, weights, wavelength/time maps, WCS and input provenance. DR1 and QR3 share compatible calibrations; each input retains its release provenance. PNG retains labels and display limits.</p><details><summary>{selected === 7 ? 'All detectors' : `D${selected}`} input provenance ({currentInputs.length})</summary><div className="comparison-inputs">{currentInputs.length ? currentInputs.map((input, i) => <article key={i}><a href={input.url} target="_blank" rel="noreferrer">{input.obs_id}</a><span>{input.status.replaceAll('_', ' ')}</span>{input.reason && <p>{input.reason}</p>}{input.spectrum_reason && <p>Aperture spectrum unavailable: {input.spectrum_reason}</p>}{input.pipeline_version && <small>{input.data_release?.toUpperCase()} · Pipeline {input.pipeline_version} · PSF header: {input.psf_header_status.replaceAll('_', ' ')}</small>}</article>) : <p>No observations for D{selected} in this epoch.</p>}</div></details></fieldset>}
+        {result && <fieldset data-settings-section="data"><legend>Export &amp; provenance</legend><details className="advanced-photometry"><summary>Advanced: IRSA PSF-fit spectrum</summary><p>A separate extraction using IRSA’s PSF-fitting service. This is a different measurement from the local aperture spectrum and submits a remote processing job. It uses the exact pinned position, or the field center when unpinned, and can take minutes or longer.</p><a className="compare-download" href={`spectrum.html#${new URLSearchParams({ ra: pin?.ra ?? result.recipe.ra, dec: pin?.dec ?? result.recipe.dec, release: result.recipe.release })}`} target="_blank" rel="noopener noreferrer">Open IRSA PSF-fit viewer{pin ? ' at pinned position' : ' at field center'} ↗</a></details><button onClick={exportFigure}>Export tiles PNG + settings</button><button className="compare-download" data-export-url={`/api/detector-comparison/${resultJobId}/epochs/${currentEpoch.index}.fits`} onClick={e => downloadSaved(e, `/api/detector-comparison/${resultJobId}/epochs/${currentEpoch.index}.fits`, `spherex-${resultJobId}-epoch.fits`)}>Download epoch FITS</button>{(currentEpoch.spectra_enabled || currentEpoch.spectra.length > 0) && <button className="compare-download" onClick={e => downloadSaved(e, `/api/detector-comparison/${resultJobId}/spectra/${currentEpoch.index}.fits`, `spherex-${resultJobId}-spectrum.fits`)}>Download aperture spectra FITS</button>}<button className="compare-download" onClick={e => downloadSaved(e, `/api/detector-comparison/${resultJobId}/manifest`, `spherex-${resultJobId}-manifest.json`)}>Download full manifest</button><p>FITS includes intensity, variance, coverage, weights, wavelength/time maps, WCS and input provenance. DR1 and QR3 share compatible calibrations; each input retains its release provenance. PNG retains labels and display limits.</p><details><summary>{selected === 7 ? 'All detectors' : `D${selected}`} input provenance ({currentInputs.length})</summary><div className="comparison-inputs">{currentInputs.length ? currentInputs.map((input, i) => <article key={i}><a href={input.url} target="_blank" rel="noreferrer">{input.obs_id}</a><span>{input.status.replaceAll('_', ' ')}</span>{input.reason && <p>{input.reason}</p>}{input.spectrum_reason && <p>Aperture spectrum unavailable: {input.spectrum_reason}</p>}{input.pipeline_version && <small>{input.data_release?.toUpperCase()} · Pipeline {input.pipeline_version} · PSF header: {input.psf_header_status.replaceAll('_', ' ')}</small>}</article>) : <p>No observations for D{selected} in this epoch.</p>}</div></details></fieldset>}
         <details data-settings-section="data" className="comparison-science"><summary>Scientific interpretation</summary><p>Each tile averages the detector’s sampled LVF wavelengths. Different PSFs, depths and wavelength distributions affect source prominence. These images are inspection products; use exposure-level spectra for quantitative source comparisons.</p><p>PSFs are native and unmatched. A color fringe or bright core can reflect PSF mismatch. Detector coadds are not six fixed photometric filters, and color is not an object classification. Formal uncertainty is not a complete measurement error budget.</p><a href="https://caltech-ipac.github.io/spherex-archive-documentation/spherex-data-products/" target="_blank" rel="noreferrer">IRSA data-product documentation ↗</a></details>
       </WorkspaceSettings>
     </div>

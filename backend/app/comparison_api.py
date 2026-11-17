@@ -7,6 +7,9 @@ import re
 import threading
 import time
 import uuid
+import hashlib
+import shutil
+from contextvars import copy_context
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -17,6 +20,7 @@ from . import detector_comparison as dc
 from . import spherex_client as sx
 from . import releases
 from . import hosting
+from . import research
 
 router = APIRouter(prefix="/api/detector-comparison", tags=["detector comparison"])
 _max_jobs = int(os.getenv("SPHEREX_MAX_COMPARISONS", "2"))
@@ -28,7 +32,7 @@ _jobs = {}
 def result_dir(job_id):
     if not re.fullmatch(r"[0-9a-f]{32}", job_id):
         raise HTTPException(404, "Comparison not found")
-    return Path(sx.CACHE_DIR) / "comparisons" / job_id
+    return research.product_dir(sx.CACHE_DIR) / job_id
 
 
 def _run(job_id, recipe, cancel):
@@ -46,12 +50,19 @@ def _run(job_id, recipe, cancel):
         tmp = path / "result.tmp"
         tmp.write_text(json.dumps(result, allow_nan=False, separators=(",", ":")))
         tmp.replace(path / "result.json")
+        accepted = sum(row.get("status") == "accepted" for row in result.get("inputs", []))
+        selected = result.get("n_selected", accepted)
+        research.tool_update("detectors", checked_at=time.time(),
+                             status="incomplete" if accepted < selected else "saved",
+                             accepted=accepted, selected=selected)
         with _lock:
             _jobs[job_id].update(status="complete", message="Comparison ready")
     except dc.Cancelled:
+        research.tool_update("detectors", status="cancelled")
         with _lock:
             _jobs[job_id].update(status="cancelled", message="Cancelled")
     except Exception as exc:
+        research.tool_update("detectors", status="incomplete")
         with _lock:
             _jobs[job_id].update(status="error", message=str(exc))
 
@@ -61,6 +72,7 @@ def _run_guarded(job_id, recipe, cancel, lease):
         _run(job_id, recipe, cancel)
     finally:
         lease.release()
+        research.release(research.current.get())
 
 
 @router.post("", status_code=202)
@@ -70,6 +82,16 @@ def start_comparison(recipe: dc.Recipe):
     except releases.RetiredReleaseError as exc:
         raise HTTPException(410, str(exc)) from exc
     hosting.validate_comparison(recipe)
+    workspace = research.current.get()
+    index = None
+    if workspace:
+        key = hashlib.sha256(recipe.model_dump_json().encode()).hexdigest()
+        index = workspace / "data" / "job-index" / (key + ".json")
+        with _lock:
+            if index.is_file():
+                old = json.loads(index.read_text())["job_id"]
+                if (result_dir(old) / "result.json").is_file() or _jobs.get(old, {}).get("status") in ("queued", "running"):
+                    return {"job_id": old, "status": "saved"}
     lease = hosting.acquire()
     job_id = None
     try:
@@ -81,8 +103,16 @@ def start_comparison(recipe: dc.Recipe):
             for key in terminal[:-8]:
                 _jobs.pop(key)
             job_id, cancel = uuid.uuid4().hex, threading.Event()
-            _jobs[job_id] = {"status": "queued", "message": "Queued", "done": 0, "total": 0, "cancel": cancel, "created": time.time()}
-        _pool.submit(_run_guarded, job_id, recipe, cancel, lease)
+            _jobs[job_id] = {"status": "queued", "message": "Queued", "done": 0, "total": 0, "cancel": cancel, "created": time.time(), "workspace": str(workspace) if workspace else None}
+        if index:
+            research.write_json(index, {"job_id": job_id})
+        research.tool_update("detectors", status="processing")
+        research.hold(workspace)
+        try:
+            _pool.submit(copy_context().run, _run_guarded, job_id, recipe, cancel, lease)
+        except BaseException:
+            research.release(workspace)
+            raise
         return {"job_id": job_id, "status": "queued"}
     except BaseException:
         if job_id is not None:
@@ -97,8 +127,8 @@ def comparison_status(job_id: str):
     path = result_dir(job_id)
     with _lock:
         job = _jobs.get(job_id)
-        if job:
-            return {"job_id": job_id, **{key: value for key, value in job.items() if key != "cancel"}}
+        if job and job.get("workspace") == (str(research.current.get()) if research.current.get() else None):
+            return {"job_id": job_id, **{key: value for key, value in job.items() if key not in ("cancel", "workspace")}}
     if (path / "result.json").is_file():
         return {"job_id": job_id, "status": "complete", "message": "Comparison ready"}
     raise HTTPException(404, "Comparison not found")
@@ -109,7 +139,7 @@ def cancel_comparison(job_id: str):
     result_dir(job_id)
     with _lock:
         job = _jobs.get(job_id)
-        if not job:
+        if not job or job.get("workspace") != (str(research.current.get()) if research.current.get() else None):
             raise HTTPException(404, "Comparison not found")
         if job["status"] in ("queued", "running"):
             job["cancel"].set()
@@ -119,6 +149,13 @@ def cancel_comparison(job_id: str):
 
 def _completed(job_id):
     path = result_dir(job_id)
+    # A pre-dashboard public result link may still be opened. Import its
+    # immutable products into this workspace before displaying/accounting them.
+    legacy = Path(sx.CACHE_DIR) / "comparisons" / job_id
+    if research.current.get() and not path.exists() and (legacy / "result.json").is_file():
+        with research.lock:
+            if not path.exists():
+                shutil.copytree(legacy, path)
     if not (path / "result.json").is_file():
         raise HTTPException(409, "Comparison is not complete")
     return path

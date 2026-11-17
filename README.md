@@ -34,6 +34,44 @@ respect for the archive's requested wait time. See
 
 ## Using SPHERExView
 
+The landing page is your **research library**. Enter a sky position and field
+width, then choose **WISE–SPHEREx** or **6 detectors**. Searches from either
+tool are retained automatically, with one entry per exact coordinates, field
+width, survey and release selection. Each tool remembers its own recipe and
+display settings. The library link in either viewer returns to this dashboard.
+
+The dashboard reports actual server file sizes: source FITS, frame pixels,
+timeline products, detector products and recipe indexes. Saved results and
+downloads survive server restarts and have no automatic expiry. Reopening
+an unchanged recipe reuses its saved result. New recipes calculate on demand.
+
+- **Refresh data:** choose a tool, re-query the archive, and rebuild its saved
+  recipe. Immutable source FITS are reused. Previous detector exports remain
+  stored until the cache is cleared. The weekly reminder is not a claim that
+  new observations exist; release selection and scientific filters still apply.
+- **Clear cached files:** remove this field's server files but retain the
+  history entry and recipes. Reopening either tool rebuilds its products.
+- **Remove target and data:** delete both the history entry and its files.
+  These actions do not delete exports already downloaded to your computer.
+
+History is private to the current browser, without an account. A random access
+key is kept in browser site storage and sent in a request header, never in
+shared target URLs. Clearing browser site data can lose access to the library.
+New targets are isolated under `SPHEREX_CACHE_DIR/research/`; source files and
+calibration-path memoization are scoped to each workspace. Shared pre-dashboard
+caches are not included in the library's totals or deleted by its controls.
+Existing public saved-result links still work; opening one imports its products
+into the new workspace. Historical searches cannot be reconstructed automatically.
+
+Use the existing single-process server deployment: active-job guards and metadata
+locks are process-local. Refresh and deletion return an explicit conflict while
+a workspace is processing, including outstanding downloads during cancellation.
+Retain the cache volume across deployments and keep the public disk-space guard
+enabled. No additional hosted database or paid service is required.
+
+The WISE timeline is also available directly at `timeline.html`; older
+`index.html#ra=…&dec=…` bookmarks continue to open the timeline.
+
 Enter **RA and Dec in decimal degrees**, choose a field of view in arcseconds,
 and click **Fetch images**. The default view combines WISE W1+W2 color epochs
 with SPHEREx D4+D6 color coadds. All eligible observations are processed; there

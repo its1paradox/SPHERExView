@@ -19,7 +19,8 @@ from dataclasses import dataclass
 from collections import deque
 from contextlib import ExitStack
 from concurrent.futures import ThreadPoolExecutor
-from functools import lru_cache
+from contextvars import copy_context
+from . import research
 from pathlib import Path
 from typing import Callable, Literal
 
@@ -207,7 +208,7 @@ def _group_epochs_one_family(images, recipe):
     return groups
 
 
-@lru_cache(maxsize=48)
+@research.file_cache(maxsize=48)
 def calibration_file(detector, release, version=None):
     # Versioned by release; the full-resolution product is verified against
     # each exposure below. A missing/mismatched calibration excludes the input.
@@ -507,7 +508,7 @@ def prefetch_downloads(images, recipe, downloader, cancelled):
             if recipe.include_spectra:
                 cutout_size += 5 * recipe.aperture_radius_arcsec + 24.8
             url = sx.get_cutout_url(im.access_url, recipe.ra, recipe.dec, cutout_size)
-            queue.append((im, url, pool.submit(downloader, url)))
+            queue.append((im, url, pool.submit(copy_context().run, downloader, url)))
     try:
         fill()
         while queue:
@@ -516,7 +517,9 @@ def prefetch_downloads(images, recipe, downloader, cancelled):
             yield queue.popleft()
             fill()
     finally:
-        pool.shutdown(wait=False, cancel_futures=True)
+        # Retain the workspace lease until downloads stop writing. A cancelled
+        # job must not race a user's subsequent cache deletion.
+        pool.shutdown(wait=True, cancel_futures=True)
 
 
 def build(recipe: Recipe, output_dir: Path, progress: Callable, cancelled: threading.Event,

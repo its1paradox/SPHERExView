@@ -4,7 +4,7 @@ Operate on native pixels, before coadd resampling. Elliptical pixel apertures
 are the local affine image of a fixed sky circle; Photutils supplies exact
 pixel overlap. The small-aperture affine approximation is recorded explicitly.
 """
-from functools import lru_cache
+from . import research
 import hashlib
 import json
 import re
@@ -46,7 +46,7 @@ METHOD = {
 }
 
 
-@lru_cache(maxsize=24)
+@research.file_cache(maxsize=24)
 def solid_angle_file(detector, release, version):
     if release not in AREA_VERSIONS or not re.fullmatch(r"cal-sapm-v\d+-\d{4}-\d{3}", version):
         raise ValueError("Unsupported solid-angle calibration")

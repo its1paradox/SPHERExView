@@ -11,6 +11,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
+        timeline: resolve(__dirname, 'timeline.html'),
         spectrum: resolve(__dirname, 'spectrum.html'),
         blink: resolve(__dirname, 'blink.html'),
         compare: resolve(__dirname, 'compare.html'),

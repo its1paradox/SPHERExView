@@ -34,6 +34,7 @@ from astropy.io import fits
 from . import coadd as cx
 from . import releases
 from . import hosting
+from . import research
 from . import batching
 from . import imaging
 from . import spectra_client as spx
@@ -52,6 +53,8 @@ os.makedirs(os.path.join(STATIC_DIR, "cutouts"), exist_ok=True)
 
 app = FastAPI(title="SPHERExView", version="0.4.0")
 app.include_router(comparison_router)
+app.include_router(research.router)
+app.add_middleware(research.ResearchMiddleware)
 app.add_middleware(hosting.PublicAdmissionMiddleware)
 
 app.add_middleware(
@@ -166,7 +169,7 @@ def _build_stack(
             batching.check_space(STATIC_DIR)
             batch = images[idx : idx + workers]
             idx += len(batch)
-            for res in pool.map(fetch_one, batch):
+            for res in research.map_context(pool, fetch_one, batch):
                 if "failure" in res:
                     omissions.append(res["failure"])
                     skipped += 1
@@ -174,7 +177,7 @@ def _build_stack(
                     payload = {"data_b64": res.pop("data_b64")}
                     encoded = json.dumps(payload)
                     name = f"timeline-{hashlib.sha256(encoded.encode()).hexdigest()}.json"
-                    destination = os.path.join(STATIC_DIR, "cutouts", name)
+                    destination = str(research.assets_dir(STATIC_DIR) / name)
                     if not os.path.exists(destination):
                         temporary = destination + f".{uuid.uuid4().hex}.tmp"
                         try:
@@ -184,7 +187,7 @@ def _build_stack(
                         finally:
                             if os.path.exists(temporary):
                                 os.unlink(temporary)
-                    res["data_url"] = f"/static/cutouts/{name}"
+                    res["data_url"] = research.asset_url(name)
                     cutouts.append(res)
 
     cutouts.sort(key=lambda c: (c["metadata"].get("mjd_mid") is None, c["metadata"].get("mjd_mid") or 0))
@@ -207,6 +210,7 @@ def _build_stack(
 
 
 @app.get("/api/cutouts")
+@research.cached
 def get_cutouts(
     ra: float,
     dec: float,
@@ -220,6 +224,7 @@ def get_cutouts(
 
 
 @app.get("/api/wise-stack")
+@research.cached
 def get_wise_stack(
     ra: float,
     dec: float,
@@ -320,7 +325,7 @@ def get_wise_stack(
         return frame
 
     with ThreadPoolExecutor(max_workers=int(os.getenv("SPHEREX_FETCH_WORKERS", "8"))) as pool:
-        results = list(pool.map(fetch_epoch, epochs))
+        results = list(research.map_context(pool, fetch_epoch, epochs))
 
     frames = [r for r in results if r is not None]
     frames.sort(key=lambda f: f["mjd"])
@@ -337,6 +342,7 @@ def get_wise_stack(
 
 
 @app.get("/api/epoch-stack")
+@research.cached
 def get_epoch_stack(
     ra: float,
     dec: float,
@@ -430,7 +436,7 @@ def _fetch_aligned(
     exposures = []
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for start in range(0, len(images), workers):
-            for result in pool.map(fetch_one, images[start:start + workers]):
+            for result in research.map_context(pool, fetch_one, images[start:start + workers]):
                 if result is not None:
                     exposures.append(batching.spill(result, len(exposures)))
     return exposures, batching.Skipped(omissions)
@@ -450,6 +456,7 @@ def _validate_coadd_workload(n_px: int, n_images: int):
 
 
 @app.get("/api/coadd")
+@research.cached
 @batching.workspace
 def get_coadd(
     ra: float,
@@ -569,6 +576,7 @@ def get_coadd(
 
 
 @app.get("/api/epoch-coadds")
+@research.cached
 @batching.workspace
 def get_epoch_coadds(
     ra: float,

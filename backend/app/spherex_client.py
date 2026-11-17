@@ -23,6 +23,8 @@ Design notes / lessons learned
 
 from __future__ import annotations
 
+from . import research
+
 import hashlib
 import logging
 import os
@@ -279,7 +281,7 @@ def get_cutout_url(access_url: str, ra: float, dec: float, size_arcsec: float) -
 
 def _cache_path(cutout_url: str) -> str:
     key = hashlib.md5(cutout_url.encode()).hexdigest()
-    return os.path.join(CACHE_DIR, f"{key}.fits")
+    return os.path.join(research.cache_dir(CACHE_DIR), f"{key}.fits")
 
 
 def _retry_after_seconds(value):
@@ -323,7 +325,7 @@ def download_cutout(cutout_url: str) -> str:
     CutoutDownloadError
         For permanent HTTP errors or exhausted transient retries.
     """
-    os.makedirs(CACHE_DIR, exist_ok=True)
+    os.makedirs(research.cache_dir(CACHE_DIR), exist_ok=True)
     path = _cache_path(cutout_url)
     if _looks_like_fits(path):
         return path

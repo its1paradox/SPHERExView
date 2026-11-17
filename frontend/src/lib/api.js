@@ -1,3 +1,4 @@
+import { researchOptions } from './research.js';
 // Retry only explicit admission refusals; accepted jobs are never resubmitted.
 function wait(ms, signal) {
   return new Promise((resolve, reject) => {
@@ -16,6 +17,7 @@ function wait(ms, signal) {
 }
 
 export async function fetchApi(url, options, maxRetries = Infinity) {
+  options = await researchOptions(url, options);
   for (let attempt = 0; ; attempt += 1) {
     if (options?.signal?.aborted) throw options?.signal.reason ?? new DOMException('Aborted', 'AbortError');
     const response = await fetch(url, options);

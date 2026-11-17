@@ -29,10 +29,10 @@ async function settle(check) {
 
 async function mount(hash = '', responseOverride) {
   const dom = new JSDOM('<!doctype html><div id="root"></div>', {
-    url: `http://localhost/${hash}`, runScripts: 'outside-only', pretendToBeVisual: true,
+    url: `http://localhost/timeline.html${hash}`, runScripts: 'outside-only', pretendToBeVisual: true,
   });
   const w = dom.window, requests = [], opened = [], errors = [], copied = [];
-  w.structuredClone = structuredClone;
+  w.structuredClone = structuredClone; w.Headers = Headers;
   w.HTMLDialogElement.prototype.showModal = function() { this.setAttribute('open', ''); };
   w.HTMLDialogElement.prototype.close = function() { this.removeAttribute('open'); };
   w.console.error = (...args) => errors.push(args.join(' '));
@@ -45,6 +45,7 @@ async function mount(hash = '', responseOverride) {
     ['createImageData', (width, height) => ({ data: new Uint8ClampedArray(width * height * 4) })],
   ]);
   w.fetch = async url => {
+    if (url.startsWith('/api/research')) return {ok:true,json:async()=>({id:'f'.repeat(32)})};
     requests.push(url);
     const parsed = new URL(url, 'http://localhost');
     let result;
