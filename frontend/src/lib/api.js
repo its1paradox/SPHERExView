@@ -25,6 +25,7 @@ async function networkFetch(url, options, maxRetries) {
     if (options?.signal?.aborted) throw options?.signal.reason ?? new DOMException('Aborted', 'AbortError');
     const response = await fetch(url, options);
     if (response.status !== 429 || attempt >= maxRetries) return response;
+    await options?.onResearchWait?.();
     const seconds = Number(response.headers.get('Retry-After') ?? 15);
     const delay = Number.isFinite(seconds) ? Math.max(0, Math.min(30, seconds)) : 15;
     await response.body?.cancel();

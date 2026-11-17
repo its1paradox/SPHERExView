@@ -5,7 +5,7 @@ import { build } from 'esbuild';
 import { JSDOM } from 'jsdom';
 import { localWindow } from './localWindow.mjs';
 const spec={ra:10,dec:-5,size:240,survey:'wide',release:'all'};
-const wait=async fn=>{for(let i=0;i<300;i++){if(fn())return;await new Promise(r=>setTimeout(r,10));}assert.fail('State did not settle');};
+ const wait=async fn=>{for(let i=0;i<300;i++){if(await fn())return;await new Promise(r=>setTimeout(r,10));}assert.fail('State did not settle');};
 async function setup() {
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost/',runScripts:'outside-only',pretendToBeVisual:true});
  localWindow(dom.window);globalThis.window=dom.window;globalThis.CustomEvent=dom.window.CustomEvent;
@@ -71,11 +71,106 @@ test('dashboard uses local history and labels device storage and deletion clearl
  w.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};w.fetch=()=>{throw new Error('Dashboard must never send history to server');};
  vm.runInContext((await compiled).outputFiles[0].text,app.dom.getInternalVMContext());await wait(()=>w.document.querySelector('.research-row'));
  assert.match(w.document.body.textContent,/Stored on this device/);assert.equal(w.document.querySelectorAll('.research-row .research-tool').length,2);
+ for(const link of w.document.querySelectorAll('.research-tool')) {assert.equal(link.target,'_blank');assert.match(link.rel,/noopener/);}
+ const width=w.document.querySelector('[aria-label="New field width"]');
+ width.value='500';assert.equal(width.checkValidity(),true,'500 arcsec must be accepted');
+ width.value='501';assert.equal(width.validity.rangeOverflow,true,'larger fields retain an explicit boundary');
  const button=text=>[...w.document.querySelectorAll('button')].find(b=>b.textContent===text);
  button('Refresh data').click();await wait(()=>w.document.querySelector('dialog[open]'));assert.equal(w.document.querySelectorAll('.research-refresh-tools button').length,2);
  w.document.querySelector('[aria-label="Close dialog"]').click();await wait(()=>!w.document.querySelector('dialog[open]'));button('Manage storage').click();await wait(()=>w.document.querySelector('dialog[open]'));
  [...w.document.querySelectorAll('button')].find(b=>/^Clear .* of cache$/.test(b.textContent)).click();await wait(()=>w.document.querySelector('.research-retention > strong')?.textContent==='0 B'&&!w.document.querySelector('dialog[open]'));
  assert.ok(w.document.querySelector('.research-row'));button('Manage storage').click();await wait(()=>w.document.querySelector('dialog[open]'));button('Remove target and data').click();await wait(()=>w.document.querySelector('.research-empty'));
+ }finally{app.close();}
+});
+
+test('dashboard tracks concurrent mission requests until every local file is saved',async()=>{
+ const app=await setup();try{
+ const {lib}=app;await lib.beginResearch(spec);
+ let releaseWise,releasePixels;
+ const wiseGate=new Promise(r=>releaseWise=r),pixelGate=new Promise(r=>releasePixels=r);
+ const wise='/api/wise-stack?ra=10&dec=-5&size_arcsec=240';
+ const server=async path=>{if(path===wise){await wiseGate;return Response.json({frames:[],count:0});}if(path!==url)await pixelGate;return network(path);};
+ const sx=lib.localResearchFetch(url,undefined,server),wi=lib.localResearchFetch(wise,undefined,server);
+ const state=async()=>lib.toolProgress((await lib.researchRequest()).targets[0].tools.timeline);
+ await wait(async()=>Object.keys((await lib.researchRequest()).targets[0].tools.timeline?.activity || {}).length===2);
+ assert.equal((await state()).phase,'running');
+ releaseWise();await wi;
+ assert.equal((await state()).phase,'saving','WISE finishing must not mark SPHEREx files ready');
+ assert.equal((await lib.researchRequest()).targets[0].busy,true);
+ releasePixels();await sx;
+ assert.equal((await state()).label,'Results ready');
+ assert.equal((await lib.researchRequest()).targets[0].busy,false);
+ }finally{app.close();}
+});
+
+test('detector server completion is not ready until exports are committed; tools stay independent',async()=>{
+ const app=await setup();try{
+ const {lib}=app;await lib.beginResearch(spec);
+ const id='c'.repeat(32),recipe={...spec,size_arcsec:240},post={method:'POST',body:JSON.stringify(recipe)};
+ let finish;const gate=new Promise(r=>finish=r);
+ let status={status:'running',message:'Processing 12 / 30 observations',done:12,total:30};
+ const server=async(path,opts)=>opts?.method==='POST'?Response.json({job_id:id}):path.endsWith('/result')?Response.json({recipe,inputs:[],n_selected:0,epochs:[]}):path.endsWith('/manifest')?(await gate,new Response('manifest')):Response.json(status);
+ await lib.localResearchFetch('/api/detector-comparison',post,server);
+ await lib.localResearchFetch(`/api/detector-comparison/${id}`,undefined,server);
+ let target=(await lib.researchRequest()).targets[0];assert.equal(lib.toolProgress(target.tools.detectors).done,12);assert.equal(lib.toolProgress(target.tools.timeline).phase,'idle');
+ status={status:'complete'};await lib.localResearchFetch(`/api/detector-comparison/${id}`,undefined,server);
+ assert.equal(lib.toolProgress((await lib.researchRequest()).targets[0].tools.detectors).phase,'saving');
+ const result=lib.localResearchFetch(`/api/detector-comparison/${id}/result`,undefined,server);finish();await result;
+ target=(await lib.researchRequest()).targets[0];assert.equal(lib.toolProgress(target.tools.detectors).label,'Results ready');
+ assert.equal(lib.toolProgress({activity:{x:{phase:'running',updated:Date.now()-181000}}}).phase,'paused');
+ }finally{app.close();}
+});
+
+test('a failed parallel mission stays visible after the other mission completes',async()=>{
+ const app=await setup();try{
+ const {lib}=app;await lib.beginResearch(spec);let finish;const gate=new Promise(r=>finish=r);
+ const sx=lib.localResearchFetch(url,undefined,async path=>{await gate;return network(path);});
+ await new Promise(r=>setTimeout(r,30));
+ await lib.localResearchFetch('/api/wise-stack?ra=10&dec=-5&size_arcsec=240',undefined,async()=>new Response('unavailable',{status:503}));
+ finish();await sx;
+ assert.equal(lib.toolProgress((await lib.researchRequest()).targets[0].tools.timeline).phase,'error');
+ }finally{app.close();}
+});
+
+test('refresh reserves a new tab synchronously and popup blocking does not alter saved research',async()=>{
+ const app=await setup();try{
+ const {w,lib}=app;const target=await lib.beginResearch(spec);await lib.localResearchFetch(url,undefined,network);
+ w.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};
+ vm.runInContext((await compiled).outputFiles[0].text,app.dom.getInternalVMContext());await wait(()=>w.document.querySelector('.research-row'));
+ const button=text=>[...w.document.querySelectorAll('button')].find(b=>b.textContent===text);
+ button('Refresh data').click();await wait(()=>w.document.querySelector('dialog[open]'));
+ w.open=()=>null;button('Refresh WISE–SPHEREx').click();await wait(()=>w.document.querySelector('dialog [role="alert"]'));
+ assert.equal((await lib.researchRequest()).targets[0].tools.timeline.refresh_at,undefined);
+ let opened=false,navigated;const tab={opener:{},location:{replace:value=>{navigated=value;}},close(){}};
+ w.open=(url,target)=>{assert.equal(url,'about:blank');assert.equal(target,'_blank');opened=true;return tab;};
+ button('Refresh WISE–SPHEREx').click();assert.equal(opened,true,'tab must open within the click, before storage awaits');
+ await wait(()=>navigated);assert.match(navigated,/refresh=timeline/);assert.equal(tab.opener,null);
+ assert.equal(w.location.pathname,'/');assert.equal((await lib.researchRequest()).targets[0].id,target.id);
+ }finally{app.close();}
+});
+
+test('dashboard receives another tab’s progress without focus or manual reload',async()=>{
+ const app=await setup();try{
+ const {w,lib}=app;await lib.beginResearch(spec);
+ w.HTMLDialogElement.prototype.close=function(){};
+ vm.runInContext((await compiled).outputFiles[0].text,app.dom.getInternalVMContext());await wait(()=>w.document.querySelector('.research-row'));
+ let finish;const gate=new Promise(r=>finish=r);
+ const pending=lib.localResearchFetch(url,undefined,async path=>{await gate;return network(path);});
+ await wait(async()=> (await lib.researchRequest()).targets[0].busy);
+ w.dispatchEvent(new w.StorageEvent('storage',{key:'spherex.research.changed',newValue:'other-tab'}));
+ await wait(()=>w.document.querySelector('.research-tool-state.running'));
+ finish();await pending;
+ w.dispatchEvent(new w.StorageEvent('storage',{key:'spherex.research.changed',newValue:'other-tab-finished'}));
+ await wait(()=>w.document.querySelector('.research-tool-state.ready'));
+ assert.match(w.document.querySelector('.research-tool-state.ready').textContent,/Results ready/);
+ }finally{app.close();}
+});
+
+test('500 arcsec history links preserve the exact width for both tools',async()=>{
+ const app=await setup();try{
+ const {lib}=app,target=await lib.beginResearch({...spec,size:500});
+ for(const tool of ['timeline','detectors'])assert.equal(new URLSearchParams(lib.targetLink(target,tool).split('#')[1]).get('size'),'500');
+ assert.equal((await lib.researchRequest()).targets[0].size,500);
  }finally{app.close();}
 });
 
@@ -102,5 +197,20 @@ test('reopening an unfinished detector job resumes it rather than submitting dup
  const reopened=await import(`../src/lib/research.js?pending=${Math.random()}`);await reopened.beginResearch(spec);
  assert.equal((await (await reopened.localResearchFetch('/api/detector-comparison',post,server)).json()).job_id,id);
  assert.equal(submissions,1);
+ }finally{app.close();}
+});
+
+test('reopening a running refresh resumes the newer job instead of returning the old saved result',async()=>{
+ const app=await setup();try{
+ const {lib}=app,target=await lib.beginResearch(spec),recipe={...spec,size_arcsec:240};
+ const oldId='d'.repeat(32),newId='e'.repeat(32),post={method:'POST',body:JSON.stringify(recipe)};
+ const oldServer=async(path,options)=>options?.method==='POST'?Response.json({job_id:oldId}):path.endsWith('/result')?Response.json({recipe,epochs:[],inputs:[],n_selected:0}):new Response('manifest');
+ await lib.localResearchFetch('/api/detector-comparison',post,oldServer);await lib.localResearchFetch(`/api/detector-comparison/${oldId}/result`,undefined,oldServer);
+ await new Promise(r=>setTimeout(r,5));await lib.researchRequest(`/${target.id}/refresh?tool=detectors`,{method:'POST'});
+ let posts=0;const server=async(path,options)=>options?.method==='POST'?(posts++,Response.json({job_id:newId})):Response.json({status:'running',done:2,total:30});
+ await lib.localResearchFetch('/api/detector-comparison',{...post,cache:'reload'},server);
+ const reopened=await import(`../src/lib/research.js?newer=${Math.random()}`);await reopened.beginResearch(spec);
+ assert.equal((await (await reopened.localResearchFetch('/api/detector-comparison',post,server)).json()).job_id,newId);
+ assert.equal(posts,1);
  }finally{app.close();}
 });

@@ -35,9 +35,21 @@ def test_busy_work_keeps_health_and_existing_job_status_available(pilot):
 
 def test_limits_reject_instead_of_changing_science_parameters(pilot):
     hosting.validate_query({"limit": "1000000"})
-    assert pilot.get("/api/coadd?ra=1&dec=2&radius_arcsec=121").status_code == 422
-    assert pilot.post("/api/detector-comparison", json={"ra": 1, "dec": 2, "size_arcsec": 300}).status_code == 422
+    assert pilot.get("/api/coadd?ra=1&dec=2&radius_arcsec=251").status_code == 422
+    assert pilot.post("/api/detector-comparison", json={"ra": 1, "dec": 2, "size_arcsec": 501}).status_code == 422
     hosting.validate_comparison(dc.Recipe(ra=1, dec=2))
+
+
+def test_500_arcsec_admission_preserves_width_resolution_and_all_inputs(pilot):
+    recipe = dc.Recipe(ra=1, dec=2, size_arcsec=500)
+    hosting.validate_comparison(recipe)
+    hosting.validate_query({"radius_arcsec": "250", "size_arcsec": "500"})
+    assert recipe.size_arcsec == 500
+    assert recipe.pixscale_arcsec == 6.2
+    assert recipe.max_per_tile == 0 and recipe.include_spectra
+    with pytest.raises(HTTPException) as error:
+        hosting.validate_comparison(recipe.model_copy(update={"pixscale_arcsec": 3.1}))
+    assert error.value.status_code == 422
 
 
 def test_low_disk_refuses_new_work_and_releases_capacity(pilot, monkeypatch):

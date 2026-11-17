@@ -560,7 +560,7 @@ def build(recipe: Recipe, output_dir: Path, progress: Callable, cancelled: threa
             selected_total += len(sub)
         selected.append(per_detector)
     if recipe.include_spectra and selected_total * n * n > spectrum.MAX_SPECTRAL_CELLS:
-        raise ValueError("Precomputed spectra exceed 1,000,000 exposure/pixel samples; disable aperture spectra for an images-only build, reduce the field or time range, use coarser pixels, or select an explicit preview cap")
+        raise ValueError(f"Precomputed spectra exceed {spectrum.MAX_SPECTRAL_CELLS:,} exposure/pixel samples; disable aperture spectra for an images-only build, reduce the field or time range, use coarser pixels, or select an explicit preview cap")
     for k, (rows_in_epoch, grouping, start, end) in enumerate(groups):
         epoch = {"inventory_releases": releases.release_summary(releases.product_release(im.access_url, im.survey) for im in rows_in_epoch)["data_releases"], "index": k, "grouping": grouping, "mjd_start": float(start), "mjd_end": float(end), "datetime_start": Time(start, format="mjd").isot, "datetime_end": Time(end, format="mjd").isot, "tiles": []}
         products, epoch_inputs, spectral_samples = {}, [], []

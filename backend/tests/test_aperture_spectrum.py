@@ -166,6 +166,23 @@ def test_precompute_budget_rejects_instead_of_silently_thinning(tmp_path, monkey
         dc.build(dc.Recipe(ra=1, dec=2), tmp_path, lambda *a: None, threading.Event(), query=lambda *a, **k: [image()], downloader=lambda u: pytest.fail('download before budget check'))
 
 
+def test_500_arcsec_spectral_budget_accepts_full_workload_and_refuses_overflow(tmp_path, monkeypatch):
+    recipe = dc.Recipe(ra=1, dec=2, size_arcsec=500)
+    n, _ = dc.cx.output_grid(1, 2, 500, recipe.pixscale_arcsec)
+    assert n == 81 and recipe.max_per_tile == 0
+    maximum = sp.MAX_SPECTRAL_CELLS // (n * n)
+    assert maximum >= 300
+    rows = [image(obs=f'field500-{i}') for i in range(maximum + 1)]
+    with pytest.raises(ValueError, match=f'{sp.MAX_SPECTRAL_CELLS:,}'):
+        dc.build(recipe, tmp_path, lambda *a: None, threading.Event(), query=lambda *a, **k: rows, downloader=lambda u: pytest.fail('download before budget check'))
+    def admitted(images, *args):
+        assert len(images) == 300
+        raise dc.Cancelled()  # Stop after admission; no external data in this test.
+    monkeypatch.setattr(dc, 'prefetch_downloads', admitted)
+    with pytest.raises(dc.Cancelled):
+        dc.build(recipe, tmp_path, lambda *a: None, threading.Event(), query=lambda *a, **k: rows[:300])
+
+
 @pytest.mark.parametrize('identity,good', [({'ARRAY': 1}, True), ({'ARRAY': 1, 'DETECTOR': '1'}, True),
     ({'ARRAY': 2}, False), ({'ARRAY': 1, 'DETECTOR': '2'}, False), ({}, False)])
 def test_area_calibration_qr2_array_and_qr3_detector_contract(tmp_path, monkeypatch, identity, good):

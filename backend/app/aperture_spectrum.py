@@ -19,7 +19,7 @@ from . import spherex_client as sx
 from . import releases
 
 AREA_VERSIONS = {release: config["solid_angle_calibration"] for release, config in releases.RELEASES.items()}
-MAX_SPECTRAL_CELLS = 1_000_000
+MAX_SPECTRAL_CELLS = 2_500_000
 UNITS = {"flux": "uJy", "variance": "uJy2", "sky_flux": "uJy", "sky_variance": "uJy2", "wavelength": "um", "bandwidth": "um",
          "usable_flux": "uJy", "usable_variance": "uJy2", "usable_sky_flux": "uJy", "usable_sky_variance": "uJy2",
          "lambda_min": "um", "lambda_max": "um", "aperture_coverage": "", "sky_coverage": ""}

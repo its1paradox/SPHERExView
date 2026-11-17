@@ -1,29 +1,57 @@
 import { useEffect, useRef, useState } from 'react';
 import { parseCoords } from './ControlPanel.jsx';
-import { researchRequest, targetLink, formatBytes, persistResearch } from '../lib/research.js';
+import { researchRequest, targetLink, formatBytes, persistResearch, toolProgress } from '../lib/research.js';
 import '../dashboard.css';
 
 const when = seconds => seconds ? new Date(seconds * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'Not checked yet';
 const tools = [['timeline', 'WISE–SPHEREx'], ['detectors', '6 detectors']];
+const MAX_FIELD_ARCSEC = 500;
 const ageDays = seconds => seconds ? (Date.now() / 1000 - seconds) / 86400 : 0;
+
+function ToolLink({target, tool, label}) {
+  const state = toolProgress(target.tools?.[tool]);
+  const active = ['queued','running','saving'].includes(state.phase);
+  return <div className={`research-tool-state ${state.phase}`}>
+    <a className="research-tool" href={targetLink(target, tool)} target="_blank" rel="noopener noreferrer" aria-label={`${label} — opens in a new tab`}>{label} <span aria-hidden="true">↗</span></a>
+    <div className="research-tool-progress" role="status" aria-live="polite">
+      <strong>{state.label}</strong>
+      {active && <progress aria-label={`${label} progress`} max={state.total || 1} value={state.total > 0 ? Math.min(state.done || 0,state.total) : undefined} />}
+      <small>{state.message}</small>
+      {active && state.total > 0 && <small>{state.done || 0} / {state.total} · {Math.floor(100 * (state.done || 0) / state.total)}% of this stage</small>}
+    </div>
+  </div>;
+}
+
+// Reserve the tab during the click, before asynchronous local storage work.
+function reserveTab() {
+  const tab = window.open('about:blank', '_blank');
+  if (!tab) throw new Error('Your browser blocked the new tab. Allow pop-ups for this site and try again.');
+  tab.opener = null;
+  return tab;
+}
 
 export default function ResearchDashboard() {
   const [history, setHistory] = useState({ targets: [], bytes: 0 });
   const [loading, setLoading] = useState(true), [error, setError] = useState(''), [notice, setNotice] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [coords, setCoords] = useState(''), [size, setSize] = useState('120'), [release, setRelease] = useState('all');
   const [filter, setFilter] = useState(''), [sort, setSort] = useState('recent');
   const [dialog, setDialog] = useState(null), [working, setWorking] = useState(false);
   const modal = useRef(null), opener = useRef(null);
   async function load() {
-    try { setHistory(await researchRequest()); setError(''); }
-    catch (e) { setError(e.message); }
+    try { setHistory(await researchRequest()); setLoadError(''); }
+    catch (e) { setLoadError(e.message); }
     finally { setLoading(false); }
   }
   useEffect(() => {
     load();
     const focus = () => load();
+    const storage = event => { if (event.key === 'spherex.research.changed') load(); };
     window.addEventListener('focus', focus);
-    return () => window.removeEventListener('focus', focus);
+    window.addEventListener('storage', storage);
+    window.addEventListener('research-change', focus);
+    const timer = window.setInterval(load, 5000);
+    return () => { window.removeEventListener('focus', focus); window.removeEventListener('storage', storage); window.removeEventListener('research-change', focus); window.clearInterval(timer); };
   }, []);
   useEffect(() => {
     if (dialog) modal.current?.showModal();
@@ -37,28 +65,36 @@ export default function ResearchDashboard() {
       setError('Enter RA from 0 to <360° and Dec from −90 to +90° in decimal degrees.'); return;
     }
     const width = Number(size);
-    if (!Number.isFinite(width) || width < 24 || width > 240) { setError('Enter a field width between 24 and 240 arcsec.'); return; }
+    if (!Number.isFinite(width) || width < 24 || width > MAX_FIELD_ARCSEC) { setError(`Enter a field width between 24 and ${MAX_FIELD_ARCSEC} arcsec.`); return; }
     setWorking(true); setError('');
+    let tab;
     try {
+      tab = reserveTab();
       const target = await researchRequest('', {method:'POST', body:JSON.stringify({...parsed, size:width, survey:'wide', release})});
-      window.location.assign(targetLink(target, event.nativeEvent.submitter?.value || 'timeline'));
-    } catch (e) { setError(e.message); setWorking(false); }
+      tab.location.replace(targetLink(target, event.nativeEvent.submitter?.value || 'timeline'));
+      setNotice('Tool opened in a new tab. Keep it open while processing; progress appears below.');
+      await load();
+    } catch (e) { tab?.close(); setError(e.message); }
+    finally { setWorking(false); }
   }
 
   function open(event, target, mode) { opener.current = event.currentTarget; setDialog({target, mode}); }
   async function act(action, tool) {
     setWorking(true); setError('');
+    let tab;
     try {
       const id = dialog.target.id;
       if (action === 'refresh') {
+        tab = reserveTab();
         await researchRequest(`/${id}/refresh?tool=${tool}`, {method:'POST'});
-        window.location.assign(`${targetLink(dialog.target, tool)}&refresh=${tool}`);
+        tab.location.replace(`${targetLink(dialog.target, tool)}&refresh=${tool}`);
+        setDialog(null); setNotice('Refresh opened in a new tab. Keep it open until results are saved.'); await load();
         return;
       }
       const result = await researchRequest(`/${id}${action === 'clear' ? '/cache' : ''}`, {method:'DELETE'});
       setNotice(`${formatBytes(result.freed_bytes)} freed. ${action === 'clear' ? 'Target kept; open either tool to rebuild its data.' : 'Target removed from your history.'}`);
       setDialog(null); await load();
-    } catch (e) { setError(e.message); }
+    } catch (e) { tab?.close(); setError(e.message); }
     finally { setWorking(false); }
   }
   const filtered = history.targets.filter(t => `${t.ra} ${t.dec} ${t.release}`.toLowerCase().includes(filter.trim().toLowerCase()));
@@ -69,11 +105,11 @@ export default function ResearchDashboard() {
       <section className="research-intro"><div><p className="research-eyebrow">OBSERVE · COMPARE · REVISIT</p><h1>Your research library</h1><p>Saved sky fields, scientific recipes and data. Pick up where you left off.</p></div><dl className="research-totals"><div><dt>Saved targets</dt><dd>{history.targets.length}</dd></div><div><dt>Stored on this device</dt><dd>{formatBytes(history.bytes)}</dd></div></dl></section>
       <section className="research-new" aria-labelledby="new-target-title"><div><h2 id="new-target-title">New target</h2><p>ICRS · decimal degrees</p></div><form onSubmit={start}>
         <label className="research-coordinates">RA, Dec<input aria-label="New target coordinates" placeholder="133.7599588 −7.2449993" value={coords} onChange={e => setCoords(e.target.value.replaceAll('−','-'))} required /></label>
-        <label>Field width (arcsec)<input aria-label="New field width" type="number" min="24" max="240" step="any" value={size} onChange={e => setSize(e.target.value)} required /></label>
+        <label>Field width (arcsec)<input aria-label="New field width" type="number" min="24" max={MAX_FIELD_ARCSEC} step="any" value={size} onChange={e => setSize(e.target.value)} required /></label>
         <label>Data release<select value={release} onChange={e => setRelease(e.target.value)}><option value="all">DR1 + QR3</option><option value="dr1">DR1</option><option value="qr3">QR3</option></select></label>
         <div className="research-launch">{tools.map(([key, label]) => <button key={key} className={key === 'timeline' ? 'primary' : ''} type="submit" value={key} disabled={working}>Open {label} <span aria-hidden="true">↗</span></button>)}</div>
       </form></section>
-      {error && !dialog && <p className="research-error" role="alert">{error}</p>}
+      {(error || loadError) && !dialog && <p className="research-error" role="alert">{error || loadError}</p>}
       {notice && <p className="research-notice" role="status">{notice}</p>}
       <section aria-labelledby="saved-targets-title">
         <div className="research-list-header"><div><h2 id="saved-targets-title">Saved targets <span>{history.targets.length}</span></h2><p>Opening a saved recipe reuses its retained data. Refresh explicitly to check the archive.</p></div><div className="research-filter"><input aria-label="Filter saved targets" placeholder="Filter coordinates or release" value={filter} onChange={e => setFilter(e.target.value)} /><select aria-label="Sort targets" value={sort} onChange={e => setSort(e.target.value)}><option value="recent">Recently visited</option><option value="size">Largest first</option></select><button onClick={load} aria-label="Reload history">↻</button></div></div>
@@ -85,7 +121,7 @@ export default function ResearchDashboard() {
             <div className="research-target"><div className="research-row-kicker">ICRS <span>{target.release === 'all' ? 'DR1 + QR3' : target.release.toUpperCase()}</span></div><h3><span>{target.ra}°</span> <span>{target.dec > 0 ? '+' : ''}{target.dec}°</span></h3><p>{target.size}″ field · {target.survey} survey</p><small>Visited {when(target.visited_at)}</small></div>
             <div className="research-retention"><strong>{formatBytes(target.bytes)}</strong><span>Retained data</span><details><summary>Storage breakdown</summary><dl>{[['responses','Timeline products'],['assets','Frame pixels'],['comparisons','Detector products'],['exports','FITS & manifests']].map(([key,label]) => <div key={key}><dt>{label}</dt><dd>{formatBytes(target.storage[key])}</dd></div>)}</dl></details></div>
             <div className="research-freshness"><span className={`research-badge ${target.busy ? 'processing' : due || partial ? 'due' : ''}`}>{target.busy ? 'Processing' : target.tools?.detectors?.pending ? 'Reopen to finish saving' : !target.bytes ? 'No cached files' : partial ? 'Partial data retained' : due ? 'Review for updates' : 'Data retained'}</span><small>Last archive check<br/>{when(checked)}</small><button disabled={target.busy || working} onClick={e => open(e, target, 'refresh')}>Refresh data</button></div>
-            <div className="research-row-actions"><div>{tools.map(([key, label]) => <a key={key} className="research-tool" href={targetLink(target, key)}>{label} <span aria-hidden="true">↗</span></a>)}</div><button className="research-manage" disabled={target.busy || working} onClick={e => open(e, target, 'storage')}>Manage storage</button></div>
+            <div className="research-row-actions"><div>{tools.map(([key, label]) => <ToolLink key={key} target={target} tool={key} label={label} />)}</div><button className="research-manage" disabled={target.busy || working} onClick={e => open(e, target, 'storage')}>Manage storage</button></div>
           </article>;
         })}</div>}
       </section>

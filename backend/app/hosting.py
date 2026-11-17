@@ -14,6 +14,7 @@ from starlette.datastructures import QueryParams
 from starlette.responses import JSONResponse
 
 _slot = threading.BoundedSemaphore(1)
+MAX_FIELD_ARCSEC = 500
 HEAVY_PATHS = frozenset({"/api/cutouts", "/api/epoch-stack", "/api/coadd",
                          "/api/epoch-coadds", "/api/wise-stack", "/api/spectra/submit"})
 
@@ -52,12 +53,12 @@ def acquire():
 
 
 def validate_comparison(recipe):
-    if enabled() and (recipe.size_arcsec > 240 or recipe.pixscale_arcsec < 6.2):
-        raise HTTPException(422, "Public pilot limits: field size at most 240 arcsec and pixel scale at least 6.2 arcsec. Your recipe was not changed.")
+    if enabled() and (recipe.size_arcsec > MAX_FIELD_ARCSEC or recipe.pixscale_arcsec < 6.2):
+        raise HTTPException(422, f"Public pilot limits: field size at most {MAX_FIELD_ARCSEC} arcsec and pixel scale at least 6.2 arcsec. Your recipe was not changed.")
 
 
 def validate_query(query):
-    bounds = {"radius_arcsec": (0, 120), "size_arcsec": (0, 240),
+    bounds = {"radius_arcsec": (0, MAX_FIELD_ARCSEC / 2), "size_arcsec": (0, MAX_FIELD_ARCSEC),
               "pixscale_arcsec": (3.1, 24.8)}
     for key, (low, high) in bounds.items():
         if key not in query:
