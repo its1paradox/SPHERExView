@@ -15,6 +15,8 @@ GET /api/spectra/download/{job_id} -- result in votable / csv / json
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
 import hashlib
 import logging
 import os
@@ -51,7 +53,26 @@ STATIC_DIR = os.environ.get(
 )
 os.makedirs(os.path.join(STATIC_DIR, "cutouts"), exist_ok=True)
 
-app = FastAPI(title="SPHERExView", version="0.4.0")
+@asynccontextmanager
+async def lifespan(app):
+    await asyncio.to_thread(research.maintenance, True)
+    async def clean():
+        while True:
+            await asyncio.sleep(60)
+            try:
+                await asyncio.to_thread(research.maintenance)
+            except Exception:
+                log.exception("Cache maintenance failed")
+    task = asyncio.create_task(clean())
+    try:
+        yield
+    finally:
+        task.cancel()
+        try: await task
+        except asyncio.CancelledError: pass
+
+
+app = FastAPI(title="SPHERExView", version="0.4.0", lifespan=lifespan)
 app.include_router(comparison_router)
 app.include_router(research.router)
 app.add_middleware(research.ResearchMiddleware)
@@ -100,6 +121,7 @@ def _build_stack(
 
     size_arcsec = 2 * radius_arcsec
 
+    @research.source_reader
     def fetch_one(im: sx.SpherexImage):
         """Download + reproject one cutout, or return a recorded exclusion.
 
@@ -118,6 +140,8 @@ def _build_stack(
             fits_path = sx.download_cutout(cutout_url)
             with fits.open(fits_path) as hdul:
                 release_meta = releases.fits_provenance(hdul, releases.product_release(im.access_url, im.survey))
+        except research.CacheCapacityError:
+            raise
         except sx.CutoutNoOverlapError:
             # Footprint matched the cone search but does not contain the
             # exact position (SPHEREx footprints are elongated/rotated).
@@ -179,6 +203,7 @@ def _build_stack(
                     name = f"timeline-{hashlib.sha256(encoded.encode()).hexdigest()}.json"
                     destination = str(research.assets_dir(STATIC_DIR) / name)
                     if not os.path.exists(destination):
+                        research.maintain_outputs(research.workspace(), len(encoded.encode()))
                         temporary = destination + f".{uuid.uuid4().hex}.tmp"
                         try:
                             with open(temporary, "w") as output:
@@ -274,6 +299,7 @@ def get_wise_stack(
         except Exception as exc:
             log.warning("Gaia query failed, markers disabled: %s", exc)
 
+    @research.source_reader
     def fetch_epoch(ep):
         try:
             b1 = 1 if two_band else band_num
@@ -286,6 +312,8 @@ def get_wise_stack(
                 if (h2, w2) != (h, w):
                     log.info("WISE epoch %s: W1/W2 size mismatch, skipping", ep["epoch"])
                     return None
+        except research.CacheCapacityError:
+            raise
         except wc.WiseCutoutError as exc:
             log.info("WISE epoch %s unavailable: %s", ep["epoch"], exc)
             return None
@@ -393,6 +421,7 @@ def _fetch_aligned(
     """
 
     omissions = []
+    @research.source_reader
     def fetch_one(im: sx.SpherexImage):
         def failure(reason):
             omissions.append({"obs_id": im.obs_id, "access_url": im.access_url, "reason": reason})
@@ -410,6 +439,8 @@ def _fetch_aligned(
                 resampling=resampling,
                 expected_release=releases.product_release(im.access_url, im.survey),
             )
+        except research.CacheCapacityError:
+            raise
         except sx.CutoutNoOverlapError:
             return failure("no_overlap")
         except Exception as exc:

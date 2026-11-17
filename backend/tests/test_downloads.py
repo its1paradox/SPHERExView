@@ -23,7 +23,7 @@ def download_env(tmp_path, monkeypatch):
     monkeypatch.setattr(sx.time, 'sleep', waits.append)
     data = BytesIO()
     fits.PrimaryHDU(np.arange(16, dtype=np.float32)).writeto(data)
-    return tmp_path, waits, data.getvalue()
+    return sx.research.cache_dir(str(tmp_path)), waits, data.getvalue()
 
 
 class Reply:

@@ -40,34 +40,66 @@ tool are retained automatically, with one entry per exact coordinates, field
 width, survey and release selection. Each tool remembers its own recipe and
 display settings. The library link in either viewer returns to this dashboard.
 
-The dashboard reports actual server file sizes: source FITS, frame pixels,
-timeline products, detector products and recipe indexes. Saved results and
-downloads survive server restarts and have no automatic expiry. Reopening
-an unchanged recipe reuses its saved result. New recipes calculate on demand.
+History and results live **on the user's device in IndexedDB**, not in a
+per-user server archive. Each saved response includes its numerical data and
+provenance. All raw timeline frame pixels and detector FITS/manifest exports
+are downloaded into local storage before the snapshot is marked saved.
+Revisiting an unchanged recipe reads these local files, including after the
+server cache expires. This still requires loading the web application itself;
+it is not a fully offline installable app.
 
-- **Refresh data:** choose a tool, re-query the archive, and rebuild its saved
-  recipe. Immutable source FITS are reused. Previous detector exports remain
-  stored until the cache is cleared. The weekly reminder is not a claim that
-  new observations exist; release selection and scientific filters still apply.
-- **Clear cached files:** remove this field's server files but retain the
-  history entry and recipes. Reopening either tool rebuilds its products.
-- **Remove target and data:** delete both the history entry and its files.
-  These actions do not delete exports already downloaded to your computer.
+The dashboard reports actual saved payload bytes per field (excluding browser
+database overhead), split into timeline data, pixels, detector data and exports.
+It never adds the sizes of the shared server cache to a user's local total.
 
-History is private to the current browser, without an account. A random access
-key is kept in browser site storage and sent in a request header, never in
-shared target URLs. Clearing browser site data can lose access to the library.
-New targets are isolated under `SPHEREX_CACHE_DIR/research/`; source files and
-calibration-path memoization are scoped to each workspace. Shared pre-dashboard
-caches are not included in the library's totals or deleted by its controls.
-Existing public saved-result links still work; opening one imports its products
-into the new workspace. Historical searches cannot be reconstructed automatically.
+- **Refresh data:** explicitly query the selected tool again. Every eligible
+  observation remains in scope. A complete replacement is committed atomically;
+  failures or device quota errors preserve the previous snapshot. Reopen normally
+  to view the previous saved result; use Refresh again to retry. The weekly
+  reminder does not claim that new observations are available.
+- **Clear cached files:** delete local result payloads while retaining the target
+  and recipes. Opening a tool rebuilds the deleted products.
+- **Remove target and data:** delete the local entry and its results. Neither
+  action affects files separately exported to the user's downloads folder.
+- **Protect local storage:** request browser persistence. The browser may decline.
+  Browser quotas still apply, and clearing site data deletes the library. Export
+  important FITS/manifests for long-term retention. There is no cross-device sync.
 
-Use the existing single-process server deployment: active-job guards and metadata
-locks are process-local. Refresh and deletion return an explicit conflict while
-a workspace is processing, including outstanding downloads during cancellation.
-Retain the cache volume across deployments and keep the public disk-space guard
-enabled. No additional hosted database or paid service is required.
+Raw archive FITS are processed by the Python backend; processing has not moved
+into the browser. They are shared by immutable URL in a bounded source cache,
+not duplicated per user. The browser stores the generated research products.
+
+### Server storage policy
+
+Use one server process, as in the existing Docker deployment. Cache locks,
+reader pins and public admission controls are process-local. Defaults:
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `SPHEREX_SOURCE_CACHE_BYTES` | 2 GiB | Shared source FITS and calibration LRU cache |
+| `SPHEREX_RESULT_CACHE_BYTES` | 1 GiB | Temporary result handoffs, globally across users |
+| `SPHEREX_RESULT_TTL_SECONDS` | 3600 | Idle handoff lifetime; checked every minute |
+| `SPHEREX_WORK_BYTES` | 8 GiB | Per-job temporary timeline scratch budget |
+| `SPHEREX_MIN_FREE_GB` | 3 GiB | Free disk reserve |
+
+Source-cache writes reserve space before writing each chunk. Active readers and
+prefetches pin their files, so eviction cannot change an ongoing calculation.
+Completed result handoffs use LRU/expiry cleanup. In-progress output staging is
+protected and checked before publication; it can temporarily exceed the retained
+result budget while a job is building. Public admission admits one heavy job at a
+time. Scratch arrays are disk-batched and deleted when a job finishes, including
+failure; abandoned scratch is removed on restart. These are storage budgets,
+**not observation-count limits**. Insufficient working capacity returns an explicit
+error rather than substituting a scientifically incomplete subset.
+
+On startup, known legacy source FITS, comparison products and timeline JSON
+pixels move into managed storage and become eligible for eviction. Old server-only
+result links can therefore expire; the saved local recipe can rebuild them. No
+server search-history API or per-user history files are created. Temporary transfers
+use a random browser key in headers, never in shared URLs. Search history from
+before this feature cannot be reconstructed automatically.
+
+No new database server, storage subscription or paid service is required.
 
 The WISE timeline is also available directly at `timeline.html`; older
 `index.html#ra=…&dec=…` bookmarks continue to open the timeline.

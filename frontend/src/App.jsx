@@ -423,8 +423,8 @@ export default function App() {
       }
 
       setStatus(messages.join(' \u00b7 '));
-      if (sxRes.status === 'rejected' && wiseRes.status === 'rejected') {
-        setError('Both queries failed.');
+      if (sxRes.status === 'rejected' || wiseRes.status === 'rejected') {
+        setError([sxRes, wiseRes].filter(r => r.status === 'rejected').map(r => r.reason.message).join(' · '));
       }
     } catch (err) {
       setError(err.message);

@@ -109,14 +109,14 @@ def test_spectrum_download_is_immutable_and_legacy_images_remain_readable(tmp_pa
     from backend.app import spherex_client as sx, main
     monkeypatch.setattr(sx, 'CACHE_DIR', str(tmp_path))
     job = 'a' * 32
-    path = tmp_path / 'comparisons' / job
+    path = tmp_path / 'managed' / 'outputs' / 'public' / 'public' / 'comparisons' / job
     result = build_pair(path)
     (path / 'result.json').write_text(json.dumps(result))
     client = TestClient(main.app)
     response = client.get(f'/api/detector-comparison/{job}/spectra/0.fits')
     assert response.status_code == 200 and response.content == (path / 'spectrum-0.fits').read_bytes()
     old = 'b' * 32
-    oldpath = tmp_path / 'comparisons' / old
+    oldpath = path.parent / old
     oldpath.mkdir()
     (oldpath / 'result.json').write_text('{"legacy": true}')
     assert client.get(f'/api/detector-comparison/{old}/result').json() == {'legacy': True}

@@ -93,6 +93,13 @@ def get_epochs(ra: float, dec: float, band: int) -> List[dict]:
     return epochs
 
 
+def _epoch_cache_path(ra, dec, size_arcsec, band, epoch):
+    size_px = arcsec_to_px(size_arcsec)
+    key = hashlib.md5(f"byw|{ra:.5f}|{dec:.5f}|{size_px}|{band}|{epoch}".encode()).hexdigest()
+    return os.path.join(research.cache_dir(CACHE_DIR), f"{key}.fits")
+
+
+@research.source_download(_epoch_cache_path)
 def download_epoch_cutout(
     ra: float, dec: float, size_arcsec: float, band: int, epoch: int
 ) -> str:
@@ -113,8 +120,10 @@ def download_epoch_cutout(
 
     os.makedirs(research.cache_dir(CACHE_DIR), exist_ok=True)
     tmp = f"{path}.tmp.{os.getpid()}.{threading.get_ident()}"
-    with open(tmp, "wb") as fh:
-        fh.write(resp.content)
+    with research.lock:
+        research.reserve_source(len(resp.content))
+        with open(tmp, "wb") as fh:
+            fh.write(resp.content)
     os.replace(tmp, path)
     return path
 

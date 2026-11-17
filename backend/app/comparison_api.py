@@ -7,11 +7,8 @@ import re
 import threading
 import time
 import uuid
-import hashlib
-import shutil
 from contextvars import copy_context
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
@@ -48,31 +45,31 @@ def _run(job_id, recipe, cancel):
         path = result_dir(job_id)
         # Publish only after all six slots in every epoch have been resolved.
         tmp = path / "result.tmp"
-        tmp.write_text(json.dumps(result, allow_nan=False, separators=(",", ":")))
+        encoded = json.dumps(result, allow_nan=False, separators=(",", ":"))
+        research.maintain_outputs(research.workspace(), len(encoded.encode()))
+        tmp.write_text(encoded)
         tmp.replace(path / "result.json")
-        accepted = sum(row.get("status") == "accepted" for row in result.get("inputs", []))
-        selected = result.get("n_selected", accepted)
-        research.tool_update("detectors", checked_at=time.time(),
-                             status="incomplete" if accepted < selected else "saved",
-                             accepted=accepted, selected=selected)
+        research.maintain_outputs(research.workspace())
         with _lock:
             _jobs[job_id].update(status="complete", message="Comparison ready")
     except dc.Cancelled:
-        research.tool_update("detectors", status="cancelled")
+        (result_dir(job_id) / "result.json").unlink(missing_ok=True)
         with _lock:
             _jobs[job_id].update(status="cancelled", message="Cancelled")
     except Exception as exc:
-        research.tool_update("detectors", status="incomplete")
+        (result_dir(job_id) / "result.json").unlink(missing_ok=True)
         with _lock:
             _jobs[job_id].update(status="error", message=str(exc))
 
 
 def _run_guarded(job_id, recipe, cancel, lease):
     try:
-        _run(job_id, recipe, cancel)
+        with research.source_scope():
+            _run(job_id, recipe, cancel)
     finally:
         lease.release()
-        research.release(research.current.get())
+        research.release(research.workspace())
+        research.maintain_outputs()
 
 
 @router.post("", status_code=202)
@@ -83,15 +80,6 @@ def start_comparison(recipe: dc.Recipe):
         raise HTTPException(410, str(exc)) from exc
     hosting.validate_comparison(recipe)
     workspace = research.current.get()
-    index = None
-    if workspace:
-        key = hashlib.sha256(recipe.model_dump_json().encode()).hexdigest()
-        index = workspace / "data" / "job-index" / (key + ".json")
-        with _lock:
-            if index.is_file():
-                old = json.loads(index.read_text())["job_id"]
-                if (result_dir(old) / "result.json").is_file() or _jobs.get(old, {}).get("status") in ("queued", "running"):
-                    return {"job_id": old, "status": "saved"}
     lease = hosting.acquire()
     job_id = None
     try:
@@ -104,14 +92,11 @@ def start_comparison(recipe: dc.Recipe):
                 _jobs.pop(key)
             job_id, cancel = uuid.uuid4().hex, threading.Event()
             _jobs[job_id] = {"status": "queued", "message": "Queued", "done": 0, "total": 0, "cancel": cancel, "created": time.time(), "workspace": str(workspace) if workspace else None}
-        if index:
-            research.write_json(index, {"job_id": job_id})
-        research.tool_update("detectors", status="processing")
-        research.hold(workspace)
+        research.hold(research.workspace())
         try:
             _pool.submit(copy_context().run, _run_guarded, job_id, recipe, cancel, lease)
         except BaseException:
-            research.release(workspace)
+            research.release(research.workspace())
             raise
         return {"job_id": job_id, "status": "queued"}
     except BaseException:
@@ -149,15 +134,8 @@ def cancel_comparison(job_id: str):
 
 def _completed(job_id):
     path = result_dir(job_id)
-    # A pre-dashboard public result link may still be opened. Import its
-    # immutable products into this workspace before displaying/accounting them.
-    legacy = Path(sx.CACHE_DIR) / "comparisons" / job_id
-    if research.current.get() and not path.exists() and (legacy / "result.json").is_file():
-        with research.lock:
-            if not path.exists():
-                shutil.copytree(legacy, path)
     if not (path / "result.json").is_file():
-        raise HTTPException(409, "Comparison is not complete")
+        raise HTTPException(410, "Temporary comparison expired or is not complete. Refresh the target to rebuild it.")
     return path
 
 

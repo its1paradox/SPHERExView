@@ -314,6 +314,7 @@ def _looks_like_fits(path):
         return False
 
 
+@research.source_download(_cache_path)
 def download_cutout(cutout_url: str) -> str:
     """Download a FITS cutout (with on-disk caching). Returns the local path.
 
@@ -351,7 +352,10 @@ def download_cutout(cutout_url: str) -> str:
                     with open(tmp, "wb") as stream:
                         for chunk in resp.iter_content(chunk_size=64 * 1024):
                             if chunk:
-                                stream.write(chunk)
+                                with research.lock:
+                                    research.reserve_source(len(chunk))
+                                    stream.write(chunk)
+                                    stream.flush()
                                 size += len(chunk)
                     # iter_content decodes HTTP content encodings. Compare
                     # Content-Length only when it describes the decoded bytes.
