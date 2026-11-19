@@ -161,6 +161,7 @@
   .timeline-app .timeline-target-bar input { font-size: 16px; }
 }
 .timeline-primary { margin-bottom: 12px; }
+.timeline-mode-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 10px; color: #a6c3d7; font-size: 12px; }
 .timeline-app .panel { padding: 12px; border-radius: 9px; }
 .timeline-app .panel h2 { padding: 9px 12px; margin: -12px -12px 10px; font-size: 13px; }
 .timeline-analysis { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 20px; align-items: start; }
@@ -228,3 +229,8 @@
   .timeline-image-pair { gap: 7px; }
   .timeline-image-stage figcaption { font-size: 9px; gap: 3px; }
 }
+
+/* Keep the restored single-image blink centered at every breakpoint. */
+.timeline-app .timeline-blink canvas { display: block; height: auto; max-width: 100%; margin: 0 auto; }
+.timeline-app .timeline-blink .controls { max-width: 600px; margin: 12px auto; }
+.timeline-blink .coord-readout, .timeline-blink .combined-note { text-align: center; }

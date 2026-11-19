@@ -6,6 +6,7 @@ import vm from 'node:vm';
 import { build } from 'esbuild';
 import { JSDOM } from 'jsdom';
 import { DEFAULT_VIEW, parseHash, buildHash } from '../src/lib/urlstate.js';
+import { targetLink } from '../src/lib/research.js';
 
 const compiled = build({ entryPoints: ['src/main.jsx'], bundle: true, format: 'iife',
   jsx: 'automatic', write: false, loader: { '.css': 'empty' },
@@ -32,7 +33,7 @@ async function mount(hash = '', responseOverride) {
   const dom = new JSDOM('<!doctype html><div id="root"></div>', {
     url: `http://localhost/timeline.html${hash}`, runScripts: 'outside-only', pretendToBeVisual: true,
   });
-  const w = dom.window, requests = [], opened = [], errors = [], copied = [];
+  const w = dom.window, requests = [], opened = [], errors = [], copied = [], rendered = [];
   localWindow(w);
   w.HTMLDialogElement.prototype.showModal = function() { this.setAttribute('open', ''); };
   w.HTMLDialogElement.prototype.close = function() { this.removeAttribute('open'); };
@@ -44,6 +45,7 @@ async function mount(hash = '', responseOverride) {
       'stroke', 'fillText', 'save', 'restore', 'setTransform', 'fill', 'closePath', 'strokeRect', 'setLineDash']
       .map(name => [name, () => {}]),
     ['createImageData', (width, height) => ({ data: new Uint8ClampedArray(width * height * 4) })],
+    ['putImageData', image => rendered.push([...image.data])],
   ]);
   w.fetch = async url => {
     requests.push(url);
@@ -70,7 +72,7 @@ async function mount(hash = '', responseOverride) {
   const q = selector => w.document.querySelector(selector);
   const button = name => [...w.document.querySelectorAll('button')].find(b => b.textContent.trim() === name);
   const toggle = name => [...w.document.querySelectorAll('.panel-switch label')].find(l => l.textContent.trim() === name).querySelector('input').click();
-  return { dom, w, q, button, toggle, requests, opened, errors, copied };
+  return { dom, w, q, button, toggle, requests, opened, errors, copied, rendered };
 }
 
 test('timeline defaults and explicit bookmark panel choices survive URL round trips', () => {
@@ -92,25 +94,50 @@ test('timeline defaults and explicit bookmark panel choices survive URL round tr
   }
 });
 
+test('dashboard revisit renders one WISE-to-color-coadd blink instead of hundreds of raw frames', async () => {
+  const saved = {ra:10,dec:-5,size:120,survey:'wide',release:'all',tools:{timeline:{hash:'#ra=10&dec=-5&size=120&cmode=exposures&speed=1200'}}};
+  const hash = '#' + targetLink(saved,'timeline').split('#')[1];
+  const otherBand = Buffer.from(new Float32Array(Array.from({length:16},(_,i)=>16-i)).buffer).toString('base64');
+  const app = await mount(hash, (url,result) => {
+    if (url.pathname === '/api/epoch-stack') return {count:300,cutouts:Array.from({length:300},(_,i)=>({...raw[0],id:`raw-${i}`,metadata:{...raw[0].metadata,mjd_mid:61000+i}}))};
+    if (['/api/wise-stack','/api/epoch-coadds'].includes(url.pathname)) return {...result,frames:result.frames.map(f=>({...f,data2_b64:otherBand}))};
+    return result;
+  });
+  try {
+    await settle(() => app.q('.combined-viewer canvas'));
+    await new Promise(resolve => setTimeout(resolve,40));
+    assert.equal(app.w.document.querySelectorAll('.combined-viewer canvas').length,1);
+    assert.equal(app.q('[aria-label="Timeline frame"]').max,'3','Two WISE epochs plus two coadds; all 300 raw observations remain outside the blink');
+    assert.match(app.q('.timeline-mode-summary').textContent,/D4\+D6 visit coadds/);
+    const hasColor = values => values.some((value,i)=>i%4===0 && value!==values[i+2]);
+    assert.ok(app.rendered.some(hasColor),'WISE W1+W2 renders in color');
+    app.q('[aria-label="Next timeline frame"]').click();
+    await settle(() => app.q('[aria-label="Timeline frame"]').value==='1');
+    app.rendered.length=0;
+    app.q('[aria-label="Next timeline frame"]').click();
+    await settle(() => app.q('.mission-tag')?.textContent==='SPHEREx');
+    assert.match(app.q('.frame-label .band').textContent,/W1\+W2-MATCHED CO-ADD/);
+    assert.ok(app.rendered.some(hasColor),'The SPHEREx handoff renders two-channel color, not a raw grayscale exposure');
+    assert.deepEqual(app.errors,[]);
+  } finally {app.dom.window.close();}
+});
+
 test('settings preserve the loaded timeline, restore focus and keep hidden controls out of the active section', async () => {
   const app = await mount('#ra=10&dec=-5&cmode=exposures');
   try {
     await settle(() => app.q('.combined-viewer canvas'));
     app.q('[aria-label="Next timeline frame"]').click();
     await settle(() => app.q('[aria-label="Timeline frame"]').value === '1');
-    app.button('Use current as reference').click();
-    await settle(() => app.q('.timeline-reference figcaption span').textContent.includes('2010-07-01'));
-    const referenceLabel = app.q('.timeline-reference figcaption').textContent;
+    assert.equal(app.w.document.querySelectorAll('.combined-viewer canvas').length, 1, 'The stable blink uses one image');
     app.q('[aria-label="Next timeline frame"]').click();
     await settle(() => app.q('[aria-label="Timeline frame"]').value === '2');
-    assert.equal(app.q('.timeline-reference figcaption').textContent, referenceLabel, 'Reference stays fixed while playback advances');
     app.q('[aria-label="Previous timeline frame"]').click();
     await settle(() => app.q('[aria-label="Timeline frame"]').value === '1');
-    const referenceCanvas = app.q('[aria-label="Reference epoch image"]');
-    referenceCanvas.getBoundingClientRect = () => ({left:0,top:0,width:225,height:225});
-    referenceCanvas.dispatchEvent(new app.w.MouseEvent('click',{clientX:112.5,clientY:112.5,bubbles:true}));
+    const canvas = app.q('[aria-label="Combined timeline image"]');
+    canvas.getBoundingClientRect = () => ({left:0,top:0,width:225,height:225});
+    canvas.dispatchEvent(new app.w.MouseEvent('click',{clientX:112.5,clientY:112.5,bubbles:true}));
     await settle(() => app.q('.timeline-pin'));
-    assert.match(app.q('.timeline-pin').textContent, /10.0000000°, -5.0000000°/, 'CSS fitting must preserve sky coordinates on the reference canvas');
+    assert.match(app.q('.timeline-pin').textContent, /10.0000000°, -5.0000000°/, 'CSS fitting must preserve sky coordinates on the blink canvas');
     const opener = app.button('Display settings'), before = app.requests.length;
     opener.focus(); opener.click();
     await settle(() => app.q('.workspace-settings[open]'));
@@ -247,7 +274,7 @@ test('hidden panels still supply the timeline; toggles retain playback, settings
     await settle(() => app.q('.combined-viewer canvas'));
     assert.equal(app.requests.filter(u => u.startsWith('/api/epoch-stack')).length, 1);
     assert.equal(app.requests.filter(u => u.startsWith('/api/wise-stack')).length, 1);
-    assert.equal(app.w.document.querySelectorAll('canvas').length, 2);
+    assert.equal(app.w.document.querySelectorAll('canvas').length, 1);
     assert.match(app.q('.combined-viewer .frame-count').textContent, /1\/4/);
     app.q('[aria-label="Next timeline frame"]').click();
     await settle(() => app.q('[aria-label="Timeline frame"]').value === '1');
@@ -257,14 +284,14 @@ test('hidden panels still supply the timeline; toggles retain playback, settings
 
     app.toggle('WISE panel');
     app.toggle('SPHEREx panel');
-    await settle(() => app.w.document.querySelectorAll('canvas').length === 4);
+    await settle(() => app.w.document.querySelectorAll('canvas').length === 3);
     assert.ok(app.q('[data-testid="wise-panel-controls"]'));
     assert.ok(app.q('[data-testid="spherex-panel-controls"]'));
     assert.equal(app.q('[aria-label="Timeline frame"]').value, current);
     assert.equal(app.requests.length, 2, 'Visibility toggles must reuse the loaded data');
     app.toggle('WISE panel');
     app.toggle('SPHEREx panel');
-    await settle(() => app.w.document.querySelectorAll('canvas').length === 2);
+    await settle(() => app.w.document.querySelectorAll('canvas').length === 1);
 
     app.q('.timeline-appearance').open = true;
     // Choose the stretch selector by its supported log option (scale is a different selector).
@@ -295,7 +322,7 @@ test('hidden panels still supply the timeline; toggles retain playback, settings
     await settle(() => !app.q('.timeline-pin'));
     app.button('Reset display settings').click();
     await settle(() => app.w.location.hash.includes('sxstretch=sqrt'));
-    assert.equal(app.w.document.querySelectorAll('canvas').length, 2);
+    assert.equal(app.w.document.querySelectorAll('canvas').length, 1);
     assert.equal(app.requests.length, 2);
     assert.deepEqual(app.errors, []);
   } finally { app.dom.window.close(); }
@@ -363,7 +390,6 @@ test('all 1007 frames are saved locally and decoded pixels remain bounded', asyn
     await settle(() => app.requests.includes('/static/cutouts/lazy-1006.json'));
     await settle(() => app.q('.combined-viewer .frame-count').textContent === '1009/1009' && !app.q('.combined-viewer [role="status"]'));
     assert.equal(app.q('.combined-viewer .frame-count').textContent,'1009/1009');
-    app.button('Use current as reference').click();
     app.q('[aria-label="Previous timeline frame"]').click();
     await settle(() => app.requests.includes('/static/cutouts/lazy-1005.json'));
     assert.equal(app.requests.filter(u => u.startsWith('/static/')).length,1007,'Scrubbing uses local pixels without server requests');
@@ -379,7 +405,7 @@ test('all 1007 frames are saved locally and decoded pixels remain bounded', asyn
     app.q('[aria-label="Next timeline frame"]').click();
     await settle(() => app.q('.combined-viewer .frame-count').textContent === '1009/1009');
     assert.equal(app.requests.filter(u => u === '/static/cutouts/lazy-1006.json').length,1,
-      'The reference pixels stay pinned while another panel churns the cache');
+      'Evicted pixels reload from local storage without another server request');
     assert.ok(app.q('.timeline-target-bar'));
     assert.deepEqual(app.errors,[]);
   } finally { app.dom.window.close(); }

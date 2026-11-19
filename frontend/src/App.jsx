@@ -554,6 +554,15 @@ export default function App() {
           {coordsError && <p className="status error" role="alert">{coordsError}</p>}
           {view.showCombined && (
             <div className="timeline-primary" aria-label="Combined timeline view">
+              <p className="timeline-mode-summary">
+                {view.combinedMode === 'wise' ? 'WISE–SPHEREx color blink · D4+D6 visit coadds'
+                  : view.combinedMode === 'exposures' ? 'Individual-exposure inspection · single-detector grayscale frames'
+                    : view.combinedMode === 'd6' ? 'D6-only visit coadds · grayscale' : 'Custom detector-group color coadds'}
+                {view.combinedMode !== 'wise' && <button type="button" onClick={() => {
+                  setView(current => ({ ...current, combinedMode: 'wise' }));
+                  setForm(current => ({ ...current, wiseBand: 'w1w2' }));
+                }}>Return to WISE–SPHEREx color blink</button>}
+              </p>
               {view.combinedMode !== 'exposures' && combinedCoaddStatus && (
                 <p className="status coadd-note" role="status">{combinedCoaddStatus}</p>
               )}

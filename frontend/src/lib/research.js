@@ -148,6 +148,12 @@ export async function persistResearch() { return await window.navigator.storage?
 export function targetLink(target,tool) {
   const params=new URLSearchParams(target.tools?.[tool]?.hash?.slice(1) || new URLSearchParams({ra:target.ra,dec:target.dec,size:target.size,survey:target.survey,release:target.release}));
   params.delete('result');params.delete('refresh');
+  // Open the dashboard's WISE–SPHEREx tool as the standard color blink.
+  // Advanced exposure recipes remain available via explicit bookmarks.
+  if(tool==='timeline') {
+    params.set('cmode','wise'); params.set('wiseband','w1w2');
+    params.set('combined','1'); params.set('wise','0'); params.set('spherex','0');
+  }
   return `${tool==='timeline'?'timeline.html':'compare.html'}#${params}`;
 }
 export function formatBytes(bytes) {
