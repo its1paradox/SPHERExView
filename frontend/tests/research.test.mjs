@@ -187,6 +187,18 @@ test('500 arcsec history links preserve the exact width for both tools',async()=
  }finally{app.close();}
 });
 
+test('dashboard WISE launch restores color blink even after an exposure-inspection session',async()=>{
+ const app=await setup();try{
+ const {lib}=app,target=await lib.beginResearch(spec);
+ const hash='#ra=10&dec=-5&size=240&release=all&cmode=exposures&wiseband=w2&combined=0&wise=1&spherex=1&cmonths=3&cbg=zodi&zoom=600';
+ target.tools.timeline={hash};target.tools.detectors={hash:'#ra=10&dec=-5&size=240&pixels=6.2'};
+ const params=new URLSearchParams(lib.targetLink(target,'timeline').split('#')[1]);
+ for(const [key,value] of Object.entries({cmode:'wise',wiseband:'w1w2',combined:'1',wise:'0',spherex:'0',ra:'10',dec:'-5',size:'240',release:'all',cmonths:'3',cbg:'zodi',zoom:'600'}))assert.equal(params.get(key),value);
+ assert.equal(target.tools.timeline.hash,hash,'Opening the standard tool does not erase the stored recipe');
+ assert.equal(lib.targetLink(target,'detectors'),'compare.html#ra=10&dec=-5&size=240&pixels=6.2');
+ }finally{app.close();}
+});
+
 test('device quota failure preserves the previous complete snapshot and cleans staged assets',async()=>{
  const {IDBObjectStore}=await import('fake-indexeddb');const original=IDBObjectStore.prototype.put;
  const app=await setup();try{
