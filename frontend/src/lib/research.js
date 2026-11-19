@@ -38,11 +38,46 @@ async function transaction(names, mode, action) {
 const get=(store,key)=>transaction([store],'readonly',tx=>request(tx.objectStore(store).get(key)));
 const all=(store,target)=>transaction([store],'readonly',tx=>request(target ? tx.objectStore(store).index('target').getAll(target) : tx.objectStore(store).getAll()));
 async function changeTarget(id, fn) {
-  return transaction(['targets'],'readwrite',async tx=> {
+  const result = await transaction(['targets'],'readwrite',async tx=> {
     const store=tx.objectStore('targets'), row=await request(store.get(id));
     if (!row) throw new Error('This target was removed from your local library.');
     fn(row); store.put(row); return row;
   });
+  notifyResearch();
+  return result;
+}
+const ACTIVE_PHASES = new Set(['queued','running','saving']);
+const ACTIVITY_TTL = 180000;
+function notifyResearch() {
+  window.dispatchEvent(new CustomEvent('research-change'));
+  try { window.localStorage.setItem('spherex.research.changed', `${Date.now()}:${Math.random()}`); } catch {}
+}
+export function toolProgress(tool = {}, now = Date.now()) {
+  const entries = Object.values(tool.activity || {});
+  const active = entries.filter(a => ACTIVE_PHASES.has(a.phase) && now - a.updated <= ACTIVITY_TTL);
+  if (active.length) {
+    const a = active.find(a => a.phase !== 'saving') || active[0];
+    return {...a,label:a.phase === 'saving' ? 'Saving on this device' : a.phase === 'queued' ? 'Waiting for server' : 'Running',message:active.length > 1 ? `${a.message} · ${active.length} tasks active` : a.message};
+  }
+  if (entries.some(a => ACTIVE_PHASES.has(a.phase))) return {phase:'paused',label:'Progress not updated',message:'Open the tool tab to check progress or resume. Keep it open while processing.'};
+  const failed = entries.find(a => a.phase === 'error' || a.phase === 'cancelled');
+  if (failed) return {...failed,label:failed.phase === 'error' ? 'Needs attention' : 'Cancelled'};
+  if (tool.status === 'incomplete' || entries.some(a => a.phase === 'incomplete')) return {phase:'incomplete',label:'Partial results saved',message:'Some observations were unavailable or excluded. Review processing details.'};
+  if (tool.status === 'saved') return {phase:'ready',label:'Results ready',message:'Saved on this device · Open to view'};
+  if (tool.pending) return {phase:'paused',label:'Reopen to resume',message:'Processing or saving has not finished.'};
+  return {phase:'idle',label:'Not yet run',message:'Opens in a new tab'};
+}
+// Small per-tool records are shared through IndexedDB; science data never enters
+// localStorage. Transactions merge concurrent tabs without losing another task.
+async function activity(target, tool, id, update, start = false) {
+  await changeTarget(target.id, row => {
+    if (row.created_at !== target.created_at || row.revision !== target.revision || row.tools[tool]?.refresh_at !== target.tools[tool]?.refresh_at) return;
+    const value = row.tools[tool] ||= {};
+    let records = value.activity || {};
+    if (start && !Object.values(records).some(a => ACTIVE_PHASES.has(a.phase) && Date.now()-a.updated <= ACTIVITY_TTL)) records = {};
+    records[id] = {...records[id],...update,updated:Date.now()};
+    value.activity = records;
+  }).catch(e => { if (!/target was removed/.test(e.message)) throw e; });
 }
 export function browserKey() {
   if (typeof window==='undefined') return null;
@@ -87,7 +122,7 @@ export async function researchRequest(path='',options={}) {
       const storage={responses:0,assets:0,comparisons:0,exports:0};
       for (const r of own) storage[r.tool==='timeline'?'responses':'comparisons']+=r.bytes;
       for (const a of assets) if(a.target===row.id && snapshots.has(a.snapshot) && a.kind!=='result') storage[a.kind]+=a.bytes;
-      return {...row,storage,bytes:Object.values(storage).reduce((a,b)=>a+b,0),busy:false};
+      return {...row,storage,bytes:Object.values(storage).reduce((a,b)=>a+b,0),busy:Object.values(row.tools).some(t=>ACTIVE_PHASES.has(toolProgress(t).phase))};
     });
     return {targets,bytes:targets.reduce((sum,t)=>sum+t.bytes,0),persistent:await window.navigator.storage?.persisted?.() || false};
   }
@@ -103,7 +138,7 @@ export async function researchRequest(path='',options={}) {
       const store=tx.objectStore(name), rows=await request(store.index('target').getAll(id));
       for(const r of rows) {if(name==='sizes' && r.kind!=='result')freed_bytes+=r.bytes; if(name==='results')freed_bytes+=r.bytes;store.delete(r.key);if(name==='sizes')tx.objectStore('assets').delete(r.key);}
     }
-    if(row && action==='cache') {row.revision++;for(const t of Object.values(row.tools)) {t.status='cache cleared'; t.checked_at=null;t.pending=null;} targetStore.put(row);}
+    if(row && action==='cache') {row.revision++;for(const t of Object.values(row.tools)) {t.status='cache cleared'; t.checked_at=null;t.pending=null;t.activity={};} targetStore.put(row);}
     else targetStore.delete(id);
     return {freed_bytes};
   });
@@ -130,8 +165,7 @@ async function localAsset(target,url) {
   }
   return null;
 }
-async function saveResult(target,tool,key,response,network,options,extra={}) {
-  const json=await response.clone().json();
+async function saveResult(target,tool,key,response,network,options,extra={},activityId,json) {
   const snapshot=randomId();
   const progress=(saved,done=false)=>window.dispatchEvent(new CustomEvent('research-save',{detail:{id:snapshot,saved,total:assets.length,done}}));
   const urls=[];
@@ -148,6 +182,7 @@ async function saveResult(target,tool,key,response,network,options,extra={}) {
   // Stage one asset at a time: no giant all-frames array or FITS archive in memory.
   try {
     progress(0);
+    if(activityId)await activity(target,tool,activityId,{phase:'saving',message:'Saving result files',done:0,total:assets.length});
     for(const [url,kind] of assets) {
       if(urls.includes(url))continue;
       const res=await network(url,options);
@@ -155,6 +190,7 @@ async function saveResult(target,tool,key,response,network,options,extra={}) {
       const body=await res.arrayBuffer();
       await transaction(['assets','sizes'],'readwrite',tx=> {const meta={key:`${snapshot}|${url}`,target:target.id,snapshot,bytes:body.byteLength,type:res.headers.get('Content-Type'),kind,staged:Date.now()};tx.objectStore('assets').put({...meta,body});tx.objectStore('sizes').put(meta);});
       urls.push(url);progress(urls.length);
+      if(activityId && (urls.length%10===0 || urls.length===assets.length))await activity(target,tool,activityId,{phase:'saving',message:`${urls.length} / ${assets.length} files saved`,done:urls.length,total:assets.length});
     }
     const body=await response.clone().arrayBuffer(), created=Date.now()/1000;
     await transaction(['targets','results','assets','sizes'],'readwrite',async tx=> {
@@ -173,7 +209,7 @@ async function saveResult(target,tool,key,response,network,options,extra={}) {
   } catch(e) {
     await transaction(['assets','sizes'],'readwrite',tx=>{for(const url of urls){tx.objectStore('assets').delete(`${snapshot}|${url}`);tx.objectStore('sizes').delete(`${snapshot}|${url}`);}}).catch(()=>{});
     throw storageError(e);
-  } finally { progress(urls.length,true); }
+  } finally { progress(urls.length,true); notifyResearch(); }
 }
 export async function localResearchFetch(url,options,network) {
   if(typeof window==='undefined' || typeof url!=='string' || !(url.startsWith('/api/') || url.startsWith('/static/cutouts/'))) return network(url,options);
@@ -189,7 +225,9 @@ export async function localResearchFetch(url,options,network) {
   const tool=parsed.pathname.startsWith('/api/detector-comparison')?'detectors':'timeline';
   const key=`${target.id}|${recipe ? recipeKey(recipe) : canonical(url)}`;
   const prior=await get('results',key);
-  if(prior && (!(refreshTool===tool || options?.cache==='reload') || prior.created>=(target.tools[tool]?.refresh_at || 0))) {
+  const pendingRecipe=recipe && target.tools.detectors?.pending;
+  const newerJob=pendingRecipe?.key===key && pendingRecipe.started>(prior?.created || 0);
+  if(prior && !newerJob && (!(refreshTool===tool || options?.cache==='reload') || prior.created>=(target.tools[tool]?.refresh_at || 0))) {
     if(recipe)return Response.json({job_id:prior.jobId,status:'saved'});
     return responseOf(prior);
   }
@@ -206,23 +244,55 @@ export async function localResearchFetch(url,options,network) {
     if(pending?.key===key && pending.started>=(target.tools.detectors?.refresh_at || 0)) {
       const state=await network(`/api/detector-comparison/${pending.jobId}`,{headers});
       if(state.ok && ['queued','running','complete'].includes((await state.json()).status)) {
-        jobs.set(pending.jobId,{key,target});
+        jobs.set(pending.jobId,{key,target,activityId:pending.activityId || pending.jobId});
+        await activity(target,tool,pending.activityId || pending.jobId,{phase:'running',message:'Resuming comparison'},true);
         return Response.json({job_id:pending.jobId,status:'resuming'});
       }
     }
   }
-  const response=await network(url,scoped);
-  if(!response.ok)return response;
-  if(recipe) {
-    const data=await response.clone().json(); jobs.set(data.job_id,{key,target});
-    await changeTarget(target.id,t=>{t.tools.detectors={...t.tools.detectors,pending:{jobId:data.job_id,key,started:Date.now()/1000}};});
-  } else if(science) await saveResult(target,tool,key,response,network,scoped);
-  else if(/\/api\/detector-comparison\/[^/]+\/result$/.test(parsed.pathname)) {
-    const jobId=parsed.pathname.split('/')[3], job=jobs.get(jobId);
-    const data=await response.clone().json();
-    const spec=targetSpec(data.recipe);
-    if(Object.keys(spec).some(k=>spec[k]!==target[k]))throw new Error('The saved result does not match this target or recipe.');
-    await saveResult(job?.target || target,'detectors',job?.key || `${target.id}|${recipeKey(data.recipe)}`,response,network,scoped,{jobId,url});
+  const jobId=parsed.pathname.split('/')[3], job=jobs.get(jobId);
+  const isStatus=method==='GET' && /^\/api\/detector-comparison\/[a-f0-9]+$/.test(parsed.pathname);
+  const isResult=method==='GET' && /\/api\/detector-comparison\/[^/]+\/result$/.test(parsed.pathname);
+  // A timeline reload resumes the same scientific request's activity rather
+  // than leaving a second, abandoned heartbeat permanently ahead of readiness.
+  const activityId=science ? key : recipe ? randomId() : isStatus || isResult ? (job?.activityId || target.tools.detectors?.pending?.activityId || jobId) : null;
+  const activityTarget=job?.target || target;
+  const report=update=>activityId ? activity(activityTarget,tool,activityId,update) : Promise.resolve();
+  let heartbeat;
+  if(activityId) {
+    const message=recipe?'Starting comparison':isResult?'Downloading comparison':parsed.pathname==='/api/wise-stack'?'Querying and processing WISE observations':science?'Querying and processing all eligible SPHEREx observations':'Checking comparison progress';
+    if(recipe || science || isResult)await activity(activityTarget,tool,activityId,{phase:'running',message,done:0,total:0},!isResult);
+    heartbeat=window.setInterval(()=>report({}).catch(()=>{}),15000);
+    scoped.onResearchWait=()=>report({phase:'queued',message:'Waiting for server capacity; this request will retry automatically',done:0,total:0});
+    scoped.onResearchAttempt=()=>report({phase:'running',message,done:0,total:0});
   }
-  return response;
+  try {
+    const response=await network(url,scoped);
+    if(!response.ok) {
+      const detail=await response.clone().json().catch(()=>({}));
+      await report({phase:'error',message:typeof detail.detail==='string'?detail.detail:`Request failed (${response.status}). Reopen to retry.`,done:0,total:0});
+      return response;
+    }
+    if(recipe) {
+      const data=await response.clone().json(); jobs.set(data.job_id,{key,target,activityId});
+      await changeTarget(target.id,t=>{t.tools.detectors={...t.tools.detectors,pending:{jobId:data.job_id,key,activityId,started:Date.now()/1000}};});
+      await report({phase:'queued',message:'Comparison queued',done:0,total:0});
+    } else if(isStatus) {
+      const state=await response.clone().json();
+      await report({phase:state.status==='complete'?'saving':state.status==='error'?'error':state.status==='cancelled'?'cancelled':state.status==='queued'?'queued':'running',message:state.status==='complete'?'Processing complete; downloading and saving results':state.message || 'Processing observations',done:state.status==='complete'?0:state.done || 0,total:state.status==='complete'?0:state.total || 0});
+    } else if(science || isResult) {
+      const data=await response.clone().json();
+      if(isResult) {
+        const spec=targetSpec(data.recipe);
+        if(Object.keys(spec).some(k=>spec[k]!==target[k]))throw new Error('The saved result does not match this target or recipe.');
+      }
+      await saveResult(activityTarget,tool,isResult?(job?.key || `${target.id}|${recipeKey(data.recipe)}`):key,response,network,scoped,isResult?{jobId,url}:{},activityId,data);
+      const incomplete=data.n_exposures_skipped || (data.n_selected!=null && (data.inputs || []).filter(i=>i.status==='accepted').length<data.n_selected);
+      await report({phase:incomplete?'incomplete':'ready',message:'Results saved on this device',done:0,total:0});
+    }
+    return response;
+  } catch(e) {
+    await report({phase:e.name==='AbortError'?'cancelled':'error',message:e.message,done:0,total:0}).catch(()=>{});
+    throw e;
+  } finally { if(heartbeat)window.clearInterval(heartbeat); }
 }

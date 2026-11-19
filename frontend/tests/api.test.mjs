@@ -10,8 +10,11 @@ test('public admission retry preserves request and returns accepted response onc
     return new Response('{}', {status: calls.length === 1 ? 429 : 202, headers: {'Retry-After': '0'}});
   };
   try {
-    const options = {method:'POST', body:'{"ra":1,"dec":2}'};
+    let waiting=0,resuming=0;
+    const options = {method:'POST', body:'{"ra":1,"dec":2}',onResearchWait:async()=>{waiting++;},onResearchAttempt:async()=>{resuming++;}};
     assert.equal((await fetchApi('/api/detector-comparison', options)).status, 202);
+    assert.equal(waiting,1,'dashboard receives admission-wait progress');
+    assert.equal(resuming,1,'accepted retries must leave the waiting state');
     assert.deepEqual(calls, [['/api/detector-comparison', options], ['/api/detector-comparison', options]]);
   } finally { globalThis.fetch = original; }
 });
